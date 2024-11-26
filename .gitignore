@@ -1,0 +1,9 @@
+*.ipnyb
+
+lime_pkg
+lime_pkg/*
+data/*
+results/*
+sbatch
+*.pyc
+__pycache__/*
