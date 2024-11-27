@@ -6,3 +6,4 @@ results/*
 sbatch
 *.pyc
 __pycache__/*
+.vscode
