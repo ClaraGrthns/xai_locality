@@ -60,7 +60,7 @@ max = np.max(distances_pw)
 first_non_zero = np.min(distances_pw[np.round(distances_pw, 2) > 0])
 
 tree = BallTree(df_feat)  
-num_tresh = 600
+num_tresh = 100
 thresholds = np.concatenate((np.array([1e-5]), np.linspace(first_non_zero, max, num_tresh)))
 fraction_points_in_ball = np.zeros((len(thresholds), len(tst_feat)))
 
@@ -70,7 +70,7 @@ def compute_fraction_for_threshold(threshold):
 start = time.time()
 
 fraction_points_in_ball = Parallel(n_jobs=-1)(
-    delayed(compute_fraction_for_threshold)(threshold) for threshold in thresholds[:2]
+    delayed(compute_fraction_for_threshold)(threshold) for threshold in thresholds
 )
 end = time.time()
 print("spend time: ", end - start)
