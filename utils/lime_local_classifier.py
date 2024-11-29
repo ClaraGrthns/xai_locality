@@ -38,7 +38,7 @@ def get_sample_close_to_x(x, dataset, dist_threshold, distance_measure="cosine")
     return dataset[distances < dist_threshold], max_min_dist
 
 
-def compute_lime_accuracy(x, dataset, explainer, predict_fn,  dist_measure, dist_threshold, pred_threshold=None):
+def compute_lime_accuracy(x, dataset, explainer, predict_fn,  dist_measure, dist_threshold, tree = None, pred_threshold=None):
     """
     Computes the accuracy of a LIME explanation by comparing the local model's predictions
     to the original model's predictions for samples within a ball around the instance.
@@ -58,20 +58,26 @@ def compute_lime_accuracy(x, dataset, explainer, predict_fn,  dist_measure, dist
             - ratio_within_ball (float): The ratio of samples within the distance threshold.
             - radius (float): The maximum distance of samples within the threshold.
             - num_samples (int): The number of samples within the distance threshold.
+            - ratio_all_ones (float): The fraction of samples that are discretized into all 1s. 
     """
 
     exp = explainer.explain_instance(x, predict_fn, top_labels=1)
-    sample_closest_to_instance, radius = get_sample_close_to_x(x, dataset, dist_threshold, dist_measure)
-    print(f"Number of samples close to the instance: {len(sample_closest_to_instance)}")
-    binary_sample = get_binary_vector(x, sample_closest_to_instance, explainer)
-    # compute how many of binary sample are the same as the instance
+    if tree is not None:
+        idx, dist = tree.query_radius(x.reshape(1,-1), dist_threshold, count_only=False, return_distance = True)
+        radius = np.max(dist)
+        samples_in_ball = dataset[idx[0]]
+    else: 
+        samples_in_ball, radius = get_sample_close_to_x(x, dataset, dist_threshold, dist_measure)
+    fraction_points_in_ball = len(samples_in_ball)/len(dataset)
+    
+    binary_sample = get_binary_vector(x, samples_in_ball, explainer)
     ratio_all_ones = np.all(binary_sample, axis=1).sum()/len(binary_sample)
-    print(f"Ratio of all ones: {ratio_all_ones}")
-    model_pred = predict_fn(sample_closest_to_instance)
+    model_pred = predict_fn(samples_in_ball)
     local_pred = lime_pred(binary_sample, exp)
     if pred_threshold is None:
         pred_threshold = 0.5
     local_classification = binary_pred(local_pred, pred_threshold)
     model_classification = np.argmax(model_pred, axis=1)
-    ratio_within_ball = len(sample_closest_to_instance)/len(dataset)
-    return np.sum(local_classification == model_classification)/len(sample_closest_to_instance), ratio_within_ball, radius, len(sample_closest_to_instance)
+    accuracy = np.sum(local_classification == model_classification)/len(samples_in_ball)
+    return accuracy, fraction_points_in_ball, radius, len(samples_in_ball), ratio_all_ones
+
