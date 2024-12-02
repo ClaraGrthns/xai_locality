@@ -104,7 +104,8 @@ def main(args):
     #         fraction_points_in_ball[idx_tresh] = counts / df_feat.shape[0]
     #         results['fraction_points_in_ball'] = fraction_points_in_ball
     #         np.save(osp.join(results_path, setting), results)
-
+    print("start computing")
+    print("saving results under: ", setting)
     results = {key:[] for key in ["accuracy", "fraction_points_in_ball", "radius", "samples_in_ball", "ratio_all_ones"]}
     for dp in range(0, len(tst_feat)):
         for threshold in thresholds:
@@ -123,6 +124,7 @@ def main(args):
             results["ratio_all_ones"].append(ratio_all_ones)
             results['time_compute_fractions'] = time.time() - start
             np.save(osp.join(results_path, setting), results)
+        print(f"saved results for datapoints: {dp}/{len(tst_feat)}")
 
     print("spend time: ", time.time() - start)
     # save numpy array
