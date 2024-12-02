@@ -64,7 +64,7 @@ def compute_lime_accuracy(x, dataset, explainer, predict_fn,  dist_measure, dist
     exp = explainer.explain_instance(x, predict_fn, top_labels=1)
     if tree is not None:
         idx, dist = tree.query_radius(x.reshape(1,-1), dist_threshold, count_only=False, return_distance = True)
-        radius = np.max(dist)
+        radius = np.max(dist[0])
         samples_in_ball = dataset[idx[0]]
     else: 
         samples_in_ball, radius = get_sample_close_to_x(x, dataset, dist_threshold, dist_measure)
