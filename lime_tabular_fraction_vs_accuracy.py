@@ -130,7 +130,6 @@ def main(args):
         print("Start computing LIME accuracy and fraction of points in the ball")
         print("saving results to: ", setting)
 
-
         results = {key: [] for key in ["accuracy", "fraction_points_in_ball", "radius", "samples_in_ball", "ratio_all_ones"]}
         results["thresholds"] = thresholds
         
