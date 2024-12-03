@@ -16,7 +16,7 @@ import xgboost
 import concurrent.futures
 
 
-from utils.lime_local_classifier import compute_lime_accuracy
+from utils.lime_local_classifier import compute_lime_accuracy, get_feat_coeff_intercept, compute_fractions, compute_explanations
 
 
 
@@ -28,24 +28,14 @@ def set_random_seeds(seed=42):
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
-def compute_fractions(thresholds, tst_feat, df_feat, tree):
-    def compute_fraction_for_threshold(threshold):
-        counts = tree.query_radius(tst_feat, r=threshold, count_only=True)
-        return counts / df_feat.shape[0]
-
-    fraction_points_in_ball = Parallel(n_jobs=-1)(
-        delayed(compute_fraction_for_threshold)(threshold) for threshold in thresholds
-    )
-    fraction_points_in_ball = np.array(fraction_points_in_ball)
-    return fraction_points_in_ball
-
 
 def compute_lime_accuracy_wrapper(args):
-    dp, threshold, tst_feat, tree, df_feat, explainer, predict_fn, distance_measure = args
+    dp, threshold, explanation, tst_feat, tree, df_feat, explainer, predict_fn, distance_measure = args
     return compute_lime_accuracy(
         x=tst_feat[dp],
-        tree=tree,
         dataset=df_feat,
+        explanation=explanation, 
+        tree=tree,
         explainer=explainer,
         predict_fn=predict_fn,
         dist_measure=distance_measure,
@@ -143,7 +133,20 @@ def main(args):
 
         results = {key: [] for key in ["accuracy", "fraction_points_in_ball", "radius", "samples_in_ball", "ratio_all_ones"]}
         results["thresholds"] = thresholds
-        args_list = [(dp, threshold, tst_feat, tree, df_feat, explainer, predict_fn, distance_measure)
+        
+        if args.precomputed_explanations:
+            print("Using precomputed explanations")
+            explanations = np.load(osp.join(args.results_path, "explanations_test_set.npy"), allow_pickle=True)
+        else:
+            if args.debug: 
+                print("Debug mode: Using only the first 100 samples")
+                tst_feat = tst_feat[:100]
+            print("Computing explanations for the test set")
+            explanations = compute_explanations(explainer, tst_feat, predict_fn)
+            np.save(osp.join(args.results_path, "explanations_test_set.npy"), explanations)
+            print("Finished computing explanations for the test set")
+            
+        args_list = [(dp, threshold, explanations[dp], tst_feat, tree, df_feat, explainer, predict_fn, distance_measure)
                     for dp in range(len(tst_feat))
                     for threshold in thresholds]
 
@@ -183,6 +186,8 @@ if __name__ == "__main__":
     parser.add_argument("--include_val", action="store_true", help="Include validation data")
     parser.add_argument("--fraction_only", action="store_true", help="Compute only the fraction of points in the ball")
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--precomputed_explanations", action="store_true", help="Use precomputed explanations")
+    parser.add_argument("--debug", action="store_true", help="Debug mode")
 
     args = parser.parse_args()
     print("Starting the experiment with the following arguments: ", args)
