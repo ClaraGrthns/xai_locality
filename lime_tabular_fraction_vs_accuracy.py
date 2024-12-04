@@ -126,7 +126,7 @@ def main(args):
                                                             class_names=[0,1], 
                                                             discretize_continuous=True)
 
-        setting = f"thresholds-0-{np.round(first_non_zero)}-max{np.round(max)}num_tresh-{num_tresh}_{df_setting}_accuracy_fraction_parallel_comp.npy"
+        setting = f"NEW_thresholds-0-{np.round(first_non_zero)}-max{np.round(max)}num_tresh-{num_tresh}_{df_setting}_accuracy_fraction_parallel_comp.npy"
         print("Start computing LIME accuracy and fraction of points in the ball")
         print("saving results to: ", setting)
 

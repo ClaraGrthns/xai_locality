@@ -59,7 +59,7 @@ def lime_pred(binary_x, exp):
     local_pred = intercept + np.dot(binary_x[:, feat_ids], coeffs)
     return local_pred
 
-def binary_pred(pred, threshold):
+def binary_pred(pred, threshold, explanation):
     """
     Converts the prediction probabilities into binary classifications based on a threshold.
 
@@ -70,7 +70,11 @@ def binary_pred(pred, threshold):
     Returns:
         numpy.ndarray: The binary classifications.
     """
-    return (pred >= threshold).astype(int)
+    class_top1 = explanation.top_labels[0]
+    if class_top1 == 0:
+        return (pred < threshold).astype(int)
+    else:
+        return (pred >= threshold).astype(int)
 
 def get_sample_close_to_x(x, dataset, dist_threshold, distance_measure="cosine"):
     """
@@ -150,7 +154,7 @@ def compute_lime_accuracy(x, dataset, explanation, explainer, predict_fn,  dist_
     local_pred = lime_pred(binary_sample, explanation)
     if pred_threshold is None:
         pred_threshold = 0.5
-    local_classification = binary_pred(local_pred, pred_threshold)
+    local_classification = binary_pred(local_pred, pred_threshold, explanation)
     model_classification = np.argmax(model_pred, axis=1)
     accuracy = np.sum(local_classification == model_classification)/len(samples_in_ball)
     return accuracy, fraction_points_in_ball, radius, len(samples_in_ball), ratio_all_ones
