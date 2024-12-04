@@ -14,6 +14,7 @@ import time
 import random
 import xgboost
 import concurrent.futures
+import gc
 
 
 from utils.lime_local_classifier import compute_lime_accuracy, get_feat_coeff_intercept, compute_fractions, compute_explanations
@@ -28,23 +29,17 @@ def set_random_seeds(seed=42):
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
-
-def compute_lime_accuracy_wrapper(args):
-    dp, threshold, explanation, tst_feat, tree, df_feat, explainer, predict_fn, distance_measure = args
-    return compute_lime_accuracy(
-        x=tst_feat[dp],
-        dataset=df_feat,
-        explanation=explanation, 
-        tree=tree,
-        explainer=explainer,
-        predict_fn=predict_fn,
-        dist_measure=distance_measure,
-        dist_threshold=threshold
+def compute_lime_accuracies(tst_set, dataset, explanations, explainer, predict_fn, thresholds, tree, pred_threshold):
+    out = Parallel(n_jobs=-1)(
+        delayed(compute_lime_accuracy)(
+            tst_set, dataset, explanations, explainer, predict_fn, dist_threshold, tree, pred_threshold
+        )
+        for dist_threshold in thresholds
     )
+    return out
 
 def main(args):
     set_random_seeds(args.random_seed)
-
 
     data_path = args.data_path
     model_path = args.model_path
@@ -73,6 +68,10 @@ def main(args):
     df_feat = tst_feat
     df_y = tst_y
 
+    if args.debug:
+        tst_feat = tst_feat[:100]
+        print("Debug mode: Using only the first 10 samples")
+
     if include_trn:
         df_feat = np.concatenate([trn_feat, df_feat], axis=0)
         df_y = np.concatenate([trn_y, df_y], axis=0)
@@ -94,7 +93,13 @@ def main(args):
     if args.fraction_only:
         setting = f"thresholds-0-{np.round(first_non_zero)}-max{np.round(max)}num_tresh-{num_tresh}_{df_setting}_results_parallel_comp_fraction_points_in_ball.npy"
         start = time.time()
-        fraction_points_in_ball = compute_fractions(thresholds, tst_feat, df_feat, tree)
+        def compute_fraction_for_threshold(threshold):
+            counts = tree.query_radius(tst_feat, r=threshold, count_only=True)
+            return counts / df_feat.shape[0]
+        fraction_points_in_ball = Parallel(n_jobs=-1)(
+            delayed(compute_fraction_for_threshold)(threshold) for threshold in thresholds
+        )
+        fraction_points_in_ball = np.array(fraction_points_in_ball)
         end = time.time()
         print("spend time: ", end - start)  
         results = {"fraction_points_in_ball": fraction_points_in_ball,
@@ -126,7 +131,9 @@ def main(args):
                                                             class_names=[0,1], 
                                                             discretize_continuous=True)
 
-        setting = f"NEW_thresholds-0-{np.round(first_non_zero)}-max{np.round(max)}num_tresh-{num_tresh}_{df_setting}_accuracy_fraction_parallel_comp.npy"
+        setting = f"thresholds-0-{np.round(first_non_zero)}-max{np.round(max)}num_tresh-{num_tresh}_{df_setting}_accuracy_fraction_parallel_comp.npy"
+        if args.debug:
+            setting = f"debug_{setting}"
         print("Start computing LIME accuracy and fraction of points in the ball")
         print("saving results to: ", setting)
 
@@ -135,38 +142,42 @@ def main(args):
         
         if args.precomputed_explanations:
             print("Using precomputed explanations")
-            explanations = np.load(osp.join(args.results_path, "explanations_test_set.npy"), allow_pickle=True)
+            explanations = np.load(osp.join(args.results_path, f"explanations/explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}.npy"), allow_pickle=True)
         else:
-            if args.debug: 
-                print("Debug mode: Using only the first 100 samples")
-                tst_feat = tst_feat[:100]
             print("Computing explanations for the test set")
             explanations = compute_explanations(explainer, tst_feat, predict_fn)
-            np.save(osp.join(args.results_path, "explanations_test_set.npy"), explanations)
+            np.save(osp.join(args.results_path, f"explanations/explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}.npy"), explanations)
             print("Finished computing explanations for the test set")
-            
-        args_list = [(dp, threshold, explanations[dp], tst_feat, tree, df_feat, explainer, predict_fn, distance_measure)
-                    for dp in range(len(tst_feat))
-                    for threshold in thresholds]
 
-        start = time.time()
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            for result in executor.map(compute_lime_accuracy_wrapper, args_list):
-                accuracy, fraction_points_in_ball, radius, samples_in_ball, ratio_all_ones = result
+        # out = Parallel(n_jobs=-1)(delayed(compute_lime_accuracy)(
+        #     tst_feat, df_feat, explanations, explainer, predict_fn, dist_threshold, tree
+        #     ) for dist_threshold in thresholds)
+        
+        chunk_size = args.chunk_size
+        # Split the test set into chunks
+        for i in range(0, len(tst_feat), chunk_size):
+            tst_chunk = tst_feat[i : i + chunk_size]  # Select a chunk of the test set
+            
+            chunk_results = Parallel(n_jobs=-1)(
+                delayed(compute_lime_accuracy)(
+                    tst_chunk, df_feat, explanations, explainer, predict_fn, dist_threshold, tree
+                )
+                for dist_threshold in thresholds
+            )
+            
+            for accuracy, fraction_points_in_ball, radius, samples_in_ball, ratio_all_ones in chunk_results:
                 results["accuracy"].append(accuracy)
                 results["fraction_points_in_ball"].append(fraction_points_in_ball)
                 results["radius"].append(radius)
                 results["samples_in_ball"].append(samples_in_ball)
                 results["ratio_all_ones"].append(ratio_all_ones)
-                results['time_compute_fractions'] = time.time() - start
 
-                # Save intermediate results periodically
-                if len(results["accuracy"]) % 100 == 0:
-                    print(f"Saving intermediate results after {len(results['accuracy'])} samples")
-                    np.savez(
-                        osp.join(results_path, setting),
-                        **{key: np.array(value) for key, value in results.items()}
-                    )
+            np.savez(osp.join(results_path, setting),
+                **{key: np.array(value) for key, value in results.items()}
+            )
+            print(f"Computing LIME accuracy and fraction of points in the ball for chunk {i}/{len(tst_feat)%chunk_size}")
+
+
         np.savez(osp.join(results_path, setting),
                 **{key: np.array(value) for key, value in results.items()}
             )
@@ -186,7 +197,11 @@ if __name__ == "__main__":
     parser.add_argument("--fraction_only", action="store_true", help="Compute only the fraction of points in the ball")
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed")
     parser.add_argument("--precomputed_explanations", action="store_true", help="Use precomputed explanations")
+    parser.add_argument("--chunk_size", type=int, default=20, help="Chunk size of test set computed at once")
     parser.add_argument("--debug", action="store_true", help="Debug mode")
+    parser.add_argument("--kernel_width", type=float, default=None, help="Kernel size for the locality analysis")
+    parser.add_argument("--model_regressor", type=str, default="ridge", help="Model regressor for LIME")
+
 
     args = parser.parse_args()
     print("Starting the experiment with the following arguments: ", args)

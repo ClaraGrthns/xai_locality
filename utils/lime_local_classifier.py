@@ -25,21 +25,21 @@ def get_feat_coeff_intercept(exp):
         coeffs.append(coeff)
     return feat_ids, np.array(coeffs), exp.intercept[top1_model]
 
-def get_binary_vector(x, x_explained, explainer):
+def get_binary_vector(samples_around_xs:list , xs:np.array, explainer):
     """
     Converts the features of the instance and the explained instance into binary vectors.
 
     Args:
-        x (numpy.ndarray): The instance to explain, a 1D numpy array.
-        x_explained (numpy.ndarray): The explained instance, a 1D numpy array.
+        samples_around_xs (list): samples around the instance, a list of 2D numpy arrays.
+        xs (numpy.ndarray): The explained instance, a 1D numpy array.
         explainer (lime.lime_tabular.LimeTabularExplainer): The LIME explainer object.
 
     Returns:
         numpy.ndarray: A binary vector indicating which features match between the instance and the explained instance.
     """
-    bins = explainer.discretizer.discretize(x)
-    bins_instance = explainer.discretizer.discretize(x_explained)
-    binary = (bins == bins_instance).astype(int)
+    bins_sample = [explainer.discretizer.discretize(sample_in_ball) for sample_in_ball in samples_around_xs]
+    bins_instance = explainer.discretizer.discretize(xs)
+    binary = [(bins_sample[i] == bins_instance[i]).astype(int) for i in range(len(bins_sample))]
     return binary
 
 def lime_pred(binary_x, exp):
@@ -76,27 +76,6 @@ def binary_pred(pred, threshold, explanation):
     else:
         return (pred >= threshold).astype(int)
 
-def get_sample_close_to_x(x, dataset, dist_threshold, distance_measure="cosine"):
-    """
-    Finds samples in the dataset that are within a certain distance threshold from the instance.
-
-    Args:
-        x (numpy.ndarray): The instance to compare, a 1D numpy array.
-        dataset (numpy.ndarray): The dataset to search, a 2D numpy array.
-        dist_threshold (float): The distance threshold.
-        distance_measure (str): The distance measure to use (e.g., "cosine").
-
-    Returns:
-        tuple: A tuple containing:
-            - numpy.ndarray: The samples within the distance threshold.
-            - float: The maximum distance of the samples within the threshold.
-    """
-    distances = pairwise_distances(x.reshape(1, -1), dataset, distance_measure)[0]
-    if distance_measure == "cosine":
-        distances = 1 - distances
-    max_min_dist = np.max(distances[distances < dist_threshold])
-    return dataset[distances < dist_threshold], max_min_dist
-
 def compute_fractions(thresholds, tst_feat, df_feat, tree):
     def compute_fraction_for_threshold(threshold):
         counts = tree.query_radius(tst_feat, r=threshold, count_only=True)
@@ -115,14 +94,13 @@ def compute_explanations(explainer, tst_feat, predict_fn):
     )
     return explanations
     
-
-def compute_lime_accuracy(x, dataset, explanation, explainer, predict_fn,  dist_measure, dist_threshold, tree = None, pred_threshold=None):
+def compute_lime_accuracy(tst_set, dataset, explanations, explainer, predict_fn, dist_threshold, tree, pred_threshold=None):
     """
     Computes the accuracy of a LIME explanation by comparing the local model's predictions
     to the original model's predictions for samples within a ball around the instance.
 
     Args:
-        x (numpy.ndarray): The instance to explain, a 1D numpy array.
+        x (numpy.ndarray): The instances to explain, a 2D numpy array.
         dataset (numpy.ndarray): The dataset to sample from, a 2D numpy array.
         explainer (lime.lime_tabular.LimeTabularExplainer): The LIME explainer object.
         predict_fn (callable): The prediction function suitable for LIME.
@@ -138,24 +116,25 @@ def compute_lime_accuracy(x, dataset, explanation, explainer, predict_fn,  dist_
             - num_samples (int): The number of samples within the distance threshold.
             - ratio_all_ones (float): The fraction of samples that are discretized into all 1s. 
     """
+    if tst_set.ndim == 1:
+        tst_set = tst_set.reshape(1, -1)
 
-    # exp = explainer.explain_instance(x, predict_fn, top_labels=1)
-    if tree is not None:
-        idx, dist = tree.query_radius(x.reshape(1,-1), dist_threshold, count_only=False, return_distance = True)
-        radius = np.max(dist[0])
-        samples_in_ball = dataset[idx[0]]
-    else: 
-        samples_in_ball, radius = get_sample_close_to_x(x, dataset, dist_threshold, dist_measure)
-    fraction_points_in_ball = len(samples_in_ball)/len(dataset)
+    len_test = len(tst_set)
+    idx, dist = tree.query_radius(tst_set, dist_threshold, count_only=False, return_distance = True)
+    radiuss = list(map(np.max, dist))
+    samples_in_ball = [dataset[idx[i]] for i in range(len_test)]
     
-    binary_sample = get_binary_vector(x, samples_in_ball, explainer)
-    ratio_all_ones = np.all(binary_sample, axis=1).sum()/len(binary_sample)
-    model_pred = predict_fn(samples_in_ball)
-    local_pred = lime_pred(binary_sample, explanation)
+    fraction_points_in_ball = [len(idx[i])/len(dataset) for i in range(len_test)]
+    binary_sample = get_binary_vector(samples_in_ball, tst_set, explainer)
+    ratio_all_ones = [np.all(binary_sample[i], axis=1).sum()/len(binary_sample[i]) for i in range(len_test)]
+    model_preds= [predict_fn(sample_in_ball) for sample_in_ball in samples_in_ball]#list(map(predict_fn, samples_in_ball)) #
+    local_preds = [lime_pred(binary_sample[i], explanations[i]) for i in range(len_test)] 
+
     if pred_threshold is None:
         pred_threshold = 0.5
-    local_classification = binary_pred(local_pred, pred_threshold, explanation)
-    model_classification = np.argmax(model_pred, axis=1)
-    accuracy = np.sum(local_classification == model_classification)/len(samples_in_ball)
-    return accuracy, fraction_points_in_ball, radius, len(samples_in_ball), ratio_all_ones
-
+    
+    local_classifications = [binary_pred(local_preds[i], pred_threshold, explanations[i]) for i in range(len_test)]
+    model_classifications = [np.argmax(model_pred, axis=1) for model_pred in model_preds]
+    accuracy = [np.sum(local_classifications[i] == model_classifications[i])/len(samples_in_ball[i]) for i in range(len_test)]
+    
+    return np.array(accuracy), np.array(fraction_points_in_ball), np.array(radiuss), len(samples_in_ball), np.array(ratio_all_ones)
