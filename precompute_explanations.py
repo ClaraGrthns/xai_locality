@@ -68,13 +68,17 @@ def main(args):
     feature_names = train_tensor_frame.col_names_dict[first_key]
     explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat, 
                                                         feature_names=feature_names, 
+                                                        kernel_width=args.kernel_width, # if None: sqrt (number of columns) * 0.75
                                                         class_names=[0,1], 
                                                         discretize_continuous=True)
 
 
     print("Computing explanations for the test set")
     explanations = compute_explanations(explainer, tst_feat, predict_fn)
-    np.save(osp.join(args.results_path, "explanations_test_set.npy"), explanations)
+
+    if args.kernel_width is None:
+        args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2)
+    np.save(osp.join(args.results_path, f"explanations/explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}.npy"), explanations)
 
    
 if __name__ == "__main__":
@@ -84,6 +88,8 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, help="Path to the model", default="/home/grotehans/pytorch-frame/benchmark/results/xgboost_binary_medium_6.pt")
     parser.add_argument("--results_path", type=str,  help="Path to save results", default="/home/grotehans/xai_locality/results/XGBoost/Jannis")
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--kernel_width", type=float, default=None, help="Kernel size for the locality analysis")
+    parser.add_argument("--model_regressor", type=str, default="ridge", help="Model regressor for LIME")
 
     args = parser.parse_args()
     print("Starting the experiment with the following arguments: ", args)
