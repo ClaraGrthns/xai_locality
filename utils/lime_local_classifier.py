@@ -56,7 +56,9 @@ def lime_pred(binary_x, exp):
     if binary_x.ndim == 1:
         binary_x = binary_x.reshape(1, -1)
     feat_ids, coeffs, intercept = get_feat_coeff_intercept(exp)
-    local_pred = intercept + np.dot(binary_x[:, feat_ids], coeffs)
+    # Pre-select only needed features before dot product
+    binary_x_selected = binary_x[:, feat_ids]
+    local_pred = intercept + binary_x_selected @ coeffs
     return local_pred
 
 def binary_pred(pred, threshold, explanation):
@@ -70,11 +72,9 @@ def binary_pred(pred, threshold, explanation):
     Returns:
         numpy.ndarray: The binary classifications.
     """
+    # Simplify logic to avoid branching
     class_top1 = explanation.top_labels[0]
-    if class_top1 == 0:
-        return (pred < threshold).astype(int)
-    else:
-        return (pred >= threshold).astype(int)
+    return ((pred >= threshold) ^ (class_top1 == 0)).astype(np.int32)
 
 def compute_fractions(thresholds, tst_feat, df_feat, tree):
     def compute_fraction_for_threshold(threshold):
@@ -120,21 +120,23 @@ def compute_lime_accuracy(tst_set, dataset, explanations, explainer, predict_fn,
         tst_set = tst_set.reshape(1, -1)
 
     len_test = len(tst_set)
-    idx, dist = tree.query_radius(tst_set, dist_threshold, count_only=False, return_distance = True)
-    radiuss = list(map(np.max, dist))
-    samples_in_ball = [dataset[idx[i]] for i in range(len_test)]
+    idx, dist = tree.query_radius(tst_set, dist_threshold, count_only=False, return_distance=True)
+    radiuss = np.array([np.max(d) for d in dist])
+    samples_in_ball = [dataset[i] for i in idx]
+    n_samples_in_ball = np.array([len(s) for s in samples_in_ball])
     
-    fraction_points_in_ball = [len(idx[i])/len(dataset) for i in range(len_test)]
+    fraction_points_in_ball = n_samples_in_ball / len(dataset)
     binary_sample = get_binary_vector(samples_in_ball, tst_set, explainer)
-    ratio_all_ones = [np.all(binary_sample[i], axis=1).sum()/len(binary_sample[i]) for i in range(len_test)]
-    model_preds= [predict_fn(sample_in_ball) for sample_in_ball in samples_in_ball]#list(map(predict_fn, samples_in_ball)) #
-    local_preds = [lime_pred(binary_sample[i], explanations[i]) for i in range(len_test)] 
+    ratio_all_ones = np.array([np.all(b, axis=1).sum() / len(b) for b in binary_sample])
+    
+    model_preds = [predict_fn(samples) for samples in samples_in_ball]
+    local_preds = [lime_pred(b, explanations[i]) for i, b in enumerate(binary_sample)]
 
     if pred_threshold is None:
         pred_threshold = 0.5
     
     local_classifications = [binary_pred(local_preds[i], pred_threshold, explanations[i]) for i in range(len_test)]
-    model_classifications = [np.argmax(model_pred, axis=1) for model_pred in model_preds]
-    accuracy = [np.sum(local_classifications[i] == model_classifications[i])/len(samples_in_ball[i]) for i in range(len_test)]
+    model_classifications = [np.argmax(pred, axis=1) for pred in model_preds]
+    accuracy = np.array([np.mean(local_classifications[i] == model_classifications[i]) for i in range(len_test)])
     
-    return np.array(accuracy), np.array(fraction_points_in_ball), np.array(radiuss), len(samples_in_ball), np.array(ratio_all_ones)
+    return accuracy, fraction_points_in_ball, radiuss, n_samples_in_ball, ratio_all_ones

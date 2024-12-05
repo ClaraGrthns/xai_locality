@@ -67,9 +67,8 @@ def main(args):
 
     df_feat = tst_feat
     df_y = tst_y
-
     if args.debug:
-        tst_feat = tst_feat[:100]
+        tst_feat = tst_feat[:5]
         print("Debug mode: Using only the first 10 samples")
 
     if include_trn:
@@ -84,7 +83,7 @@ def main(args):
     first_non_zero = np.min(distances_pw[np.round(distances_pw, 2) > 0])
 
     tree = BallTree(df_feat)  
-    num_tresh = args.num_tresh
+    num_tresh = args.num_tresh if not args.debug else 2
     thresholds = np.concatenate((np.array([1e-5]), np.linspace(first_non_zero, max, num_tresh)))
     results_path = args.results_path
     df_setting = "complete_df" if include_trn and include_val else "only_test"
@@ -122,7 +121,6 @@ def main(args):
             if model.task_type == TaskType.BINARY_CLASSIFICATION:
                 pred = np.column_stack((1 - pred, pred))
             return pred
-        
 
         first_key = next(iter(train_tensor_frame.col_names_dict))
         feature_names = train_tensor_frame.col_names_dict[first_key]
@@ -130,15 +128,27 @@ def main(args):
                                                             feature_names=feature_names, 
                                                             class_names=[0,1], 
                                                             discretize_continuous=True)
+        if args.kernel_width is None:
+            args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2) #Default value
 
-        setting = f"thresholds-0-{np.round(first_non_zero)}-max{np.round(max)}num_tresh-{num_tresh}_{df_setting}_accuracy_fraction_parallel_comp.npy"
+        setting = f"thresholds-0-{np.round(first_non_zero)}-max{np.round(max)}num_tresh-{num_tresh}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_accuracy_fraction_.npy"
+        
         if args.debug:
             setting = f"debug_{setting}"
         print("Start computing LIME accuracy and fraction of points in the ball")
         print("saving results to: ", setting)
 
-        results = {key: [] for key in ["accuracy", "fraction_points_in_ball", "radius", "samples_in_ball", "ratio_all_ones"]}
-        results["thresholds"] = thresholds
+        # Initialize results dictionary with numpy arrays instead of lists for better performance
+        num_samples = len(tst_feat)
+        num_thresholds = len(thresholds)
+        results = {
+            "accuracy": np.zeros((num_thresholds, num_samples)),
+            "fraction_points_in_ball": np.zeros((num_thresholds, num_samples)),
+            "radius": np.zeros((num_thresholds, num_samples)),
+            "samples_in_ball": np.zeros((num_thresholds, num_samples)),
+            "ratio_all_ones": np.zeros((num_thresholds, num_samples)),
+            "thresholds": thresholds
+        }
         
         if args.precomputed_explanations:
             print("Using precomputed explanations")
@@ -149,14 +159,11 @@ def main(args):
             np.save(osp.join(args.results_path, f"explanations/explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}.npy"), explanations)
             print("Finished computing explanations for the test set")
 
-        # out = Parallel(n_jobs=-1)(delayed(compute_lime_accuracy)(
-        #     tst_feat, df_feat, explanations, explainer, predict_fn, dist_threshold, tree
-        #     ) for dist_threshold in thresholds)
-        
         chunk_size = args.chunk_size
         # Split the test set into chunks
         for i in range(0, len(tst_feat), chunk_size):
-            tst_chunk = tst_feat[i : i + chunk_size]  # Select a chunk of the test set
+            chunk_end = min(i + chunk_size, len(tst_feat))
+            tst_chunk = tst_feat[i:chunk_end]
             
             chunk_results = Parallel(n_jobs=-1)(
                 delayed(compute_lime_accuracy)(
@@ -165,22 +172,18 @@ def main(args):
                 for dist_threshold in thresholds
             )
             
-            for accuracy, fraction_points_in_ball, radius, samples_in_ball, ratio_all_ones in chunk_results:
-                results["accuracy"].append(accuracy)
-                results["fraction_points_in_ball"].append(fraction_points_in_ball)
-                results["radius"].append(radius)
-                results["samples_in_ball"].append(samples_in_ball)
-                results["ratio_all_ones"].append(ratio_all_ones)
+            # Unpack results directly into the correct positions in the arrays
+            for t, (acc, frac, rad, samp, ratio) in enumerate(chunk_results):
+                results["accuracy"][t, i:chunk_end] = acc
+                results["fraction_points_in_ball"][t, i:chunk_end] = frac
+                results["radius"][t, i:chunk_end] = rad
+                results["samples_in_ball"][t, i:chunk_end] = samp
+                results["ratio_all_ones"][t, i:chunk_end] = ratio
+            
+            # Save intermediate results
+            np.savez(osp.join(results_path, setting), **results)
+            print(f"Processed chunk {i//chunk_size + 1}/{(len(tst_feat) + chunk_size - 1)//chunk_size}")
 
-            np.savez(osp.join(results_path, setting),
-                **{key: np.array(value) for key, value in results.items()}
-            )
-            print(f"Computing LIME accuracy and fraction of points in the ball for chunk {i}/{len(tst_feat)%chunk_size}")
-
-
-        np.savez(osp.join(results_path, setting),
-                **{key: np.array(value) for key, value in results.items()}
-            )
         print("Finished computing LIME accuracy and fraction of points in the ball")
 
    
@@ -197,7 +200,7 @@ if __name__ == "__main__":
     parser.add_argument("--fraction_only", action="store_true", help="Compute only the fraction of points in the ball")
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed")
     parser.add_argument("--precomputed_explanations", action="store_true", help="Use precomputed explanations")
-    parser.add_argument("--chunk_size", type=int, default=20, help="Chunk size of test set computed at once")
+    parser.add_argument("--chunk_size", type=int, default=100, help="Chunk size of test set computed at once")
     parser.add_argument("--debug", action="store_true", help="Debug mode")
     parser.add_argument("--kernel_width", type=float, default=None, help="Kernel size for the locality analysis")
     parser.add_argument("--model_regressor", type=str, default="ridge", help="Model regressor for LIME")
