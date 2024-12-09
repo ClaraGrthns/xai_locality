@@ -39,16 +39,13 @@ def main(args):
     model = XGBoost(task_type=TaskType.BINARY_CLASSIFICATION, num_classes=2 )
     model.load(model_path)
 
-    data_path = "/home/grotehans/pytorch-frame/data/"
-    dataset = DataFrameBenchmark(root=data_path, task_type=TaskType.BINARY_CLASSIFICATION,
-                                scale='medium', idx=6)
-    dataset.materialize()
-    dataset = dataset.shuffle()
-    train_dataset, val_dataset, test_dataset = dataset.split()
-    train_tensor_frame = train_dataset.tensor_frame
-    test_tensor_frame = test_dataset.tensor_frame
+    data_path = "/home/grotehans/pytorch-frame/benchmark/results/XGBoost_medium_6_normalized_data.pt"
+    data = torch.load(data_path)
+    train_tensor_frame, val_tensor_frame, test_tensor_frame = data["train"], data["val"], data["test"]
     tst_feat, tst_y, tst_types = model._to_xgboost_input(test_tensor_frame)
+    val_feat, val_y, val_types = model._to_xgboost_input(val_tensor_frame)
     trn_feat, trn_y, trn_types = model._to_xgboost_input(train_tensor_frame)
+
 
     if args.kernel_width is None:
         args.kernel_width = [np.round(np.sqrt(trn_feat.shape[1]) * .75, 2)]
@@ -71,16 +68,16 @@ def main(args):
         first_key = next(iter(train_tensor_frame.col_names_dict))
         feature_names = train_tensor_frame.col_names_dict[first_key]
         explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat, 
-                                                            feature_names=feature_names, 
-                                                            kernel_width=kernel_width, # if None: sqrt (number of columns) * 0.75
-                                                            class_names=[0,1], 
-                                                            discretize_continuous=True)
+                                                        feature_names=feature_names, 
+                                                        kernel_width=kernel_width, # if None: sqrt (number of columns) * 0.75
+                                                        class_names=[0,1], 
+                                                        discretize_continuous=True)
 
 
         print("Computing explanations for the test set for kernel width: ", kernel_width)
         explanations = compute_explanations(explainer, tst_feat, predict_fn)
 
-        np.save(osp.join(args.results_path, f"explanations/explanations_test_set_kernel_width-{kernel_width}_model_regressor-{args.model_regressor}.npy"), explanations)
+        np.save(osp.join(args.results_path, f"explanations/normalized_data_explanations_test_set_kernel_width-{kernel_width}_model_regressor-{args.model_regressor}.npy"), explanations)
 
    
 if __name__ == "__main__":
