@@ -89,10 +89,18 @@ def compute_fractions(thresholds, tst_feat, df_feat, tree):
 
 
 def compute_explanations(explainer, tst_feat, predict_fn):
-    explanations = Parallel(n_jobs=-1)(
-        delayed(explainer.explain_instance)(dp, predict_fn, top_labels=1) for dp in tst_feat
+    # Create enumerated list to keep track of original indices
+    enumerated_data = list(enumerate(tst_feat))
+    
+    # Run parallel computation with indices
+    indexed_explanations = Parallel(n_jobs=-1)(
+        delayed(lambda x: (x[0], explainer.explain_instance(x[1], predict_fn, top_labels=1)))(item)
+        for item in enumerated_data
     )
-    return explanations
+    
+    # Sort by the stored indices and return only the explanations
+    sorted_explanations = [exp for _, exp in sorted(indexed_explanations, key=lambda x: x[0])]
+    return sorted_explanations
     
 def compute_lime_accuracy(tst_set, dataset, explanations, explainer, predict_fn, dist_threshold, tree, pred_threshold=None):
     """
