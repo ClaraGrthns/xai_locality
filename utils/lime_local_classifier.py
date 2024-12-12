@@ -145,6 +145,6 @@ def compute_lime_accuracy(tst_set, dataset, explanations, explainer, predict_fn,
     
     local_classifications = [binary_pred(local_preds[i], pred_threshold, explanations[i]) for i in range(len_test)]
     model_classifications = [np.argmax(pred, axis=1) for pred in model_preds]
-    accuracy = np.array([np.mean(local_classifications[i] == model_classifications[i]) for i in range(len_test)])
+    accuracies_per_dp = np.array([np.mean(local_classifications[i] == model_classifications[i]) for i in range(len_test)])
     
-    return accuracy, fraction_points_in_ball, radiuss, n_samples_in_ball, ratio_all_ones
+    return dist_threshold, accuracies_per_dp, fraction_points_in_ball, radiuss, n_samples_in_ball, ratio_all_ones
