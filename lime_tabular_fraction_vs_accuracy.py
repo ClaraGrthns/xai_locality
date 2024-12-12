@@ -89,7 +89,8 @@ def main(args):
     explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat, 
                                                         feature_names=feature_names, 
                                                         class_names=[0,1], 
-                                                        discretize_continuous=True)
+                                                        discretize_continuous=True,
+                                                        random_state=args.random_seed)
     if args.kernel_width is None:
         args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2) #Default value
 
@@ -128,20 +129,23 @@ def main(args):
     for i in range(0, len(tst_feat), chunk_size):
         chunk_end = min(i + chunk_size, len(tst_feat))
         tst_chunk = tst_feat[i:chunk_end]
+        explanations_chunk = explanations[i:chunk_end]
         chunk_results = Parallel(n_jobs=-1)(
                 delayed(compute_lime_accuracy)(
-                    tst_chunk, df_feat, explanations, explainer, predict_fn, dist_threshold, tree
+                    tst_chunk, df_feat, explanations_chunk, explainer, predict_fn, dist_threshold, tree
                 )
                 for dist_threshold in thresholds
             )
-        
+        chunk_results_sorted = sorted(chunk_results, key=lambda x: np.where(thresholds == x[0])[0][0])
+            
         # Unpack results directly into the correct positions in the arrays
-        for t, (acc, frac, rad, samp, ratio) in enumerate(chunk_results):
-            results["accuracy"][t, i:chunk_end] = acc
-            results["fraction_points_in_ball"][t, i:chunk_end] = frac
-            results["radius"][t, i:chunk_end] = rad
-            results["samples_in_ball"][t, i:chunk_end] = samp
-            results["ratio_all_ones"][t, i:chunk_end] = ratio
+        for t, (threshold, acc, frac, rad, samp, ratio) in enumerate(chunk_results_sorted):
+            threshold_idx = np.where(thresholds == threshold)[0][0]
+            results["accuracy"][threshold_idx, i:chunk_end] = acc
+            results["fraction_points_in_ball"][threshold_idx, i:chunk_end] = frac
+            results["radius"][threshold_idx, i:chunk_end] = rad
+            results["samples_in_ball"][threshold_idx, i:chunk_end] = samp
+            results["ratio_all_ones"][threshold_idx, i:chunk_end] = ratio
         
         # Save intermediate results
         np.savez(osp.join(results_path, setting), **results)

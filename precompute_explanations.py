@@ -53,16 +53,16 @@ def main(args):
         args.kernel_width = [args.kernel_width]
 
     def predict_fn(X):
-            if X.ndim == 1:
-                X = X.reshape(1, -1)
-            dummy_labels = np.zeros(X.shape[0])
-            dtest = xgboost.DMatrix(X, label=dummy_labels,
-                                    feature_types=tst_types,
-                                    enable_categorical=True)
-            pred = model.model.predict(dtest)
-            if model.task_type == TaskType.BINARY_CLASSIFICATION:
-                pred = np.column_stack((1 - pred, pred))
-            return pred
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+        dummy_labels = np.zeros(X.shape[0])
+        dtest = xgboost.DMatrix(X, label=dummy_labels,
+                                feature_types=tst_types,
+                                enable_categorical=True)
+        pred = model.model.predict(dtest)
+        if model.task_type == TaskType.BINARY_CLASSIFICATION:
+            pred = np.column_stack((1 - pred, pred))
+        return pred
         
     for kernel_width in args.kernel_width:
         first_key = next(iter(train_tensor_frame.col_names_dict))
@@ -71,7 +71,8 @@ def main(args):
                                                         feature_names=feature_names, 
                                                         kernel_width=kernel_width, # if None: sqrt (number of columns) * 0.75
                                                         class_names=[0,1], 
-                                                        discretize_continuous=True)
+                                                        discretize_continuous=True,
+                                                        random_state=args.random_seed)
 
 
         print("Computing explanations for the test set for kernel width: ", kernel_width)
