@@ -1,26 +1,18 @@
 from torch_frame.gbdt import XGBoost
 from torch_frame.typing import TaskType
-from torch_frame.datasets import DataFrameBenchmark
 import os.path as osp
 import torch
 import numpy as np
 import argparse
 import lime.lime_tabular
-import h5py
 from sklearn.metrics import pairwise_distances
 from sklearn.neighbors import BallTree
 from joblib import Parallel, delayed
-import time
 import random
 import xgboost
-import concurrent.futures
-import gc
-
-
-from utils.lime_local_classifier import compute_lime_accuracy, get_feat_coeff_intercept, compute_fractions, compute_explanations
-
-
-
+from functools import partial
+from utils.plotting_utils import plot_accuracy_vs_threshold, plot_accuracy_vs_fraction, plot_3d_scatter
+from utils.lime_local_classifier import compute_lime_accuracy, compute_explanations
 def set_random_seeds(seed=42):
     random.seed(seed)
     np.random.seed(seed)
@@ -36,18 +28,22 @@ def main(args):
     include_trn = args.include_trn
     include_val = args.include_val
     model_path = args.model_path
-
-    model = XGBoost(task_type=TaskType.BINARY_CLASSIFICATION, num_classes=2)
-    model.load(model_path)
-    data_path = "/home/grotehans/pytorch-frame/benchmark/results/XGBoost_medium_6_normalized_data.pt"
-    data = torch.load(data_path)
-    train_tensor_frame, val_tensor_frame, test_tensor_frame = data["train"], data["val"], data["test"]
-    tst_feat, tst_y, tst_types = model._to_xgboost_input(test_tensor_frame)
-    val_feat, val_y, val_types = model._to_xgboost_input(val_tensor_frame)
-    trn_feat, trn_y, trn_types = model._to_xgboost_input(train_tensor_frame)
+    data_path = args.data_path
+    
+    if args.model_type == "xgboost":
+        from model.pytorch_frame_xgboost import load_model, load_data, predict_fn
+    elif args.model_type == "lightgbm":
+        from model.lightgbm import load_model, load_data, predict_fn
+    else:
+        raise ValueError(f"Unsupported model type: {args.model_type}")
+    
+    # Load the model using the appropriate function
+    model = load_model(model_path)
+    tst_feat, tst_y, val_feat, val_y, trn_feat, trn_y = load_data(model, data_path)
+    feature_names = np.arange(trn_feat.shape[1])
+    predict_fn_wrapped = partial(predict_fn, model=model)
 
     print("train, test, val feature shapes: ", trn_feat.shape, tst_feat.shape, val_feat.shape)
-
     df_feat = tst_feat
     df_y = tst_y
     if args.debug:
@@ -72,20 +68,6 @@ def main(args):
     results_path = args.results_path
     df_setting = "complete_df" if include_trn and include_val else "only_test"
         
-    def predict_fn(X):
-        if X.ndim == 1:
-            X = X.reshape(1, -1)
-        dummy_labels = np.zeros(X.shape[0])
-        dtest = xgboost.DMatrix(X, label=dummy_labels,
-                                feature_types=tst_types,
-                                enable_categorical=True)
-        pred = model.model.predict(dtest)
-        if model.task_type == TaskType.BINARY_CLASSIFICATION:
-            pred = np.column_stack((1 - pred, pred))
-        return pred
-
-    first_key = next(iter(train_tensor_frame.col_names_dict))
-    feature_names = train_tensor_frame.col_names_dict[first_key]
     explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat, 
                                                         feature_names=feature_names, 
                                                         class_names=[0,1], 
@@ -97,9 +79,7 @@ def main(args):
     setting = f"normalized_data_thresholds-0-{np.round(first_non_zero)}-max{np.round(max)}num_tresh-{num_tresh}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_accuracy_fraction.npy"
     if args.debug:
         setting = f"debug_{setting}"
-    
- 
-    print("Start computing LIME accuracy and fraction of points in the ball")
+        print("Start computing LIME accuracy and fraction of points in the ball")
     print("saving results to: ", setting)
 
     # Initialize results dictionary with numpy arrays instead of lists for better performance
@@ -120,7 +100,7 @@ def main(args):
         print(len(explanations), "explanations loaded")
     else:
         print("Computing explanations for the test set")
-        explanations = compute_explanations(explainer, tst_feat, predict_fn)
+        explanations = compute_explanations(explainer, tst_feat, predict_fn_wrapped)
         np.save(osp.join(args.results_path, f"explanations/normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}.npy"), explanations)
         print("Finished computing explanations for the test set")
 
@@ -132,7 +112,7 @@ def main(args):
         explanations_chunk = explanations[i:chunk_end]
         chunk_results = Parallel(n_jobs=-1)(
                 delayed(compute_lime_accuracy)(
-                    tst_chunk, df_feat, explanations_chunk, explainer, predict_fn, dist_threshold, tree
+                    tst_chunk, df_feat, explanations_chunk, explainer, predict_fn_wrapped, dist_threshold, tree
                 )
                 for dist_threshold in thresholds
             )
@@ -147,7 +127,11 @@ def main(args):
             results["samples_in_ball"][threshold_idx, i:chunk_end] = samp
             results["ratio_all_ones"][threshold_idx, i:chunk_end] = ratio
         
-        # Save intermediate results
+        # create graphs for the accuracy and fraction of points in the ball
+        plot_accuracy_vs_threshold(results["accuracy"], results["thresholds"], results_path, setting + "_accuracy_vs_threshold.pdf ")
+        plot_accuracy_vs_fraction(results["accuracy"], results["fraction_points_in_ball"], results_path, setting + "_accuracy_vs_fraction.pdf")
+        plot_3d_scatter(results["fraction_points_in_ball"], results["thresholds"], results["accuracy"], angles=(10, 30), cmap="tab20b", save_path=results_path, save_path=setting + "_3d_scatter.pdf")# Save intermediate results
+        
         np.savez(osp.join(results_path, setting), **results)
         print(f"Processed chunk {i//chunk_size + 1}/{(len(tst_feat) + chunk_size - 1)//chunk_size}")
 
@@ -159,6 +143,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Locality Analyzer")
     parser.add_argument("--data_path", type=str,  help="Path to the data", default="/home/grotehans/xai_locality/data/")
     parser.add_argument("--model_path", type=str, help="Path to the model", default="/home/grotehans/pytorch-frame/benchmark/results/xgboost_normalized_binary_medium_6.pt")
+    parser.add_argument("--model_type", type=str, default="xgboost", help="Model type, so far only 'xgboost' and 'lightgbm' is supported")
     parser.add_argument("--results_path", type=str,  help="Path to save results", default="/home/grotehans/xai_locality/results/XGBoost/Jannis")
     parser.add_argument("--distance_measure", type=str, default="euclidean", help="Distance measure")
     parser.add_argument("--num_tresh", type=int, default=5, help="Number of thresholds")

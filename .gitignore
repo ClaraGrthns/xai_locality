@@ -7,3 +7,4 @@ sbatch
 *.pyc
 __pycache__/*
 .vscode
+pretrained_models/*
