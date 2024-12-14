@@ -9,7 +9,10 @@ light_red = "#ffa5b3"
 light_blue = "#9cdbfb"
 light_grey = "#61cff2"
 
-def plot_accuracy_vs_threshold(accuracy_array, thresholds, model_predictions):
+def plot_accuracy_vs_threshold(accuracy_array, 
+                                thresholds, 
+                                model_predictions, 
+                                save_path = None):
     mean_accuracy = np.mean(accuracy_array, axis=1)   
     mean_accuracy_class_1 = np.mean(accuracy_array[:, model_predictions == 1], axis=1)
     mean_accuracy_class_0 = np.mean(accuracy_array[:, model_predictions == 0], axis=1)
@@ -40,8 +43,15 @@ def plot_accuracy_vs_threshold(accuracy_array, thresholds, model_predictions):
     ax.set_xlim(thresholds[0], thresholds[-1])
     ax.set_title("Accuracy per threshold - kernel width 5.51")
 
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+    plt.show()
 
-def plot_accuracy_vs_fraction(accuracy_complete, fraction_complete, model_predictions, title_add_on=""):
+def plot_accuracy_vs_fraction(accuracy_complete, 
+                                fraction_complete, 
+                                model_predictions, 
+                                title_add_on="", 
+                                save_path = None):
     mean_fraction = np.mean(fraction_complete, axis=1)
     mean_accuracy = np.mean(accuracy_complete, axis=1)
 
@@ -73,8 +83,23 @@ def plot_accuracy_vs_fraction(accuracy_complete, fraction_complete, model_predic
     Line2D([0], [0], marker='o', color=light_blue, linestyle='None', label='Prediction: 0', markersize=6)
     ]
     ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
     plt.show()
-def plot_3d_scatter(fraction, thresholds, accuracy, x_label="Fraction of points in ball", y_label="Thresholds", z_label="Accuracy", title="LIME Local Model on Test set", s=2, alpha=0.5, cmap='viridis', angles=(30, 40), save_figure=False):
+
+def plot_3d_scatter(fraction, 
+                    thresholds, 
+                    accuracy, 
+                    x_label="Fraction of points in ball", 
+                    y_label="Thresholds", 
+                    z_label="Accuracy", 
+                    title="LIME Local Model on Test set", 
+                    s=2, 
+                    alpha=0.5, 
+                    cmap='viridis', 
+                    angles=(30, 40), 
+                    save_path = None
+                    ):
 
     fig = plt.figure(figsize=(10, 6))
     ax = fig.add_subplot(111, projection='3d')
@@ -110,8 +135,8 @@ def plot_3d_scatter(fraction, thresholds, accuracy, x_label="Fraction of points 
     # Add colorbar
     cb = fig.colorbar(sc, ax=ax, label=z_label)
 
-    if save_figure:
-        plt.savefig(f'3d_scatter_{title}.png', bbox_inches='tight', dpi=300)
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
     
     plt.show()
 

@@ -87,7 +87,6 @@ def compute_fractions(thresholds, tst_feat, df_feat, tree):
     fraction_points_in_ball = np.array(fraction_points_in_ball)
     return fraction_points_in_ball
 
-
 def compute_explanations(explainer, tst_feat, predict_fn):
     # Create enumerated list to keep track of original indices
     enumerated_data = list(enumerate(tst_feat))
