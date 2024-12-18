@@ -14,7 +14,7 @@ from scipy import optimize
 import matplotlib.pyplot as plt
 from sklearn.metrics import pairwise_distances
 
-from utils.lime_local_classifier import compute_lime_accuracy, get_sample_close_to_x
+from lime_analysis.lime_local_classifier import compute_lime_accuracy, get_sample_close_to_x
 
 
 def predict_fn(X):

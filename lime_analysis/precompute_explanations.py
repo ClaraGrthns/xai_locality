@@ -14,9 +14,9 @@ import time
 import random
 import xgboost
 import concurrent.futures
+import os
 
-
-from utils.lime_local_classifier import compute_explanations
+from lime_analysis.lime_local_classifier import compute_explanations
 
 
 
@@ -77,8 +77,11 @@ def main(args):
 
         print("Computing explanations for the test set for kernel width: ", kernel_width)
         explanations = compute_explanations(explainer, tst_feat, predict_fn)
+        explanations_dir = osp.join(args.results_path, "explanations")
+        if not osp.exists(explanations_dir):
+            os.makedirs(explanations_dir)
 
-        np.save(osp.join(args.results_path, f"explanations/normalized_data_explanations_test_set_kernel_width-{kernel_width}_model_regressor-{args.model_regressor}.npy"), explanations)
+        np.save(osp.join(explanations_dir, f"normalized_data_explanations_test_set_kernel_width-{kernel_width}_model_regressor-{args.model_regressor}.npy"), explanations)
 
    
 if __name__ == "__main__":
