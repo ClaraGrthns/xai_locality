@@ -2,29 +2,29 @@ from mpl_toolkits.mplot3d import Axes3D
 import plotly.graph_objects as go
 import numpy as np
 import matplotlib.pyplot as plt
-from utils.lime_local_classifier import get_feat_coeff_intercept
+from lime_analysis.lime_local_classifier import get_feat_coeff_intercept
 from matplotlib.lines import Line2D
 
 light_red = "#ffa5b3"
 light_blue = "#9cdbfb"
 light_grey = "#61cff2"
 
-def plot_accuracy_vs_threshold(accuracy_array, 
+def plot_accuracy_vs_threshold(accuracy, 
                                 thresholds, 
                                 model_predictions, 
                                 save_path = None):
-    mean_accuracy = np.mean(accuracy_array, axis=1)   
-    mean_accuracy_class_1 = np.mean(accuracy_array[:, model_predictions == 1], axis=1)
-    mean_accuracy_class_0 = np.mean(accuracy_array[:, model_predictions == 0], axis=1)
+    mean_accuracy = np.mean(accuracy, axis=1)   
+    mean_accuracy_class_1 = np.mean(accuracy[:, model_predictions == 1], axis=1)
+    mean_accuracy_class_0 = np.mean(accuracy[:, model_predictions == 0], axis=1)
     # Create figure and axis objects
     fig, ax = plt.subplots()
 
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-    for dp in range(accuracy_array.shape[1]):
+    for dp in range(accuracy.shape[1]):
         color = light_red if model_predictions[dp] == 1 else light_blue
-        ax.plot(thresholds, accuracy_array[:, dp], color=color, alpha=0.1)
+        ax.plot(thresholds, accuracy[:, dp], color=color, alpha=0.1)
     ax.set_xlabel("Thresholds")
     # add legend for color blue = 0, red = 1
     ax.plot(mean_accuracy, color='k', linestyle='dashed', linewidth=1, label = "mean accuracy")
@@ -47,26 +47,26 @@ def plot_accuracy_vs_threshold(accuracy_array,
         plt.savefig(save_path, bbox_inches='tight', dpi=300)
     plt.show()
 
-def plot_accuracy_vs_fraction(accuracy_complete, 
-                                fraction_complete, 
-                                model_predictions, 
-                                title_add_on="", 
-                                save_path = None):
-    mean_fraction = np.mean(fraction_complete, axis=1)
-    mean_accuracy = np.mean(accuracy_complete, axis=1)
+def plot_accuracy_vs_fraction(accuracy, 
+                            fraction_points_in_ball, 
+                            model_predictions, 
+                            title_add_on="", 
+                            save_path = None):
+    mean_fraction = np.mean(fraction_points_in_ball, axis=1)
+    mean_accuracy = np.mean(accuracy, axis=1)
 
-    mean_accuracy_class_1 = np.mean(accuracy_complete[:, model_predictions == 1], axis=1)
-    mean_accuracy_class_0 = np.mean(accuracy_complete[:, model_predictions == 0], axis=1)
+    mean_accuracy_class_1 = np.mean(accuracy[:, model_predictions == 1], axis=1)
+    mean_accuracy_class_0 = np.mean(accuracy[:, model_predictions == 0], axis=1)
 
     colors = [light_red if y == 1 else light_blue for y in model_predictions]
-    color_array = np.repeat(colors, accuracy_complete.T.shape[1], axis=0)
+    color_array = np.repeat(colors, accuracy.T.shape[1], axis=0)
 
     # Create figure and axis objects
     fig, ax = plt.subplots()
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-    ax.scatter(fraction_complete.T.flatten(), accuracy_complete.T.flatten(), s=1.5, c=color_array)
+    ax.scatter(fraction_points_in_ball.T.flatten(), accuracy.T.flatten(), s=1.5, c=color_array)
     ax.scatter(mean_fraction, mean_accuracy, s=10, c='k', marker='x', label='Mean')
     ax.scatter(mean_fraction, mean_accuracy_class_1, s=10, c='red', marker='x', label='Mean accuracy, pred: class 1')
     ax.scatter(mean_fraction, mean_accuracy_class_0, s=10, c='blue', marker='x', label='Mean accuracy, pred: class 0')
@@ -87,7 +87,7 @@ def plot_accuracy_vs_fraction(accuracy_complete,
         plt.savefig(save_path, bbox_inches='tight', dpi=300)
     plt.show()
 
-def plot_3d_scatter(fraction, 
+def plot_3d_scatter(fraction_points_in_ball, 
                     thresholds, 
                     accuracy, 
                     x_label="Fraction of points in ball", 
@@ -100,27 +100,30 @@ def plot_3d_scatter(fraction,
                     angles=(30, 40), 
                     save_path = None
                     ):
+    from mpl_toolkits.mplot3d import Axes3D
 
     fig = plt.figure(figsize=(10, 6))
     ax = fig.add_subplot(111, projection='3d')
 
-    mean_accuracy = np.mean(accuracy, axis=1)
-    mean_fraction = np.mean(fraction, axis=1)
+    # mean_accuracy = np.mean(accuracy, axis=1)
+    # mean_fraction = np.mean(fraction_points_in_ball, axis=1)
 
-    x = fraction.flatten()
+    x = fraction_points_in_ball.flatten()
     z = accuracy.flatten()
-    y = np.repeat(thresholds, fraction.shape[1])  # Flattened thresholds
+    y = np.repeat(thresholds, fraction_points_in_ball.shape[1])  # Flattened thresholds
 
     sc = ax.scatter(-x, y, z, c=z, s=s, alpha=alpha, cmap=cmap)  # Negated x to flip direction
 
-    # Plot mean values with negative x to match main scatter plot
-    ax.scatter(-mean_fraction, thresholds, mean_accuracy, c='r', s=10, marker='*', label='Mean')  # Added zorder to bring points to front
-    ax.legend()
+    # # Plot mean values with negative x to match main scatter plot
+    # ax.scatter(-mean_fraction, thresholds, mean_accuracy, c='r', s=10, marker='*', label='Mean')  # Added zorder to bring points to front
+    # ax.legend()
 
     # Set labels
     ax.set_xlabel(x_label)
-    ax.set_zlabel(z_label)
     ax.set_ylabel(y_label)
+    ax.set_zlabel(z_label)  # Add labelpad to move label further from axis
+    ax.zaxis.labelpad=-0.7 # <- change the value here
+
     ax.set_title(title)
 
     # Set viewing angle (elevation, azimuth in degrees)
@@ -136,7 +139,7 @@ def plot_3d_scatter(fraction,
     cb = fig.colorbar(sc, ax=ax, label=z_label)
 
     if save_path is not None:
-        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', pad_inches=0.3)
     
     plt.show()
 
