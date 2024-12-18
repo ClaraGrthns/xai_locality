@@ -38,8 +38,11 @@ def get_binary_vector(samples_around_xs:list , xs:np.array, explainer):
         numpy.ndarray: A binary vector indicating which features match between the instance and the explained instance.
     """
     bins_sample = [explainer.discretizer.discretize(sample_in_ball) for sample_in_ball in samples_around_xs]
+    del samples_around_xs
     bins_instance = explainer.discretizer.discretize(xs)
     binary = [(bins_sample[i] == bins_instance[i]).astype(int) for i in range(len(bins_sample))]
+    del bins_sample
+    del bins_instance
     return binary
 
 def lime_pred(binary_x, exp):
@@ -88,7 +91,6 @@ def compute_fractions(thresholds, tst_feat, df_feat, tree):
     return fraction_points_in_ball
 
 def compute_explanations(explainer, tst_feat, predict_fn):
-    # Create enumerated list to keep track of original indices
     enumerated_data = list(enumerate(tst_feat))
     
     # Run parallel computation with indices
@@ -96,8 +98,6 @@ def compute_explanations(explainer, tst_feat, predict_fn):
         delayed(lambda x: (x[0], explainer.explain_instance(x[1], predict_fn, top_labels=1)))(item)
         for item in enumerated_data
     )
-    
-    # Sort by the stored indices and return only the explanations
     sorted_explanations = [exp for _, exp in sorted(indexed_explanations, key=lambda x: x[0])]
     return sorted_explanations
     
