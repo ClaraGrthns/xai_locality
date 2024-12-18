@@ -8,3 +8,4 @@ sbatch
 __pycache__/*
 .vscode
 pretrained_models/*
+run_analysis.py
