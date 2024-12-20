@@ -12,6 +12,7 @@ light_grey = "#61cff2"
 def plot_accuracy_vs_threshold(accuracy, 
                                 thresholds, 
                                 model_predictions, 
+                                title_add_on="",
                                 save_path = None):
     mean_accuracy = np.mean(accuracy, axis=1)   
     mean_accuracy_class_1 = np.mean(accuracy[:, model_predictions == 1], axis=1)
@@ -41,10 +42,10 @@ def plot_accuracy_vs_threshold(accuracy,
     ax.axhline(0.5, color='k', linestyle='dashed', linewidth=1)
     ax.set_ylabel("Accuracy")
     ax.set_xlim(thresholds[0], thresholds[-1])
-    ax.set_title("Accuracy per threshold - kernel width 5.51")
+    ax.set_title(f"Accuracy per threshold {title_add_on}")
 
     if save_path is not None:
-        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
 def plot_accuracy_vs_fraction(accuracy, 
@@ -84,7 +85,7 @@ def plot_accuracy_vs_fraction(accuracy,
     ]
     ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
     if save_path is not None:
-        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
 def plot_3d_scatter(fraction_points_in_ball, 
@@ -139,7 +140,7 @@ def plot_3d_scatter(fraction_points_in_ball,
     cb = fig.colorbar(sc, ax=ax, label=z_label)
 
     if save_path is not None:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight', pad_inches=0.3)
+        plt.savefig(save_path, bbox_inches='tight', pad_inches=0.3)
     
     plt.show()
 
