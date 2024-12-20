@@ -4,7 +4,7 @@ from torch_frame.typing import TaskType
 from torch_frame.gbdt import XGBoost
 import torch
 
-
+## TODO: create a class that handles this
 def load_model(model_path):
     model = XGBoost(task_type=TaskType.BINARY_CLASSIFICATION, num_classes=2)
     model.load(model_path)

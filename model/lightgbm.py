@@ -1,5 +1,6 @@
 import lightgbm as lgb
 import numpy as np
+## TODO: create a class that handles this
 
 def predict_fn(X, model):
     pred = model.predict(X)
