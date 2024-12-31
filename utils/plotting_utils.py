@@ -114,7 +114,7 @@ def plot_accuracy_vs_fraction(accuracy,
         ]
     if kernel_ids is not None:
         legend_elements += [
-            Line2D([0], [0], marker='o', color=kernel_ids_legend[i], linestyle='None', label=f'Threshold: {unique_thresholds[i]}', markersize=6)
+            Line2D([0], [0], marker='o', color=kernel_ids_legend[i], linestyle='None', label=f'kernel width: {unique_thresholds[i]}', markersize=6)
             for i in range(len(unique_thresholds))
         ]
     ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
@@ -122,7 +122,7 @@ def plot_accuracy_vs_fraction(accuracy,
         plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
-    
+
 def plot_3d_scatter(fraction_points_in_ball, 
                     thresholds, 
                     accuracy, 
