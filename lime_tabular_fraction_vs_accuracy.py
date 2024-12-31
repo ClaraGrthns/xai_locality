@@ -48,7 +48,6 @@ def main(args):
     else:
         raise ValueError(f"Unsupported model type: {args.model_type}")
     
-    # Load the model using the appropriate function
     model = load_model(model_path)
     tst_feat, tst_y, val_feat, val_y, trn_feat, trn_y = load_data(model, data_path)
     feature_names = np.arange(trn_feat.shape[1])
@@ -84,16 +83,17 @@ def main(args):
     tree = BallTree(df_feat)  
     num_tresh = args.num_tresh if not args.debug else 2
     thresholds = np.concatenate((np.array([1e-5]), np.linspace(first_non_zero, max, num_tresh)))
+    if args.kernel_width is None:
+        args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2) #Default value
     df_setting = "complete_df" if include_trn and include_val else "only_test"
     experiment_setting = f"thresholds-0-{np.round(first_non_zero)}-max{np.round(max)}num_tresh-{num_tresh}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_accuracy_fraction.npy"
         
     explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat, 
                                                         feature_names=feature_names, 
-                                                        class_names=[0,1], 
+                                                        class_names=[0,1], #TODO: make this more general
                                                         discretize_continuous=True,
-                                                        random_state=args.random_seed)
-    if args.kernel_width is None:
-        args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2) #Default value
+                                                        random_state=args.random_seed,
+                                                        kernel_width=args.kernel_width)
     
     if args.debug:
         experiment_setting = f"debug_{experiment_setting}"
