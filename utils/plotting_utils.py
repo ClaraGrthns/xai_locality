@@ -11,12 +11,16 @@ light_grey = "#61cff2"
 
 def plot_accuracy_vs_threshold(accuracy, 
                                 thresholds, 
-                                model_predictions, 
+                                model_predictions=None, 
                                 title_add_on="",
-                                save_path = None):
+                                save_path=None):
     mean_accuracy = np.mean(accuracy, axis=1)   
-    mean_accuracy_class_1 = np.mean(accuracy[:, model_predictions == 1], axis=1)
-    mean_accuracy_class_0 = np.mean(accuracy[:, model_predictions == 0], axis=1)
+    mean_accuracy_class_1 = np.mean(accuracy[:, model_predictions == 1], axis=1) if model_predictions is not None else None
+    mean_accuracy_class_0 = np.mean(accuracy[:, model_predictions == 0], axis=1) if model_predictions is not None else None
+
+    light_violet = "#d8bfd8"
+    light_red = "#ffa5b3"
+    light_blue = "#9cdbfb"
     # Create figure and axis objects
     fig, ax = plt.subplots()
 
@@ -24,20 +28,23 @@ def plot_accuracy_vs_threshold(accuracy,
     ax.spines['right'].set_visible(False)
 
     for dp in range(accuracy.shape[1]):
-        color = light_red if model_predictions[dp] == 1 else light_blue
-        ax.plot(thresholds, accuracy[:, dp], color=color, alpha=0.1)
+        if model_predictions is not None:
+            color = light_red if model_predictions[dp] == 1 else light_blue
+            ax.plot(thresholds, accuracy[:, dp], color=color, alpha=0.1)
+    if model_predictions is None:
+        color = light_violet
+        ax.plot(thresholds, accuracy, color=color, alpha=0.1)
     ax.set_xlabel("Thresholds")
-    # add legend for color blue = 0, red = 1
-    ax.plot(mean_accuracy, color='k', linestyle='dashed', linewidth=1, label = "mean accuracy")
-    ax.plot(mean_accuracy_class_1, color='red', linestyle='solid', linewidth=2, label = "mean accuracy class 1")
-    ax.plot(mean_accuracy_class_0, color='blue', linestyle='solid', linewidth=2, label = "mean accuracy class 0")
+    # Plot mean accuracy
+    ax.plot(thresholds, mean_accuracy, color='k', linestyle='dashed', linewidth=1, label="Mean accuracy")
+    
+    legend_elements = [Line2D([0], [0], linestyle='solid', color='k', linewidth=1, label='Mean accuracy')]
+    if model_predictions is not None:
+        legend_elements += [
+            Line2D([0], [0], linestyle='solid', color='red', linewidth=1, label='Mean accuracy, pred: class 1'),
+            Line2D([0], [0], linestyle='solid', color='blue', linewidth=1, label='Mean accuracy, pred: class 0')
+        ]
 
-    legend_elements = [Line2D([0], [0], linestyle='solid', color='k', linewidth=1,
-                markerfacecolor='black', label='Mean accuracy'),
-                Line2D([0], [0], linestyle='solid', color='red',linewidth=1,
-                markerfacecolor='red', label='Mean accuracy, pred: class 1'),
-                Line2D([0], [0], linestyle='solid', color='blue', linewidth=1,
-                markerfacecolor='blue', label='Mean accuracy, pred: class 0')]
     ax.legend(handles=legend_elements, loc='upper right')
     ax.axhline(0.5, color='k', linestyle='dashed', linewidth=1)
     ax.set_ylabel("Accuracy")
@@ -48,46 +55,74 @@ def plot_accuracy_vs_threshold(accuracy,
         plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
+
 def plot_accuracy_vs_fraction(accuracy, 
                             fraction_points_in_ball, 
-                            model_predictions, 
+                            model_predictions=None, 
+                            kernel_ids = None, 
+                            kernel_id_to_width=None,
                             title_add_on="", 
-                            save_path = None):
+                            save_path=None):
     mean_fraction = np.mean(fraction_points_in_ball, axis=1)
     mean_accuracy = np.mean(accuracy, axis=1)
-
-    mean_accuracy_class_1 = np.mean(accuracy[:, model_predictions == 1], axis=1)
-    mean_accuracy_class_0 = np.mean(accuracy[:, model_predictions == 0], axis=1)
-
-    colors = [light_red if y == 1 else light_blue for y in model_predictions]
-    color_array = np.repeat(colors, accuracy.T.shape[1], axis=0)
+    light_red = "#ffa5b3"
+    light_blue = "#9cdbfb"
+    if model_predictions is not None:
+        mean_accuracy_class_1 = np.mean(accuracy[:, model_predictions == 1], axis=1)
+        mean_accuracy_class_0 = np.mean(accuracy[:, model_predictions == 0], axis=1)
+        colors = [light_red if y == 1 else light_blue for y in model_predictions]
+        color_array = np.repeat(colors, accuracy.T.shape[1], axis=0)
+    if kernel_ids is not None:
+        color_array = kernel_ids.T.flatten()
+        # Map the numbers to a distinct color palette
+        color_array = cm.Set1(kernel_ids.T.flatten())
+        # Create a legend for the threshold colors
+        unique_thresholds = np.unique(kernel_ids)
+        kernel_ids_legend = [cm.Set1(thresh) for thresh in unique_thresholds]
+        if kernel_id_to_width is not None:
+            unique_thresholds = [kernel_id_to_width[k] for k in unique_thresholds]  
+    else:
+        color_array =  "#008080"
 
     # Create figure and axis objects
     fig, ax = plt.subplots()
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-    ax.scatter(fraction_points_in_ball.T.flatten(), accuracy.T.flatten(), s=1.5, c=color_array)
+    if model_predictions is not None:
+        ax.scatter(fraction_points_in_ball.T.flatten(), accuracy.T.flatten(), s=1.5, c=color_array)
+        ax.scatter(mean_fraction, mean_accuracy_class_1, s=10, c='red', marker='x', label='Mean accuracy, pred: class 1')
+        ax.scatter(mean_fraction, mean_accuracy_class_0, s=10, c='blue', marker='x', label='Mean accuracy, pred: class 0')
+    else:
+        ax.scatter(fraction_points_in_ball.T.flatten(), accuracy.T.flatten(), s=2, alpha = 0.03, c=color_array)
+
     ax.scatter(mean_fraction, mean_accuracy, s=10, c='k', marker='x', label='Mean')
-    ax.scatter(mean_fraction, mean_accuracy_class_1, s=10, c='red', marker='x', label='Mean accuracy, pred: class 1')
-    ax.scatter(mean_fraction, mean_accuracy_class_0, s=10, c='blue', marker='x', label='Mean accuracy, pred: class 0')
     ax.axhline(0.5, color='k', linestyle='dashed', linewidth=1)
     ax.set_xlabel("Fraction of points in ball")
     ax.set_ylabel("Accuracy") 
     ax.set_title(f"Accuracy vs. Fraction of points in ball {title_add_on}")
 
     legend_elements = [
-    Line2D([0], [0], marker='x', color='k', linestyle='None', label='Mean', markersize=6),
-    Line2D([0], [0], marker='x', color='red', linestyle='None', label='Mean accuracy, pred: 1', markersize=6),
-    Line2D([0], [0], marker='x', color='blue', linestyle='None', label='Mean accuracy, pred: 0', markersize=6),
-    Line2D([0], [0], marker='o', color=light_red, linestyle='None', label='Prediction: 1', markersize=6),
-    Line2D([0], [0], marker='o', color=light_blue, linestyle='None', label='Prediction: 0', markersize=6)
+        Line2D([0], [0], marker='x', color='k', linestyle='None', label='Mean', markersize=6)
     ]
+    if model_predictions is not None:
+        legend_elements += [
+            Line2D([0], [0], marker='x', color='red', linestyle='None', label='Mean accuracy, pred: 1', markersize=6),
+            Line2D([0], [0], marker='x', color='blue', linestyle='None', label='Mean accuracy, pred: 0', markersize=6),
+            Line2D([0], [0], marker='o', color=light_red, linestyle='None', label='Prediction: 1', markersize=6),
+            Line2D([0], [0], marker='o', color=light_blue, linestyle='None', label='Prediction: 0', markersize=6)
+        ]
+    if kernel_ids is not None:
+        legend_elements += [
+            Line2D([0], [0], marker='o', color=kernel_ids_legend[i], linestyle='None', label=f'Threshold: {unique_thresholds[i]}', markersize=6)
+            for i in range(len(unique_thresholds))
+        ]
     ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
     if save_path is not None:
         plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
+    
 def plot_3d_scatter(fraction_points_in_ball, 
                     thresholds, 
                     accuracy, 
