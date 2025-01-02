@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from lime_analysis.lime_local_classifier import get_feat_coeff_intercept
 from matplotlib.lines import Line2D
+from matplotlib import cm
 
 light_red = "#ffa5b3"
 light_blue = "#9cdbfb"
