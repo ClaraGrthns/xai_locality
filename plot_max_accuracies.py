@@ -79,8 +79,9 @@ def main():
     plot_accuracy_vs_fraction(max_accuracies, selected_fractions, 
                               kernel_ids=max_indices, 
                               kernel_id_to_width=kernel_id_to_width, 
-                              title_add_on=" - max over all thresholds",
-                              save_path=graphics_path)
+                              title_add_on=" - max over kernel widths",
+                              save_path=graphics_path,
+                              alpha=0.5)
     print("Saved plot to", graphics_path)
 
 if __name__ == "__main__":
