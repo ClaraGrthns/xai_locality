@@ -11,7 +11,7 @@ class ImageNetValidationDataset(Dataset):
     
     Attributes:
         data_list (List[Tuple[str, str]]): List of (image_path, class_name) tuples
-        transform: PyTorch transforms to apply to images
+        transform: PyTorch transforms to apply to images, if 'default' use default ImageNet transforms
         class_mapping (Dict[str, str]): Mapping from WordNet IDs to class names
         wnids (List[str]): List of WordNet IDs
         class_names (List[str]): List of class names
@@ -35,13 +35,13 @@ class ImageNetValidationDataset(Dataset):
             transform: Optional transforms to apply to images
             seed (int): Random seed for class sampling
         """
+        if transform == "default":
+            transform = get_default_transforms()
         self.transform = transform
         
-        # Load class mapping
         self.wnids, self.class_names = self._load_class_mapping(class_mapping_file)
         self.class_mapping = dict(zip(self.wnids, self.class_names))
         
-        # Sample classes and create data list
         self.data_list = self._create_data_list(validation_path, num_classes, seed)
     
     def _load_class_mapping(self, mapping_file: str) -> Tuple[List[str], List[str]]:
@@ -105,9 +105,8 @@ class ImageNetValidationDataset(Dataset):
             image = self.transform(image)
             
         class_name = self.class_names[self.wnids.index(wnid)]
-        return image, class_name
+        return image, class_name, img_path
 
-# Default transforms for ImageNet
 def get_default_transforms():
     """Get the default ImageNet transforms."""
     return transforms.Compose([
@@ -120,20 +119,15 @@ def get_default_transforms():
         ),
     ])
 
-# Example usage:
 if __name__ == "__main__":
-    # Paths
     VALIDATION_PATH = "/common/datasets/ImageNet_ILSVRC2012/val"
     CLASS_MAPPING_FILE = "/common/datasets/ImageNet_ILSVRC2012/synset_words.txt"
     
-    # Create dataset
     dataset = ImageNetValidationDataset(
         validation_path=VALIDATION_PATH,
         class_mapping_file=CLASS_MAPPING_FILE,
         transform=get_default_transforms()
     )
-    
-    # Access a sample
     image, class_name = dataset[0]
     print(f"Image shape: {image.shape}")
     print(f"Class name: {class_name}")
