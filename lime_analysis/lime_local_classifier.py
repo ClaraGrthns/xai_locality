@@ -75,7 +75,6 @@ def binary_pred(pred, threshold, explanation):
     Returns:
         numpy.ndarray: The binary classifications.
     """
-    # Simplify logic to avoid branching
     class_top1 = explanation.top_labels[0]
     return ((pred >= threshold) ^ (class_top1 == 0)).astype(np.int32)
 

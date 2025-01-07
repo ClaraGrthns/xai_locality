@@ -63,9 +63,11 @@ def plot_accuracy_vs_fraction(accuracy,
                             kernel_ids = None, 
                             kernel_id_to_width=None,
                             title_add_on="", 
-                            save_path=None):
+                            save_path=None,
+                            alpha=0.03):
     mean_fraction = np.mean(fraction_points_in_ball, axis=1)
     mean_accuracy = np.mean(accuracy, axis=1)
+    sem = np.std(accuracy, axis=1)
     light_red = "#ffa5b3"
     light_blue = "#9cdbfb"
     if model_predictions is not None:
@@ -95,9 +97,12 @@ def plot_accuracy_vs_fraction(accuracy,
         ax.scatter(mean_fraction, mean_accuracy_class_1, s=10, c='red', marker='x', label='Mean accuracy, pred: class 1')
         ax.scatter(mean_fraction, mean_accuracy_class_0, s=10, c='blue', marker='x', label='Mean accuracy, pred: class 0')
     else:
-        ax.scatter(fraction_points_in_ball.T.flatten(), accuracy.T.flatten(), s=2, alpha = 0.03, c=color_array)
+        ax.scatter(fraction_points_in_ball.T.flatten(), accuracy.T.flatten(), s=2, alpha = alpha, c=color_array)
+
 
     ax.scatter(mean_fraction, mean_accuracy, s=10, c='k', marker='x', label='Mean')
+    # ax.errorbar(mean_fraction, mean_accuracy, yerr=sem, fmt='none', color='k', capsize=2)
+
     ax.axhline(0.5, color='k', linestyle='dashed', linewidth=1)
     ax.set_xlabel("Fraction of points in ball")
     ax.set_ylabel("Accuracy") 
