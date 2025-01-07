@@ -19,8 +19,8 @@ import os
 
 def main(args):
     set_random_seeds(args.random_seed)
+    
 
-    distance_measure = args.distance_measure
     include_trn = args.include_trn
     include_val = args.include_val
 
@@ -38,63 +38,95 @@ def main(args):
     # Add .npz extension specifically for data_path
     if args.data_folder is not None:
         data_path += ".npz"
-    
+
+    # Load model and data based on model type
     if args.model_type == "xgboost":
         from model.pytorch_frame_xgboost import load_model, load_data, predict_fn
     elif args.model_type == "lightgbm" and ("synthetic" in results_path):
         from model.lightgbm import load_model, load_data, predict_fn
     elif args.model_type == "lightgbm":
         from model.pytorch_frame_lgm import load_model, load_data, predict_fn
+    elif args.model_type == "inception_v3":
+        from model.inception_v3 import load_model, load_data, predict_fn, get_class_names
     else:
         raise ValueError(f"Unsupported model type: {args.model_type}")
-    
+
     model = load_model(model_path)
-    tst_feat, tst_y, val_feat, val_y, trn_feat, trn_y = load_data(model, data_path)
+    tst_feat, _, val_feat, _, trn_feat, _ = load_data(model, data_path)
+
+    # Handle test set splits
+    if args.num_test_splits > 1:
+        print(f"Splitting test set into {args.num_test_splits} chunks")
+        print(f"Using split index {args.split_idx}")
+        chunk_size = len(tst_feat) // args.num_test_splits
+        assert (args.split_idx is not None), "split_idx must be specified if num_test_splits > 1"
+        assert args.split_idx < args.num_test_splits, "split_idx must be less than num_test_splits"
+        start = args.split_idx * chunk_size
+        end = start + chunk_size
+        tst_feat = tst_feat[start:end]
+        trn_feat = trn_feat[start:end]
+        val_feat = val_feat[start:end]
+
     feature_names = np.arange(trn_feat.shape[1])
     predict_fn_wrapped = partial(predict_fn, model=model)
-    model_predictions = np.argmax(predict_fn_wrapped(tst_feat), axis=1)
-
     print("train, test, val feature shapes: ", trn_feat.shape, tst_feat.shape, val_feat.shape)
     df_feat = tst_feat
-    df_y = tst_y
+
     if args.debug:
         tst_feat = tst_feat[:10]
         print("Debug mode: Using only the first 10 samples")
 
     if include_trn:
         df_feat = np.concatenate([trn_feat, df_feat], axis=0)
-        df_y = np.concatenate([trn_y, df_y], axis=0)
     if include_val:
         df_feat = np.concatenate([df_feat, val_feat], axis=0)
-        df_y = np.concatenate([df_y, val_y], axis=0)
 
     # Sample 5000 points from each dataset to estimate min/max distances
     tst_sample_idx = np.random.choice(len(tst_feat), min(5000, len(tst_feat)), replace=False)
     df_sample_idx = np.random.choice(len(df_feat), min(5000, len(df_feat)), replace=False)
-   
     tst_sample = tst_feat[tst_sample_idx]
     df_sample = df_feat[df_sample_idx]
-    
+
     # Compute pairwise distances on samples
-    distances_pw = pairwise_distances(tst_sample, df_sample, metric=distance_measure)
-    max = np.max(distances_pw)
+    valid_distance_measures = BallTree.valid_metrics + ["cosine"]
+    assert args.distance_measure in valid_distance_measures, f"Invalid distance measure: {args.distance_measure}. Valid options are: {valid_distance_measures}"
+    distance_measure = args.distance_measure
+
+    if args.distance_measure == "cosine":
+        from sklearn.metrics.pairwise import cosine_similarity
+        def cosine_distance(x, y):
+            cosine_sim = cosine_similarity(x.reshape(1, -1), y.reshape(1, -1))[0, 0]
+            return 1 - cosine_sim
+        distance_measure = "pyfunc"
+
+    distances_pw = pairwise_distances(tst_sample, df_sample, metric=args.distance_measure)
+    if args.distance_measure == "cosine":
+        distances_pw = 1 - distances_pw
+
+    max_dist = np.max(distances_pw)
     first_non_zero = np.min(distances_pw[np.round(distances_pw, 2) > 0])
 
-    tree = BallTree(df_feat)  
+    tree = BallTree(df_feat, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_feat, metric=distance_measure, func=cosine_distance)
+
     num_tresh = args.num_tresh if not args.debug else 2
-    thresholds = np.concatenate((np.array([1e-5]), np.linspace(first_non_zero, max, num_tresh)))
+    thresholds = np.concatenate((np.array([1e-5]), np.linspace(first_non_zero, max_dist, num_tresh)))
+
     if args.kernel_width is None:
-        args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2) #Default value
+        args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2)  # Default value
+
     df_setting = "complete_df" if include_trn and include_val else "only_test"
-    experiment_setting = f"thresholds-0-{np.round(first_non_zero)}-max{np.round(max)}num_tresh-{num_tresh}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_accuracy_fraction.npy"
-        
-    explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat, 
-                                                        feature_names=feature_names, 
-                                                        class_names=[0,1], #TODO: make this more general
-                                                        discretize_continuous=True,
-                                                        random_state=args.random_seed,
-                                                        kernel_width=args.kernel_width)
-    
+    experiment_setting = f"thresholds-0-{np.round(first_non_zero)}-max{np.round(max_dist)}num_tresh-{num_tresh}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_accuracy_fraction.npy"
+    if args.num_test_splits > 1:
+        experiment_setting = f"split-{args.split_idx}_{experiment_setting}"
+
+    class_names = get_class_names() if args.model_type == "inception_v3" else [0, 1]
+
+    explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat,
+                                                       feature_names=feature_names,
+                                                       class_names=class_names,
+                                                       discretize_continuous=True,
+                                                       random_state=args.random_seed,
+                                                       kernel_width=args.kernel_width)
     if args.debug:
         experiment_setting = f"debug_{experiment_setting}"
         args.precomputed_explanations = False
@@ -111,13 +143,13 @@ def main(args):
         print("Computing explanations for the test set")
         explanations = compute_explanations(explainer, tst_feat, predict_fn_wrapped)
         explanations_dir = osp.join(results_path, "explanations")
-        print("explanations_dir: ", explanations_dir)
         if not osp.exists(explanations_dir):
             os.makedirs(explanations_dir)
-        if not osp.exists(osp.join(explanations_dir, f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}.npy")):
+        if args.num_test_splits == 1:
+            print("explanations_dir: ", explanations_dir)
             np.save(osp.join(explanations_dir, f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}.npy"), explanations)
         print("Finished computing explanations for the test set")
-    
+     
     num_samples = len(tst_feat)
     num_thresholds = len(thresholds)
     results = {
@@ -129,14 +161,16 @@ def main(args):
         "thresholds": thresholds
     }
     chunk_size = args.chunk_size
+    predict_threshold = args.predict_threshold
 
     for i in range(0, len(tst_feat), chunk_size):
+        print(f"Processing chunk {i//chunk_size + 1}/{(len(tst_feat) + chunk_size - 1)//chunk_size}")
         chunk_end = min(i + chunk_size, len(tst_feat))
         tst_chunk = tst_feat[i:chunk_end]
         explanations_chunk = explanations[i:chunk_end]
         chunk_results = Parallel(n_jobs=-1)(
                 delayed(compute_lime_accuracy)(
-                    tst_chunk, df_feat, explanations_chunk, explainer, predict_fn_wrapped, dist_threshold, tree
+                    tst_chunk, df_feat, explanations_chunk, explainer, predict_fn_wrapped, dist_threshold, tree, predict_threshold
                 )
                 for dist_threshold in thresholds
             )
@@ -158,12 +192,13 @@ def main(args):
         non_zero_cols = get_non_zero_cols(results["accuracy"])
         plot_accuracy_vs_threshold(accuracy=results["accuracy"][:, :non_zero_cols], 
                                    thresholds=results["thresholds"], 
-                                   model_predictions=model_predictions[:non_zero_cols], 
+                                #    model_predictions=model_predictions[:non_zero_cols], 
                                    save_path=osp.join(graphics_dir, f"accuracy_vs_threshold_kernel{args.kernel_width}.pdf"))
         plot_accuracy_vs_fraction(accuracy=results["accuracy"][:, :non_zero_cols], 
                                 fraction_points_in_ball=results["fraction_points_in_ball"][:, :non_zero_cols], 
-                                model_predictions=model_predictions[:non_zero_cols], 
-                                save_path=osp.join(graphics_dir, f"accuracy_vs_fraction_kernel{args.kernel_width}.pdf"))
+                                # model_predictions=model_predictions[:non_zero_cols], 
+                                save_path=osp.join(graphics_dir, f"accuracy_vs_fraction_kernel{args.kernel_width}.pdf"),
+                                )
         plot_3d_scatter(fraction_points_in_ball=results["fraction_points_in_ball"][:, :non_zero_cols], 
                         thresholds=results["thresholds"], 
                         accuracy=results["accuracy"][:, :non_zero_cols], 
@@ -177,7 +212,6 @@ def main(args):
 
    
 if __name__ == "__main__":
-    # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Locality Analyzer")
     parser.add_argument("--data_folder", type=str, help="Path to the data folder")
     parser.add_argument("--model_folder", type=str, help="Path to the model folder")
@@ -198,6 +232,9 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true", help="Debug mode")
     parser.add_argument("--kernel_width", type=float, default=None, help="Kernel size for the locality analysis")
     parser.add_argument("--model_regressor", type=str, default="ridge", help="Model regressor for LIME")
+    parser.add_argument("--num_test_splits",  type=int, default = 1, help="Number of test splits for analysis")
+    parser.add_argument("--split_idx", type=int, default = 0, help="Index of the test split")
+    parser.add_argument("--predict_threshold", type=float, default = 0.5, help="Threshold for classifying sample as top prediction")
 
     args = parser.parse_args()
 
