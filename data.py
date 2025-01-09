@@ -23,6 +23,7 @@ class ImageNetValidationDataset(Dataset):
         class_mapping_file: str,
         num_classes: int = None,
         transform=None,
+        fraction_per_class: float = 1.0,
         seed: int = 42
     ):
         """
@@ -42,7 +43,7 @@ class ImageNetValidationDataset(Dataset):
         self.wnids, self.class_names = self._load_class_mapping(class_mapping_file)
         self.class_mapping = dict(zip(self.wnids, self.class_names))
         
-        self.data_list = self._create_data_list(validation_path, num_classes, seed)
+        self.data_list = self._create_data_list(validation_path, num_classes, seed, fraction_per_class)
     
     def _load_class_mapping(self, mapping_file: str) -> Tuple[List[str], List[str]]:
         """Load mapping between WordNet IDs and class names."""
@@ -64,11 +65,22 @@ class ImageNetValidationDataset(Dataset):
         self,
         validation_path: str,
         num_classes: int,
-        seed: int
+        seed: int,
+        fraction_per_class: float = 1.0
     ) -> List[Tuple[str, str]]:
-        """Create list of (image_path, class_name) tuples."""
-        random.seed(seed)
+        """
+        Create list of (image_path, class_name) tuples with optional subsampling of files.
         
+        Args:
+            validation_path (str): Path to the validation dataset.
+            num_classes (int): Number of classes to sample. If None, include all classes.
+            seed (int): Random seed for deterministic sampling.
+            fraction_per_class (float): Fraction of files to include per class (default: 1.0, i.e., all files).
+        
+        Returns:
+            List[Tuple[str, str]]: List of (image_path, class_name) tuples.
+        """
+        random.seed(seed)
         class_names = os.listdir(validation_path)
         if num_classes:
             sampled_classes = random.sample(class_names, num_classes)
@@ -77,10 +89,19 @@ class ImageNetValidationDataset(Dataset):
         data_list = []
         for class_name in sampled_classes:
             class_path = os.path.join(validation_path, class_name)
-            for file_name in os.listdir(class_path):
+            # Get all files in the class directory and subsample
+            all_files = os.listdir(class_path)
+            if fraction_per_class < 1.0:
+                print(f"Subsampling {fraction_per_class} of files from class {class_name}")
+                print("Before:", len(all_files), "After:", max(1, int(len(all_files) * fraction_per_class)))
+                num_files_to_sample = max(1, int(len(all_files) * fraction_per_class))
+                sampled_files = random.sample(all_files, num_files_to_sample)
+            else:
+                sampled_files = all_files  # Use all files if fraction is 1.0
+            # Create (file_path, class_name) tuples
+            for file_name in sampled_files:
                 file_path = os.path.join(class_path, file_name)
                 data_list.append((file_path, class_name))
-                
         return data_list
     
     def __len__(self) -> int:
