@@ -17,7 +17,7 @@ def get_feat_coeff_intercept(exp):
             - coeffs (numpy.ndarray): Array of coefficients corresponding to the feature IDs.
             - intercept (float): The intercept of the local linear model.
     """
-    top1_model = next(iter(exp.local_pred))
+    top1_model = exp.top_labels[0]
     feat_ids = []
     coeffs = []
     for feat_id, coeff in exp.local_exp[top1_model]:
@@ -89,17 +89,23 @@ def compute_fractions(thresholds, tst_feat, df_feat, tree):
     fraction_points_in_ball = np.array(fraction_points_in_ball)
     return fraction_points_in_ball
 
-def compute_explanations(explainer, tst_feat, predict_fn):
+def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features):
     enumerated_data = list(enumerate(tst_feat))
     
     # Run parallel computation with indices
     indexed_explanations = Parallel(n_jobs=-1)(
-        delayed(lambda x: (x[0], explainer.explain_instance(x[1], predict_fn, top_labels=1)))(item)
+        delayed(lambda x: (x[0], explainer.explain_instance(x[1], predict_fn, top_labels=1, num_features = num_lime_features)))(item)
         for item in enumerated_data
     )
     sorted_explanations = [exp for _, exp in sorted(indexed_explanations, key=lambda x: x[0])]
     return sorted_explanations
-    
+
+def compute_accuracy_binary_classification(local_preds, model_preds, explanations, pred_threshold ):
+    local_classifications = [binary_pred(local_preds[i], pred_threshold, explanations[i]) for i in range(len(local_preds))]
+    model_classifications = [np.argmax(pred, axis=1) for pred in model_preds]
+    accuracies_per_dp = np.array([np.mean(local_classifications[i] == model_classifications[i]) for i in range(len(local_preds))])
+    return accuracies_per_dp
+
 def compute_lime_accuracy(tst_set, dataset, explanations, explainer, predict_fn, dist_threshold, tree, pred_threshold=None):
     """
     Computes the accuracy of a LIME explanation by comparing the local model's predictions
@@ -141,8 +147,12 @@ def compute_lime_accuracy(tst_set, dataset, explanations, explainer, predict_fn,
     if pred_threshold is None:
         pred_threshold = 0.5
     
-    local_classifications = [binary_pred(local_preds[i], pred_threshold, explanations[i]) for i in range(len_test)]
-    model_classifications = [np.argmax(pred, axis=1) for pred in model_preds]
-    accuracies_per_dp = np.array([np.mean(local_classifications[i] == model_classifications[i]) for i in range(len_test)])
+    # local_classifications = [binary_pred(local_preds[i], pred_threshold, explanations[i]) for i in range(len_test)]
+    # model_classifications = [np.argmax(pred, axis=1) for pred in model_preds]
+    top_labels = [exp.top_labels[0] for exp in explanations]
+    local_detect_of_top_label = [(local_preds[i] > pred_threshold).astype(np.int32) for i in range(len(local_preds))]
+    model_detect_of_top_label = [(np.argmax(pred, axis=1) == top_label).astype(np.int32)  for pred, top_label in zip(model_preds, top_labels)]
+   
+    accuracies_per_dp = np.array([np.mean(local_detect_of_top_label[i] == model_detect_of_top_label[i]) for i in range(len_test)])
     
     return dist_threshold, accuracies_per_dp, fraction_points_in_ball, radiuss, n_samples_in_ball, ratio_all_ones
