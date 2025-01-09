@@ -1,4 +1,3 @@
-import lightgbm as lgb
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -17,8 +16,7 @@ def predict_fn(X, model):
     with torch.no_grad():
         logits = model(X)
         probs = F.softmax(logits, dim=1)
-    return probs.squeeze().cpu().numpy()
-
+    return probs.cpu().numpy()
 
 def load_model(model_path):
     model = torch.hub.load('pytorch/vision:v0.10.0', 'inception_v3', pretrained=True)
@@ -38,14 +36,15 @@ def load_model(model_path):
 
 def load_data(model, data_path):
     file_path_val = "/home/grotehans/xai_locality/data/feature_vectors_img_net_val.csv"
-    file_path_trn = "/home/grotehans/xai_locality/data/feature_vectors_img_net_trn_downsampled.csv"
+    file_path_trn = "/home/grotehans/xai_locality/data/feature_vectors_img_net_trn_downsampled_5.0perc.csv"
     df_val = pd.read_csv(file_path_val)
-    X_val = df_val.drop(columns=['label', 'image_path']).values
-    y_val = df_val['label'].values
+    X_test = df_val.drop(columns=['label', 'image_path']).values
+    y_test = df_val['label'].values
+    # X_trn, X_test, y_trn, y_test = train_test_split(X, y, test_size=0.8, random_state=42)
     df_trn = pd.read_csv(file_path_trn)
     X_trn = df_trn.drop(columns=['label', 'image_path']).values
     y_trn = df_trn['label'].values
-    return X_val, y_val, np.empty(0),np.empty(0),  X_trn, y_trn
+    return X_test, y_test, np.empty(0),  np.empty(0),  X_trn, y_trn
 
 def get_feature_names(trn_feat):
     return np.arange(trn_feat.shape[1])

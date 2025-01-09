@@ -1,5 +1,3 @@
-from mpl_toolkits.mplot3d import Axes3D
-import plotly.graph_objects as go
 import numpy as np
 import matplotlib.pyplot as plt
 from lime_analysis.lime_local_classifier import get_feat_coeff_intercept
