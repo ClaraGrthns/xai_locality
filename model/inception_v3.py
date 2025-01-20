@@ -8,7 +8,7 @@ VALIDATION_PATH = "/common/datasets/ImageNet_ILSVRC2012/val"
 CLASS_MAPPING_FILE = "/common/datasets/ImageNet_ILSVRC2012/synset_words.txt"
 BATCH_SIZE = 64 
 OUTPUT_CSV = "/home/grotehans/xai_locality/data/feature_vectors_img_net_val.csv"
-from data import ImageNetValidationDataset
+from dataset.imgnet import ImageNetValidationDataset
 
 
 def predict_fn(X, model):
