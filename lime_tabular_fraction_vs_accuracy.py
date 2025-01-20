@@ -12,7 +12,7 @@ import random
 from functools import partial
 from utils.plotting_utils import plot_accuracy_vs_threshold, plot_accuracy_vs_fraction, plot_3d_scatter
 from utils.misc import get_non_zero_cols, set_random_seeds
-from lime_analysis.lime_local_classifier import compute_lime_accuracy, compute_explanations
+from lime_analysis.lime_local_classifier import compute_lime_accuracy_per_fraction, compute_explanations
 import os
 
 
@@ -35,6 +35,7 @@ def main(args):
     results_path = get_path(args.results_folder, args.results_path, args.setting)
     if args.num_test_splits > 1:
         results_path = osp.join(results_path, f"test_splits")
+    
     if not osp.exists(results_path):
         os.makedirs(results_path)
     print("saving results to: ", results_path)
@@ -84,10 +85,7 @@ def main(args):
     print("train, test, val feature shapes: ", trn_feat.shape, tst_feat.shape, val_feat.shape)
     df_feat = tst_feat
 
-    if args.debug:
-        tst_feat = tst_feat[:10]
-        print("Debug mode: Using only the first 10 samples")
-
+    
     if include_trn:
         df_feat = np.concatenate([trn_feat, df_feat], axis=0)
     if include_val:
@@ -106,32 +104,20 @@ def main(args):
             return 1 - cosine_sim
         distance_measure = "pyfunc"
     
-    # Sample 5000 points from each dataset to estimate min/max distances
-    tst_sample_idx = np.random.choice(len(tst_feat), min(5000, len(tst_feat)), replace=False)
-    df_sample_idx = np.random.choice(len(df_feat), min(5000, len(df_feat)), replace=False)
-    tst_sample = tst_feat[tst_sample_idx]
-    df_sample = df_feat[df_sample_idx]
-
-    distances_pw = pairwise_distances(tst_sample, df_sample, metric=args.distance_measure)
-    if args.distance_measure == "cosine":
-        distances_pw = 1 - distances_pw
-
-    max_dist = np.max(distances_pw)
-    first_non_zero = np.min(distances_pw[np.round(distances_pw, 2) > 0])
-
     tree = BallTree(df_feat, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_feat, metric=distance_measure, func=cosine_distance)
 
-    num_tresh = args.num_tresh if not args.debug else 2
-    thresholds = np.concatenate((np.array([1e-5]), np.linspace(first_non_zero, max_dist, num_tresh)))
-
+    n_points_in_ball = np.linspace(1, int(args.max_frac* len(tst_feat)), args.num_frac, dtype=int)
+    fractions = n_points_in_ball / len(tst_feat)
     if args.kernel_width is None:
         args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2)  # Default value
 
     df_setting = "complete_df" if include_trn and include_val else "only_test"
-    experiment_setting = f"thresholds-0-{np.round(first_non_zero)}-max{np.round(max_dist)}num_tresh-{num_tresh}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_accuracy_fraction.npy"
+    experiment_setting = f"fractions-{0}-{np.round(fractions[-1])}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_accuracy_fraction.npy"
+    if args.num_lime_features > 10:
+        experiment_setting = f"num_features-{args.num_lime_features}_{experiment_setting}"
     if args.num_test_splits > 1:
         experiment_setting = f"split-{args.split_idx}_{experiment_setting}"
-
+    
     class_names = get_class_names() if args.model_type == "inception_v3" else [0, 1]
 
     explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat,
@@ -140,6 +126,28 @@ def main(args):
                                                        discretize_continuous=True,
                                                        random_state=args.random_seed,
                                                        kernel_width=args.kernel_width)
+
+    # def discretize(self, data):
+        # """Discretizes the data.
+        # Args:
+        #     data: numpy 2d, 1d or 3d array
+        # Returns:
+        #     numpy array of same dimension, discretized.
+        # """
+        # ret = data.copy()
+        # if len(data.shape) == 3:
+        #     for feature in self.lambdas:
+        #         ret[:, :, feature] = self.lambdas[feature](
+        #             ret[:, :, feature]).astype(int)
+        # elif len(data.shape) == 2:
+        #     for feature in self.lambdas:
+        #         ret[:, feature] = self.lambdas[feature](
+        #             ret[:, feature]).astype(int)
+        # elif len(data.shape) == 1:
+        #     for feature in self.lambdas:
+        #         ret[feature] = int(self.lambdas[feature](ret[feature]))
+        # return ret
+
     # Construct the explanation file name and path
     explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}"
     if args.num_lime_features > 10:
@@ -167,107 +175,81 @@ def main(args):
         np.save(explanation_file_path, explanations)
         print(f"Finished computing and saving explanations to: {explanation_file_path}")
 
-     
     num_samples = len(tst_feat)
-    num_thresholds = len(thresholds)
+    num_fractions = len(fractions)
     results = {
-        "accuracy": np.zeros((num_thresholds, num_samples)),
-        "fraction_points_in_ball": np.zeros((num_thresholds, num_samples)),
-        "radius": np.zeros((num_thresholds, num_samples)),
-        "samples_in_ball": np.zeros((num_thresholds, num_samples)),
-        "ratio_all_ones": np.zeros((num_thresholds, num_samples)),
-        "thresholds": thresholds
+        "accuracy": np.zeros((num_fractions, num_samples)),
+        "fraction_points_in_ball": fractions,
+        "ratio_all_ones": np.zeros((num_fractions, num_samples)),
     }
     chunk_size = args.chunk_size
     predict_threshold = args.predict_threshold
-
     for i in range(0, len(tst_feat), chunk_size):
         if args.debug:
             # Normal for loop for easier debugging
-            for dist_threshold in thresholds:
-                print(f"Processing threshold {dist_threshold}")
-                chunk_results = compute_lime_accuracy(
-                    tst_feat[i:i+chunk_size], df_feat, explanations[i:i+chunk_size], explainer, predict_fn_wrapped, dist_threshold, tree, predict_threshold
+            chunk_end = min(i + chunk_size, len(tst_feat))
+            explanations_chunk = explanations[i:chunk_end]
+            for n_closest in n_points_in_ball:
+                print(f"Processing fraction {n_closest}")
+                chunk_results = compute_lime_accuracy_per_fraction(
+                    tst_feat[i:i+chunk_size], df_feat, explanations_chunk, explainer, predict_fn_wrapped, n_closest, tree, predict_threshold
                 )
-                threshold_idx = np.where(thresholds == dist_threshold)[0][0]
-                results["accuracy"][threshold_idx, i:i+chunk_size] = chunk_results[1]
-                results["fraction_points_in_ball"][threshold_idx, i:i+chunk_size] = chunk_results[2]
-                results["radius"][threshold_idx, i:i+chunk_size] = chunk_results[3]
-                results["samples_in_ball"][threshold_idx, i:i+chunk_size] = chunk_results[4]
-                results["ratio_all_ones"][threshold_idx, i:i+chunk_size] = chunk_results[5]
+                fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
+                results["accuracy"][fraction_idx, i:i+chunk_size] = chunk_results[0]
+                results["ratio_all_ones"][fraction_idx, i:i+chunk_size] = chunk_results[1]
+            np.savez(osp.join(results_path, experiment_setting), **results)
         else:
             # Parallel processing for normal execution
             chunk_end = min(i + chunk_size, len(tst_feat))
             tst_chunk = tst_feat[i:chunk_end]
             explanations_chunk = explanations[i:chunk_end]
             chunk_results = Parallel(n_jobs=-1)(
-                    delayed(compute_lime_accuracy)(
-                        tst_chunk, df_feat, explanations_chunk, explainer, predict_fn_wrapped, dist_threshold, tree, predict_threshold
+                    delayed(compute_lime_accuracy_per_fraction)(
+                        tst_chunk, df_feat, explanations_chunk, explainer, predict_fn_wrapped, n_closest, tree, predict_threshold
                     )
-                    for dist_threshold in thresholds
+                    for n_closest in n_points_in_ball
                 )
-            chunk_results_sorted = sorted(chunk_results, key=lambda x: np.where(thresholds == x[0])[0][0])
-                
             # Unpack results directly into the correct positions in the arrays
-            for threshold, acc, frac, rad, samp, ratio in chunk_results_sorted:
-                threshold_idx = np.where(thresholds == threshold)[0][0]
-                results["accuracy"][threshold_idx, i:chunk_end] = acc
-                results["fraction_points_in_ball"][threshold_idx, i:chunk_end] = frac
-                results["radius"][threshold_idx, i:chunk_end] = rad
-                results["samples_in_ball"][threshold_idx, i:chunk_end] = samp
-                results["ratio_all_ones"][threshold_idx, i:chunk_end] = ratio
-        
-        # create graphs for the accuracy and fraction of points in the ball
-        graphics_dir = osp.join(results_path, "graphics")
-        if not osp.exists(graphics_dir):
-            os.makedirs(graphics_dir)
-        non_zero_cols = get_non_zero_cols(results["accuracy"])
-        plot_accuracy_vs_threshold(accuracy=results["accuracy"][:, :non_zero_cols], 
-                                   thresholds=results["thresholds"], 
-                                #    model_predictions=model_predictions[:non_zero_cols], 
-                                   save_path=osp.join(graphics_dir, f"accuracy_vs_threshold_kernel{args.kernel_width}.pdf"))
-        plot_accuracy_vs_fraction(accuracy=results["accuracy"][:, :non_zero_cols], 
-                                fraction_points_in_ball=results["fraction_points_in_ball"][:, :non_zero_cols], 
-                                # model_predictions=model_predictions[:non_zero_cols], 
-                                save_path=osp.join(graphics_dir, f"accuracy_vs_fraction_kernel{args.kernel_width}.pdf"),
-                                )
-        plot_3d_scatter(fraction_points_in_ball=results["fraction_points_in_ball"][:, :non_zero_cols], 
-                        thresholds=results["thresholds"], 
-                        accuracy=results["accuracy"][:, :non_zero_cols], 
-                        angles=(10, 30), 
-                        cmap="tab20b",
-                        save_path=osp.join(graphics_dir, f"3d_scatter_kernel{args.kernel_width}.pdf"))
-        
+            for n_closest, acc, ratio in chunk_results:
+                fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
+                results["accuracy"][fraction_idx, i:chunk_end] = acc
+                results["ratio_all_ones"][fraction_idx, i:chunk_end] = ratio
+
         np.savez(osp.join(results_path, experiment_setting), **results)
         print(f"Processed chunk {i//chunk_size + 1}/{(len(tst_feat) + chunk_size - 1)//chunk_size}")
+        if i + chunk_size >= args.max_test_points:
+            break
     print("Finished computing LIME accuracy and fraction of points in the ball")
 
    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Locality Analyzer")
-    parser.add_argument("--data_folder", type=str, help="Path to the data folder")
-    parser.add_argument("--model_folder", type=str, help="Path to the model folder")
-    parser.add_argument("--results_folder", type=str, help="Path to the results folder")
-    parser.add_argument("--setting", type=str, help="Setting of the experiment")
-    parser.add_argument("--data_path", type=str, help="Path to the data", default = " ")
-    parser.add_argument("--model_path", type=str, help="Path to the model", default = " ")
-    parser.add_argument("--model_type", type=str, default="inception_v3", help="Model type, so far only 'xgboost' and 'lightgbm' is supported")
-    parser.add_argument("--results_path", type=str, help="Path to save results", default="/home/grotehans/xai_locality/results/inception_v3/imagenet")
+    parser.add_argument("--data_folder", type=str, help="Path to the data folder")#, default = "/home/grotehans/xai_locality/data/synthetic_data")
+    parser.add_argument("--model_folder", type=str, help="Path to the model folder")#, default = "/home/grotehans/xai_locality/pretrained_models/lightgbm/synthetic_data" )
+    parser.add_argument("--results_folder", type=str, help="Path to the results folder")#, default="/home/grotehans/xai_locality/results/lightgbm/synthetic_data")
+    parser.add_argument("--setting", type=str, help="Setting of the experiment")#, default= "n_feat50_n_informative20_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class5_class_sep0.9_flip_y0.01_random_state42")
+    parser.add_argument("--data_path", type=str, help="Path to the data")
+    parser.add_argument("--model_path", type=str, help="Path to the model")
+    parser.add_argument("--model_type", type=str, default="lightgbm", help="Model type, so far only 'xgboost' and 'lightgbm' is supported")
+    parser.add_argument("--results_path", type=str, help="Path to save results")#, default=" ")
     parser.add_argument("--distance_measure", type=str, default="euclidean", help="Distance measure")
-    parser.add_argument("--num_tresh", type=int, default=150, help="Number of thresholds")
+    parser.add_argument("--max_frac", type=float, default=1.0, help="Until when to compute the fraction of points in the ball")
+    parser.add_argument("--num_frac", type=int, default=10, help="Number of fractions to compute")
     parser.add_argument("--include_trn", action="store_true", help="Include training data")
     parser.add_argument("--include_val", action="store_true", help="Include validation data")
-    parser.add_argument("--fraction_only", action="store_true", help="Compute only the fraction of points in the ball")
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--chunk_size", type=int, default=3, help="Chunk size of test set computed at once")
+    parser.add_argument("--chunk_size", type=int, default=20, help="Chunk size of test set computed at once")
     parser.add_argument("--debug", action="store_true", help="Debug mode")
     parser.add_argument("--kernel_width", type=float, default=None, help="Kernel size for the locality analysis")
     parser.add_argument("--model_regressor", type=str, default="ridge", help="Model regressor for LIME")
     parser.add_argument("--num_test_splits",  type=int, default = 10, help="Number of test splits for analysis")
     parser.add_argument("--split_idx", type=int, default = 0, help="Index of the test split")
     parser.add_argument("--num_lime_features", type=int, default = 10, help="Index of the test split")
-    parser.add_argument("--predict_threshold", type=float, default = 0.001, help="Threshold for classifying sample as top prediction")
+    parser.add_argument("--predict_threshold", type=float, default = None, help="Threshold for classifying sample as top prediction")
+    parser.add_argument("--max_test_points", type=int, default = 4000)
 
+
+                                    
     args = parser.parse_args()
 
     # Validate arguments
