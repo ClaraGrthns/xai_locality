@@ -1,20 +1,18 @@
 import lightgbm as lgb
+from model.base import BaseModelHandler
 import numpy as np
-## TODO: create a class that handles this
 
-def predict_fn(X, model):
-    pred = model.predict(X)
-    if pred.ndim == 1:
-        pred = np.column_stack((1 - pred, pred))
-    return pred
+class LightGBMHandler(BaseModelHandler):
+    def load_model(self, model_path):
+        return lgb.Booster(model_file=model_path)
 
-def load_model(model_path):
-    return lgb.Booster(model_file=model_path)
+    def load_data(self, data_path):
+        data = np.load(data_path)
+        return data['X_test'], data['y_test'], data['X_val'], data['y_val'], data['X_train'], data['y_train']
 
-def load_data(model, data_path):
-    data = np.load(data_path)
-    tst_feat, tst_y, val_feat, val_y, trn_feat, trn_y = data['X_test'], data['y_test'], data['X_val'], data['y_val'], data['X_train'], data['y_train']
-    return tst_feat, tst_y, val_feat, val_y, trn_feat, trn_y
+    def predict_fn(self, X):
+        pred = self.model.predict(X)
+        if pred.ndim == 1:
+            pred = np.column_stack((1 - pred, pred))
+        return pred
 
-def get_feature_names(trn_feat):
-    return np.arange(trn_feat.shape[1])
