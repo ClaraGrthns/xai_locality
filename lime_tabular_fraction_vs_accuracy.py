@@ -1,20 +1,14 @@
-from torch_frame.gbdt import XGBoost
-from torch_frame.typing import TaskType
 import os.path as osp
-import torch
 import numpy as np
 import argparse
 import lime.lime_tabular
-from sklearn.metrics import pairwise_distances
 from sklearn.neighbors import BallTree
 from joblib import Parallel, delayed
-import random
-from functools import partial
-from utils.plotting_utils import plot_accuracy_vs_threshold, plot_accuracy_vs_fraction, plot_3d_scatter
-from utils.misc import get_non_zero_cols, set_random_seeds
+from utils.misc import get_non_zero_cols, set_random_seeds, get_path
 from lime_analysis.lime_local_classifier import compute_lime_accuracy_per_fraction, compute_explanations
 import os
 
+from model.factory import ModelHandlerFactory
 
 def main(args):
     set_random_seeds(args.random_seed)
@@ -23,13 +17,6 @@ def main(args):
     include_trn = args.include_trn
     include_val = args.include_val
 
-    def get_path(base_folder, base_path, setting, suffix=""):
-        if base_folder is None:
-            return base_path
-        assert setting is not None, "Setting must be specified if folder is provided"
-        return osp.join(base_folder, f"{suffix}{setting}")
-
-    # Replace the original code with:
     data_path = get_path(args.data_folder, args.data_path, args.setting)
     model_path = get_path(args.model_folder, args.model_path, args.setting, suffix="final_model_")
     results_path = get_path(args.results_folder, args.results_path, args.setting)
@@ -44,20 +31,9 @@ def main(args):
     if args.data_folder is not None:
         data_path += ".npz"
 
-    # Load model and data based on model type
-    if args.model_type == "xgboost":
-        from model.pytorch_frame_xgboost import load_model, load_data, predict_fn
-    elif args.model_type == "lightgbm" and ("synthetic" in results_path):
-        from model.lightgbm import load_model, load_data, predict_fn
-    elif args.model_type == "lightgbm":
-        from model.pytorch_frame_lgm import load_model, load_data, predict_fn
-    elif args.model_type == "inception_v3":
-        from model.inception_v3 import load_model, load_data, predict_fn, get_class_names
-    else:
-        raise ValueError(f"Unsupported model type: {args.model_type}")
-
-    model = load_model(model_path)
-    tst_feat, _, val_feat, _, trn_feat, _ = load_data(model, data_path)
+    model_handler = ModelHandlerFactory.get_handler(args.model_type, model_path)
+    tst_feat, _, val_feat, _, trn_feat, _ = model_handler.load_data(data_path)
+    
 
     # Handle test set splits
     if args.num_test_splits > 1:
@@ -81,18 +57,21 @@ def main(args):
         val_feat = val_feat[val_start:val_end]
 
     feature_names = np.arange(trn_feat.shape[1])
-    predict_fn_wrapped = partial(predict_fn, model=model)
+    predict_fn = model_handler.predict_fn
     print("train, test, val feature shapes: ", trn_feat.shape, tst_feat.shape, val_feat.shape)
-    df_feat = tst_feat
+    # Randomly sample len(tst_feat) - 100 indices from tst_feat
 
-    
+    df_feat = tst_feat[args.max_test_points:]
+    tst_feat = tst_feat[: args.max_test_points]
+
+
     if include_trn:
         df_feat = np.concatenate([trn_feat, df_feat], axis=0)
     if include_val:
         df_feat = np.concatenate([df_feat, val_feat], axis=0)
 
-    
-    # Compute pairwise distances on samples
+    print(f"Using {len(df_feat)} samples for analysis and {len(tst_feat)} samples for testing")
+
     valid_distance_measures = BallTree.valid_metrics + ["cosine"]
     assert args.distance_measure in valid_distance_measures, f"Invalid distance measure: {args.distance_measure}. Valid options are: {valid_distance_measures}"
     distance_measure = args.distance_measure
@@ -106,8 +85,8 @@ def main(args):
     
     tree = BallTree(df_feat, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_feat, metric=distance_measure, func=cosine_distance)
 
-    n_points_in_ball = np.linspace(1, int(args.max_frac* len(tst_feat)), args.num_frac, dtype=int)
-    fractions = n_points_in_ball / len(tst_feat)
+    n_points_in_ball = np.linspace(20, int(args.max_frac* len(df_feat)), args.num_frac, dtype=int)
+    fractions = n_points_in_ball / len(df_feat)
     if args.kernel_width is None:
         args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2)  # Default value
 
@@ -118,7 +97,7 @@ def main(args):
     if args.num_test_splits > 1:
         experiment_setting = f"split-{args.split_idx}_{experiment_setting}"
     
-    class_names = get_class_names() if args.model_type == "inception_v3" else [0, 1]
+    class_names = model_handler.get_class_names()
 
     explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat,
                                                        feature_names=feature_names,
@@ -126,27 +105,6 @@ def main(args):
                                                        discretize_continuous=True,
                                                        random_state=args.random_seed,
                                                        kernel_width=args.kernel_width)
-
-    # def discretize(self, data):
-        # """Discretizes the data.
-        # Args:
-        #     data: numpy 2d, 1d or 3d array
-        # Returns:
-        #     numpy array of same dimension, discretized.
-        # """
-        # ret = data.copy()
-        # if len(data.shape) == 3:
-        #     for feature in self.lambdas:
-        #         ret[:, :, feature] = self.lambdas[feature](
-        #             ret[:, :, feature]).astype(int)
-        # elif len(data.shape) == 2:
-        #     for feature in self.lambdas:
-        #         ret[:, feature] = self.lambdas[feature](
-        #             ret[:, feature]).astype(int)
-        # elif len(data.shape) == 1:
-        #     for feature in self.lambdas:
-        #         ret[feature] = int(self.lambdas[feature](ret[feature]))
-        # return ret
 
     # Construct the explanation file name and path
     explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}"
@@ -169,7 +127,7 @@ def main(args):
         print(f"{len(explanations)} explanations loaded")
     else:
         print("Precomputed explanations not found. Computing explanations for the test set...")
-        explanations = compute_explanations(explainer, tst_feat, predict_fn_wrapped, args.num_lime_features)
+        explanations = compute_explanations(explainer, tst_feat, predict_fn, args.num_lime_features)
         
         # Save the explanations to the appropriate file
         np.save(explanation_file_path, explanations)
@@ -179,6 +137,7 @@ def main(args):
     num_fractions = len(fractions)
     results = {
         "accuracy": np.zeros((num_fractions, num_samples)),
+        "radius": np.zeros((num_fractions, num_samples)),
         "fraction_points_in_ball": fractions,
         "ratio_all_ones": np.zeros((num_fractions, num_samples)),
     }
@@ -192,7 +151,7 @@ def main(args):
             for n_closest in n_points_in_ball:
                 print(f"Processing fraction {n_closest}")
                 chunk_results = compute_lime_accuracy_per_fraction(
-                    tst_feat[i:i+chunk_size], df_feat, explanations_chunk, explainer, predict_fn_wrapped, n_closest, tree, predict_threshold
+                    tst_feat[i:i+chunk_size], df_feat, explanations_chunk, explainer, predict_fn, n_closest, tree, predict_threshold
                 )
                 fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
                 results["accuracy"][fraction_idx, i:i+chunk_size] = chunk_results[0]
@@ -205,20 +164,20 @@ def main(args):
             explanations_chunk = explanations[i:chunk_end]
             chunk_results = Parallel(n_jobs=-1)(
                     delayed(compute_lime_accuracy_per_fraction)(
-                        tst_chunk, df_feat, explanations_chunk, explainer, predict_fn_wrapped, n_closest, tree, predict_threshold
+                        tst_chunk, df_feat, explanations_chunk, explainer, predict_fn, n_closest, tree, predict_threshold
                     )
                     for n_closest in n_points_in_ball
                 )
             # Unpack results directly into the correct positions in the arrays
-            for n_closest, acc, ratio in chunk_results:
+            for n_closest, acc, ratio, R in chunk_results:
                 fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
                 results["accuracy"][fraction_idx, i:chunk_end] = acc
                 results["ratio_all_ones"][fraction_idx, i:chunk_end] = ratio
+                results["radius"][fraction_idx, i:chunk_end] = R
 
         np.savez(osp.join(results_path, experiment_setting), **results)
         print(f"Processed chunk {i//chunk_size + 1}/{(len(tst_feat) + chunk_size - 1)//chunk_size}")
-        if i + chunk_size >= args.max_test_points:
-            break
+
     print("Finished computing LIME accuracy and fraction of points in the ball")
 
    
@@ -230,7 +189,7 @@ if __name__ == "__main__":
     parser.add_argument("--setting", type=str, help="Setting of the experiment")#, default= "n_feat50_n_informative20_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class5_class_sep0.9_flip_y0.01_random_state42")
     parser.add_argument("--data_path", type=str, help="Path to the data")
     parser.add_argument("--model_path", type=str, help="Path to the model")
-    parser.add_argument("--model_type", type=str, default="lightgbm", help="Model type, so far only 'xgboost' and 'lightgbm' is supported")
+    parser.add_argument("--model_type", type=str, default="lightgbm", help="Model type, so far supported: lightgbm, tab_inception_v3, pt_frame_lgm, pt_frame_xgboost")
     parser.add_argument("--results_path", type=str, help="Path to save results")#, default=" ")
     parser.add_argument("--distance_measure", type=str, default="euclidean", help="Distance measure")
     parser.add_argument("--max_frac", type=float, default=1.0, help="Until when to compute the fraction of points in the ball")
@@ -242,12 +201,11 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true", help="Debug mode")
     parser.add_argument("--kernel_width", type=float, default=None, help="Kernel size for the locality analysis")
     parser.add_argument("--model_regressor", type=str, default="ridge", help="Model regressor for LIME")
-    parser.add_argument("--num_test_splits",  type=int, default = 10, help="Number of test splits for analysis")
+    parser.add_argument("--num_test_splits",  type=int, default = 0, help="Number of test splits for analysis")
     parser.add_argument("--split_idx", type=int, default = 0, help="Index of the test split")
     parser.add_argument("--num_lime_features", type=int, default = 10, help="Index of the test split")
     parser.add_argument("--predict_threshold", type=float, default = None, help="Threshold for classifying sample as top prediction")
-    parser.add_argument("--max_test_points", type=int, default = 4000)
-
+    parser.add_argument("--max_test_points", type=int, default = 200)
 
                                     
     args = parser.parse_args()

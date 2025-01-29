@@ -31,3 +31,10 @@ def load_and_get_non_zero_cols(data_path):
     accuracy_complete = accuracy_array[:, :non_zero_cols]
     fraction_complete = fraction_array[:, :non_zero_cols]
     return accuracy_complete, fraction_complete, thresholds, non_zero_cols
+
+
+def get_path(base_folder, base_path, setting, suffix=""):
+    if base_folder is None:
+        return base_path
+    assert setting is not None, "Setting must be specified if folder is provided"
+    return osp.join(base_folder, f"{suffix}{setting}")
