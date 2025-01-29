@@ -199,7 +199,8 @@ def compute_lime_accuracy_per_fraction(tst_set, dataset, explanations, explainer
     if tst_set.ndim == 1:
         tst_set = tst_set.reshape(1, -1)
 
-    idx = tree.query(tst_set, k=n_closest, return_distance=False)
+    dist, idx= tree.query(tst_set, k=n_closest, return_distance=True)
+    R = np.max(dist, axis=-1)
 
     samples_in_ball = dataset[idx]
     binary_sample = get_binary_vectorized(samples_in_ball, tst_set, explainer)
@@ -215,4 +216,4 @@ def compute_lime_accuracy_per_fraction(tst_set, dataset, explanations, explainer
     local_detect_of_top_label = local_preds>=  pred_threshold
     model_detect_of_top_label =  np.argmax(model_preds, axis=-1) == top_labels[:, None]
     accuracies_per_dp = np.mean(local_detect_of_top_label== model_detect_of_top_label, axis = -1)
-    return n_closest, accuracies_per_dp, ratio_all_ones
+    return n_closest, accuracies_per_dp, ratio_all_ones, R
