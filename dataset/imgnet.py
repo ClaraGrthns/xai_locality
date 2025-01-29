@@ -24,7 +24,8 @@ class ImageNetValidationDataset(Dataset):
         num_classes: int = None,
         transform=None,
         fraction_per_class: float = 1.0,
-        seed: int = 42
+        seed: int = 42,
+        specific_classes: List[str] = None
     ):
         """
         Initialize the dataset.
@@ -35,15 +36,18 @@ class ImageNetValidationDataset(Dataset):
             num_classes (int): Number of classes to sample (default: 200)
             transform: Optional transforms to apply to images
             seed (int): Random seed for class sampling
+            specific_classes (List[str]): List of specific classes to include
         """
         if transform == "default":
             transform = get_default_transforms()
         self.transform = transform
         
         self.wnids, self.class_names = self._load_class_mapping(class_mapping_file)
-        self.class_mapping = dict(zip(self.wnids, self.class_names))
-        
-        self.data_list = self._create_data_list(validation_path, num_classes, seed, fraction_per_class)
+        self.wnid_to_class = dict(zip(self.wnids, self.class_names))
+        self.class_to_wnid = dict(zip(self.class_names, self.wnids))
+
+        assert all(cls in self.class_names for cls in specific_classes), "Specific classes not found in ImageNet"        
+        self.data_list = self._create_data_list(validation_path, num_classes, seed, fraction_per_class, specific_classes)
     
     def _load_class_mapping(self, mapping_file: str) -> Tuple[List[str], List[str]]:
         """Load mapping between WordNet IDs and class names."""
@@ -66,7 +70,8 @@ class ImageNetValidationDataset(Dataset):
         validation_path: str,
         num_classes: int,
         seed: int,
-        fraction_per_class: float = 1.0
+        fraction_per_class: float = 1.0,
+        specific_classes: List[str] = None
     ) -> List[Tuple[str, str]]:
         """
         Create list of (image_path, class_name) tuples with optional subsampling of files.
@@ -76,16 +81,24 @@ class ImageNetValidationDataset(Dataset):
             num_classes (int): Number of classes to sample. If None, include all classes.
             seed (int): Random seed for deterministic sampling.
             fraction_per_class (float): Fraction of files to include per class (default: 1.0, i.e., all files).
+            specific_classes (List[str]): List of specific classes to include.
         
         Returns:
             List[Tuple[str, str]]: List of (image_path, class_name) tuples.
         """
         random.seed(seed)
         class_names = os.listdir(validation_path)
-        if num_classes:
+        
+        if specific_classes:
+            sampled_classes = [self.class_to_wnid[class_name] for class_name in specific_classes]
+        elif num_classes:
             sampled_classes = random.sample(class_names, num_classes)
         else:
             sampled_classes = class_names
+
+        self.class_names = [self.wnid_to_class[wnid] for wnid in sampled_classes]
+        self.wnids = sampled_classes
+    
         data_list = []
         for class_name in sampled_classes:
             class_path = os.path.join(validation_path, class_name)
@@ -125,8 +138,8 @@ class ImageNetValidationDataset(Dataset):
         if self.transform:
             image = self.transform(image)
             
-        class_name = self.class_names[self.wnids.index(wnid)]
-        return image, class_name, img_path
+        # class_name = self.class_names[self.wnids.index(wnid)]
+        return image, self.wnids.index(wnid), img_path
 
 def get_default_transforms():
     """Get the default ImageNet transforms."""
