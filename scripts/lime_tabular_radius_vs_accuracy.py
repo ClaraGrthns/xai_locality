@@ -52,7 +52,7 @@ def main(args):
     elif args.model_type == "lightgbm":
         from model.pytorch_frame_lgm import load_model, load_data, predict_fn
     elif args.model_type == "inception_v3":
-        from model.inception_v3 import load_model, load_data, predict_fn, get_class_names
+        from model.tab_inception_v3 import load_model, load_data, predict_fn, get_class_names
     else:
         raise ValueError(f"Unsupported model type: {args.model_type}")
 

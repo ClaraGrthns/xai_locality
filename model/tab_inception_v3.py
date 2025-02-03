@@ -5,13 +5,13 @@ import torch.nn.functional as F
 import pandas as pd
 from torch import nn
 from model.base import BaseModelHandler
-from dataset.imgnet import ImageNetValidationDataset
+from dataset.imgnet import ImageNetDataset
 
 VALIDATION_PATH = "/common/datasets/ImageNet_ILSVRC2012/val"
 CLASS_MAPPING_FILE = "/common/datasets/ImageNet_ILSVRC2012/synset_words.txt"
 
 class TabInceptionV3Handler(BaseModelHandler):
-    def load_model(self, model_path):
+    def load_model(self):
         """Load a pre-trained InceptionV3 model and modify it to accept feature vectors."""
         model = torch.hub.load('pytorch/vision:v0.10.0', 'inception_v3', pretrained=True)
         model.eval()
@@ -27,7 +27,7 @@ class TabInceptionV3Handler(BaseModelHandler):
             
         return FeatureToLogitsModel(model)
 
-    def load_data(self, data_path):
+    def load_data(self):
         """Load pre-extracted feature vectors for ImageNet validation and training sets."""
         file_path_val = "/home/grotehans/xai_locality/data/feature_vectors_img_net_val.csv"
         file_path_trn = "/home/grotehans/xai_locality/data/feature_vectors_img_net_trn_downsampled_5.0perc.csv"
@@ -54,7 +54,7 @@ class TabInceptionV3Handler(BaseModelHandler):
 
     def get_class_names(self):
         """Load ImageNet class names from the dataset."""
-        dataset = ImageNetValidationDataset(
+        dataset = ImageNetDataset(
             VALIDATION_PATH, CLASS_MAPPING_FILE, transform="default"
         )
         return dataset.class_names

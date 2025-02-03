@@ -5,7 +5,9 @@ import torch.nn.functional as F
 import pandas as pd
 from torch import nn
 from model.base import BaseModelHandler
-from dataset.imgnet import ImageNetValidationDataset
+from dataset.imgnet import ImageNetDataset
+from dataset.cats_vs_dogs import CatsVsDogsDataset
+from torchvision import models
 
 VALIDATION_PATH = "/common/datasets/ImageNet_ILSVRC2012/val"
 CLASS_MAPPING_FILE = "/common/datasets/ImageNet_ILSVRC2012/synset_words.txt"
@@ -17,11 +19,10 @@ class InceptionV3_Handler(BaseModelHandler):
         model.eval()
         return model
 
-    def load_data(self, data_path):
+    def load_data(self, data_path=VALIDATION_PATH, specific_classes=None):
         """Load pre-extracted feature vectors for ImageNet validation and training sets."""
-        dataset = ImageNetValidationDataset(
-                VALIDATION_PATH, CLASS_MAPPING_FILE)
-        return dataset
+        return ImageNetDataset(
+                data_path, CLASS_MAPPING_FILE, specific_classes=specific_classes, transform="default")
     
     def predict_fn(self, X):
         """Perform inference using the feature-to-logits model."""
@@ -30,7 +31,48 @@ class InceptionV3_Handler(BaseModelHandler):
 
     def get_class_names(self):
         """Load ImageNet class names from the dataset."""
-        dataset = ImageNetValidationDataset(
+        dataset = ImageNetDataset(
             VALIDATION_PATH, CLASS_MAPPING_FILE, transform="default"
         )
         return dataset.class_names
+    
+class BinaryInceptionV3_Handler(BaseModelHandler):
+    def load_model(self, model_path):
+        """Load a pre-trained InceptionV3 model and modify it to accept feature vectors."""
+        return InceptionV3BinaryClassifier()
+
+    def load_data(self, data_path = "/home/grotehans/xai_locality/data/cats_vs_dogs/test"):
+        """Load pre-extracted feature vectors for ImageNet validation and training sets."""
+        return CatsVsDogsDataset(data_path, transform="default")
+    
+    def predict_fn(self, X):
+        """Perform inference using the feature-to-logits model."""
+        return self.model(X)
+
+    def get_class_names(self):
+        """Load ImageNet class names from the dataset."""
+        return ["Cat", "Dog"]
+    
+    def load_feature_vectors(self):
+        path = "/home/grotehans/xai_locality/data/cats_vs_dogs/feature_vectors_binary_inception_cats_dogs_test.csv"
+        feat_vec = pd.read_csv(path)
+        feat_vec.drop(columns=['label'])
+        return feat_vec.to_numpy()
+
+
+
+class InceptionV3BinaryClassifier(nn.Module):
+    def __init__(self, pretrained=True):
+        super(InceptionV3BinaryClassifier, self).__init__()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = models.inception_v3(pretrained=pretrained)
+        self.model.fc = nn.Linear(self.model.fc.in_features, 1)
+        self.model.AuxLogits.fc = nn.Linear(self.model.AuxLogits.fc.in_features, 1)
+        # Load saved state dict properly
+        state_dict = torch.load("/home/grotehans/xai_locality/pretrained_models/inception_v3/binary_cat_dog_best.pth", 
+                        map_location=device)
+        self.model.load_state_dict(state_dict)
+        
+    def forward(self, x):
+        preds = torch.sigmoid(self.model(x))
+        return torch.cat([1 - preds, preds], dim=1)
