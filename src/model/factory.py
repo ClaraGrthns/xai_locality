@@ -1,8 +1,8 @@
-from model.lightgbm import LightGBMHandler
-from model.tab_inception_v3 import TabInceptionV3Handler  
-from model.pytorch_frame_lgm import PTFrame_LightGBMHandler
-from model.pytorch_frame_xgboost import PTFrame_XGBoostHandler
-from model.inception_v3 import BinaryInceptionV3_Handler, InceptionV3_Handler
+from src.model.lightgbm import LightGBMHandler
+from src.model.tab_inception_v3 import TabInceptionV3Handler  
+from src.model.pytorch_frame_lgm import PTFrame_LightGBMHandler
+from src.model.pytorch_frame_xgboost import PTFrame_XGBoostHandler
+from src.model.inception_v3 import BinaryInceptionV3_Handler, InceptionV3_Handler
 
 class ModelHandlerFactory:
     MODEL_HANDLERS = {

@@ -4,7 +4,7 @@ import torch
 import xgboost
 from torch_frame.typing import TaskType
 from torch_frame.gbdt import XGBoost
-from model.base import BaseModelHandler
+from src.model.base import BaseModelHandler
 
 class PTFrame_XGBoostHandler(BaseModelHandler):
     def load_model(self, model_path):

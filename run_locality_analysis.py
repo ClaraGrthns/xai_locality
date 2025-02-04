@@ -18,9 +18,9 @@ def get_common_parser():
                        help="Path to save results")
     parser.add_argument("--distance_measure", type=str, default="euclidean",
                        help="Distance measure to use")
-    parser.add_argument("--max_frac", type=float, default=0.3,
+    parser.add_argument("--max_frac", type=float, default=0.08,
                        help="Maximum fraction of points to analyze")
-    parser.add_argument("--num_frac", type=int, default=100,
+    parser.add_argument("--num_frac", type=int, default=50,
                        help="Number of fractions to compute")
     parser.add_argument("--random_seed", type=int, default=42,
                        help="Random seed for reproducibility")
@@ -74,20 +74,17 @@ def main():
     # Get base parser with common arguments
     parser = get_common_parser()
     
-    # Create subparsers for method-specific arguments
-    subparsers = parser.add_subparsers(dest="method")
-    
-    # LIME-specific parser
-    lime_parser = subparsers.add_parser("lime")
-    add_lime_specific_args(lime_parser)
-    
-    # Gradient-specific parser
-    gradient_parser = subparsers.add_parser("gradient")
-    add_gradient_specific_args(gradient_parser)
-    
+    # Parse known arguments first (to check the method)
+    known_args, remaining_args = parser.parse_known_args()
+
+    # Add method-specific arguments **after** determining the method
+    if known_args.method == "lime":
+        add_lime_specific_args(parser)
+    elif known_args.method == "gradient":
+        add_gradient_specific_args(parser)
+
     args = parser.parse_args()
-    
-    # Validate arguments based on method
+
     if args.method == "lime":
         validate_lime_args(args)
         lime_tabular_fraction_vs_accuracy.main(args)
@@ -95,6 +92,7 @@ def main():
         gradient_methods_tabular_fraction_vs_accuracy.main(args)
     else:
         raise ValueError(f"Unknown method: {args.method}")
+
 
 if __name__ == "__main__":
     main()

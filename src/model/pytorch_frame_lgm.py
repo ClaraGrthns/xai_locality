@@ -2,7 +2,7 @@ import numpy as np
 from torch_frame.typing import TaskType
 from torch_frame.gbdt import LightGBM
 import torch
-from model.base import BaseModelHandler
+from src.model.base import BaseModelHandler
 
 class PTFrame_LightGBMHandler(BaseModelHandler):
     def load_model(self, model_path):

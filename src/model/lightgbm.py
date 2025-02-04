@@ -1,5 +1,5 @@
 import lightgbm as lgb
-from model.base import BaseModelHandler
+from src.model.base import BaseModelHandler
 import numpy as np
 
 class LightGBMHandler(BaseModelHandler):

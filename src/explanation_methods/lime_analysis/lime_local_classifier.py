@@ -111,17 +111,6 @@ def lime_pred(binary_x, exp):
     local_pred = intercept + binary_x_selected @ coeffs
     return local_pred
 
-def compute_fractions(thresholds, tst_feat, df_feat, tree):
-    def compute_fraction_for_threshold(threshold):
-        counts = tree.query_radius(tst_feat, r=threshold, count_only=True)
-        return counts / df_feat.shape[0]
-
-    fraction_points_in_ball = Parallel(n_jobs=-1)(
-        delayed(compute_fraction_for_threshold)(threshold) for threshold in thresholds
-    )
-    fraction_points_in_ball = np.array(fraction_points_in_ball)
-    return fraction_points_in_ball
-
 def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features):
     enumerated_data = list(enumerate(tst_feat))
     

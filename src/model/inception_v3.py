@@ -4,9 +4,9 @@ import torch
 import torch.nn.functional as F
 import pandas as pd
 from torch import nn
-from model.base import BaseModelHandler
-from dataset.imgnet import ImageNetDataset
-from dataset.cats_vs_dogs import CatsVsDogsDataset
+from src.model.base import BaseModelHandler
+from src.dataset.imgnet import ImageNetDataset
+from src.dataset.cats_vs_dogs import CatsVsDogsDataset
 from torchvision import models
 
 VALIDATION_PATH = "/common/datasets/ImageNet_ILSVRC2012/val"

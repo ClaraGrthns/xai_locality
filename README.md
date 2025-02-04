@@ -5,12 +5,12 @@
 
 | Models ↓, Dataset →| Jannis | SynData: 2 inf feat., 2 cluster  | SynData: 20 inf feat. 2 cluster  | SynData: 20 inf feat., 5 cluster  | Higgs | Feature Vectors of ImageNet | Feature Vectors of Cats vs. Dogs |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Light GBM | x | x | x | x | (x) |  |  |
+| Light GBM | x | x | x | x | x |  |  |
 | Inception V3 |  |  |  |  |  | x |  |
 
 ### Gradient Methods
 
-**Integrated Gradients **
+**Integrated Gradients**
 
 |  Models ↓ Dataset →, | ImageNet | Cats vs. Dogs |
 | --- | --- | --- |

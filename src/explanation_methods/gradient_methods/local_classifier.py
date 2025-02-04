@@ -24,3 +24,13 @@ def compute_gradmethod_accuracy_per_fraction(tst_feat, top_labels, analysis_data
     model_detect_of_top_label = (torch.argmax(model_preds, dim=-1) == torch.tensor(top_labels).to(device)[:, None]).float()
     accuracies_per_dp = (local_detect_of_top_label == model_detect_of_top_label).float().mean(dim=-1)
     return n_closest, accuracies_per_dp, R
+
+def compute_saliency_maps(explainer, predict_fn, data_loader_tst, device):
+    saliency_map = []
+    for i, (imgs, _, _) in enumerate(data_loader_tst):
+        imgs = imgs.to(device)
+        top_labels = torch.argmax(predict_fn(imgs), dim=1).tolist()
+        saliency = explainer.attribute(imgs, target=top_labels).float()
+        saliency_map.append(saliency)
+        print("computed the first stack of saliency maps")
+    return torch.cat(saliency_map, dim=0)
