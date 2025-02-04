@@ -5,7 +5,7 @@ import lime.lime_tabular
 from sklearn.neighbors import BallTree
 from joblib import Parallel, delayed
 from utils.misc import get_non_zero_cols, set_random_seeds, get_path
-from lime_analysis.lime_local_classifier import compute_lime_accuracy_per_fraction, compute_explanations
+from src.explanation_methods.lime_analysis.lime_local_classifier import compute_lime_accuracy_per_fraction, compute_explanations
 import os
 
 from model.factory import ModelHandlerFactory
@@ -154,8 +154,8 @@ def main(args):
                     tst_feat[i:i+chunk_size], df_feat, explanations_chunk, explainer, predict_fn, n_closest, tree, predict_threshold
                 )
                 fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
-                results["accuracy"][fraction_idx, i:i+chunk_size] = chunk_results[0]
-                results["ratio_all_ones"][fraction_idx, i:i+chunk_size] = chunk_results[1]
+                results["accuracy"][fraction_idx, i:i+chunk_size] = chunk_results[1]
+                results["ratio_all_ones"][fraction_idx, i:i+chunk_size] = chunk_results[2]
             np.savez(osp.join(results_path, experiment_setting), **results)
         else:
             # Parallel processing for normal execution

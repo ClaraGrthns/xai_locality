@@ -7,7 +7,7 @@ from dataset.cats_vs_dogs import CatsVsDogsTrnDataset
 from torch.utils.tensorboard import SummaryWriter
 import os
 from sklearn.model_selection import train_test_split
-from model.inception_v3 import InceptionV3BinaryClassifier
+from src.model.inception_v3 import InceptionV3BinaryClassifier
 
 def get_config():
     return {

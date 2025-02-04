@@ -7,7 +7,7 @@ from sklearn.metrics import accuracy_score
 import os
 import argparse
 import utils.misc as misc
-from dataset.synthetic_data import create_synthetic_data_sklearn
+from src.dataset.synthetic_data import create_synthetic_data_sklearn
 
 def main(args):
     misc.set_random_seeds(args.random_seed)

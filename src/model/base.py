@@ -10,7 +10,7 @@ class BaseModelHandler:
         """Load model from path"""
         raise NotImplementedError
 
-    def load_data(self, data_path):
+    def load_data(self, data_path=None):
         """Load dataset"""
         raise NotImplementedError
 

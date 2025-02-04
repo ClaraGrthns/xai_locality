@@ -38,39 +38,39 @@ class InceptionV3_Handler(BaseModelHandler):
     
 class BinaryInceptionV3_Handler(BaseModelHandler):
     def load_model(self, model_path):
-        """Load a pre-trained InceptionV3 model and modify it to accept feature vectors."""
         return InceptionV3BinaryClassifier()
 
     def load_data(self, data_path = "/home/grotehans/xai_locality/data/cats_vs_dogs/test"):
-        """Load pre-extracted feature vectors for ImageNet validation and training sets."""
         return CatsVsDogsDataset(data_path, transform="default")
     
     def predict_fn(self, X):
-        """Perform inference using the feature-to-logits model."""
         return self.model(X)
 
     def get_class_names(self):
-        """Load ImageNet class names from the dataset."""
         return ["Cat", "Dog"]
     
     def load_feature_vectors(self):
+        """Load pre-extracted feature vectors"""
         path = "/home/grotehans/xai_locality/data/cats_vs_dogs/feature_vectors_binary_inception_cats_dogs_test.csv"
         feat_vec = pd.read_csv(path)
-        feat_vec.drop(columns=['label'])
+        feat_vec = feat_vec.drop(columns=['label'])
+        feat_vec = feat_vec.drop(columns=['path'])
         return feat_vec.to_numpy()
 
 
 
 class InceptionV3BinaryClassifier(nn.Module):
-    def __init__(self, pretrained=True):
+    def __init__(self, pretrained=True, device="cpu"):
         super(InceptionV3BinaryClassifier, self).__init__()
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if device == "auto":
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else: 
+            device = torch.device(device)
         self.model = models.inception_v3(pretrained=pretrained)
         self.model.fc = nn.Linear(self.model.fc.in_features, 1)
         self.model.AuxLogits.fc = nn.Linear(self.model.AuxLogits.fc.in_features, 1)
-        # Load saved state dict properly
         state_dict = torch.load("/home/grotehans/xai_locality/pretrained_models/inception_v3/binary_cat_dog_best.pth", 
-                        map_location=device)
+                        map_location=device, weights_only=True)
         self.model.load_state_dict(state_dict)
         
     def forward(self, x):

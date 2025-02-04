@@ -10,9 +10,9 @@ from sklearn.neighbors import BallTree
 from joblib import Parallel, delayed
 import random
 from functools import partial
-from utils.plotting_utils import plot_accuracy_vs_threshold, plot_accuracy_vs_fraction, plot_3d_scatter
-from utils.misc import get_non_zero_cols, set_random_seeds
-from lime_analysis.lime_local_classifier import compute_lime_accuracy_per_radius, compute_explanations
+from src.utils.plotting_utils import plot_accuracy_vs_threshold, plot_accuracy_vs_fraction, plot_3d_scatter
+from src.utils.misc import get_non_zero_cols, set_random_seeds
+from src.explanation_methods.lime_analysis.lime_local_classifier import compute_lime_accuracy_per_radius, compute_explanations
 import os
 
 

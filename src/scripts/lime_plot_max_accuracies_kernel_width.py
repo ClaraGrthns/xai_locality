@@ -1,8 +1,8 @@
 import argparse
 import numpy as np
-from utils.plotting_utils import plot_accuracy_vs_fraction
+from src.utils.plotting_utils import plot_accuracy_vs_fraction
 import os.path as osp
-from utils.misc import load_and_get_non_zero_cols
+from src.utils.misc import load_and_get_non_zero_cols
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Plot accuracy vs fraction for different kernel widths.")

@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from lime_analysis.lime_local_classifier import get_feat_coeff_intercept
+from src.explanation_methods.lime_analysis.lime_local_classifier import get_feat_coeff_intercept
 from matplotlib.lines import Line2D
 from matplotlib import cm
 
@@ -14,9 +14,7 @@ def plot_accuracy_vs_threshold(accuracy,
                                 title_add_on="",
                                 save_path=None):
     mean_accuracy = np.mean(accuracy, axis=1)   
-    mean_accuracy_class_1 = np.mean(accuracy[:, model_predictions == 1], axis=1) if model_predictions is not None else None
-    mean_accuracy_class_0 = np.mean(accuracy[:, model_predictions == 0], axis=1) if model_predictions is not None else None
-
+    
     light_violet = "#d8bfd8"
     light_red = "#ffa5b3"
     light_blue = "#9cdbfb"

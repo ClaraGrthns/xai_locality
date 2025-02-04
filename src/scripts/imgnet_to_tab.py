@@ -4,7 +4,7 @@ import torch
 import pandas as pd
 from torch.utils.data import DataLoader
 import numpy as np
-from model.factory import ModelHandlerFactory
+from src.model.factory import ModelHandlerFactory
 
 def get_default_transforms():
     """Get the default ImageNet transforms."""
