@@ -38,7 +38,7 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         return saliency_maps
     
     def get_experiment_setting(self, fractions, args):
-        return f"fractions-{0}-{np.round(fractions[-1])}_grad_method-{args.gradient_method}_model_type-{args.model_type}_accuracy_fraction.npy"      
+        return f"fractions-{np.round(fractions[0], 2)}-{np.round(fractions[-1], 2)}_grad_method-{args.gradient_method}_model_type-{args.model_type}_accuracy_fraction.npy"      
     
     def process_data(self, dataset, model_handler, args):
         df_feat = model_handler.load_feature_vectors()

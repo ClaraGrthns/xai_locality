@@ -58,6 +58,7 @@ def main(args):
     dataset = model_handler.load_data(args.data_path)
 
     model = model_handler.model
+    model.eval()
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
     features, labels, paths = extract_features(dataloader, model)
     feature_df = pd.DataFrame(features)

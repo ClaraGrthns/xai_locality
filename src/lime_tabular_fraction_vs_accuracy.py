@@ -1,11 +1,10 @@
 import os.path as osp
 import numpy as np
 import argparse
-import lime.lime_tabular
 from sklearn.neighbors import BallTree
 from joblib import Parallel, delayed
-from src.utils.misc import get_non_zero_cols, set_random_seeds, get_path
-from src.explanation_methods.lime_analysis.lime_local_classifier import compute_lime_accuracy_per_fraction, compute_explanations
+from src.utils.misc import  set_random_seeds, get_path
+from src.explanation_methods.lime_analysis.lime_local_classifier import compute_lime_accuracy_per_fraction
 import os
 from src.explanation_methods.factory import ExplanationMethodHandlerFactory
 from src.model.factory import ModelHandlerFactory
@@ -20,10 +19,8 @@ def validate_distance_measure(distance_measure):
     assert distance_measure in valid_distance_measures, f"Invalid distance measure: {distance_measure}. Valid options are: {valid_distance_measures}"
 
 def main(args):
+    print(f"Running analysis, with following arguments: {args}")
     set_random_seeds(args.random_seed)
-
-    include_trn = args.include_trn
-    include_val = args.include_val
 
     data_path = get_path(args.data_folder, args.data_path, args.setting)
     model_path = get_path(args.model_folder, args.model_path, args.setting, suffix="final_model_")
@@ -43,29 +40,18 @@ def main(args):
     dataset = model_handler.load_data(data_path)
     trn_feat = dataset[4] if type(dataset) == tuple else dataset
     
-
-    # # Handle test set splits
-    # if args.num_test_splits > 1:
-    #     print(f"Splitting test set into {args.num_test_splits} chunks")
-    #     print(f"Using split index {args.split_idx}")
-    #     chunk_size = len(tst_feat) // args.num_test_splits
-    #     assert (args.split_idx is not None), "split_idx must be specified if num_test_splits > 1"
-    #     assert args.split_idx < args.num_test_splits, "split_idx must be less than num_test_splits"
-    #     start = args.split_idx * chunk_size
-    #     end = start + chunk_size
-    #     tst_feat = tst_feat[start:end]
-
-    #     # Split train and validation sets accordingly
-    #     trn_chunk_size = len(trn_feat) // args.num_test_splits
-    #     val_chunk_size = len(val_feat) // args.num_test_splits
-    #     trn_start = args.split_idx * trn_chunk_size
-    #     trn_end = trn_start + trn_chunk_size
-    #     val_start = args.split_idx * val_chunk_size
-    #     val_end = val_start + val_chunk_size
-    #     trn_feat = trn_feat[trn_start:trn_end]
-    #     val_feat = val_feat[val_start:val_end]
-
     predict_fn = model_handler.predict_fn
+    
+    class_names = model_handler.get_class_names()
+    explanation_handler = ExplanationMethodHandlerFactory.get_handler(method="LIME",
+                                                        trn_feat=trn_feat,
+                                                       feature_names=np.arange(trn_feat.shape[1]),
+                                                       class_names=class_names,
+                                                       discretize_continuous=True,
+                                                       random_state=args.random_seed,
+                                                       kernel_width=args.kernel_width)
+    explainer = explanation_handler.explainer
+
     tst_feat_for_dist, df_feat_for_dist, tst_feat_for_expl, df_feat_for_expl = explanation_handler.process_data(dataset, model_handler, args)
 
 
@@ -80,14 +66,6 @@ def main(args):
     if args.kernel_width is None:
         args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2)  # Default value
 
-    class_names = model_handler.get_class_names()
-    explanation_handler = ExplanationMethodHandlerFactory.get_handler(trn_feat=trn_feat,
-                                                       feature_names=np.arange(trn_feat.shape[1]),
-                                                       class_names=class_names,
-                                                       discretize_continuous=True,
-                                                       random_state=args.random_seed,
-                                                       kernel_width=args.kernel_width)
-    explainer = explanation_handler.explainer
     explanations = explanation_handler.compute_explanations(results_path=results_path, 
                                                             explainer=explainer, 
                                                             predict_fn=predict_fn, 
@@ -122,6 +100,7 @@ def main(args):
                 results["radius"][fraction_idx, i:i+chunk_size] = chunk_results[-1]
             np.savez(osp.join(results_path, experiment_setting), **results)
         else:
+            print(f"Processing chunk {i//chunk_size + 1}/{(len(tst_feat_for_dist) + chunk_size - 1)//chunk_size}")
             # Parallel processing for normal execution
             chunk_end = min(i + chunk_size, len(tst_feat_for_dist))
             tst_chunk = tst_feat_for_dist[i:chunk_end]

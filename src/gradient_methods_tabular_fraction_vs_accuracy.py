@@ -27,6 +27,7 @@ def validate_distance_measure(distance_measure):
 
 
 def main(args):
+    print(f"Running analysis, with following arguments: {args}")
     set_random_seeds(args.random_seed)
     results_path = args.results_folder
     if not osp.exists(results_path):
@@ -78,19 +79,18 @@ def main(args):
     }
 
     experiment_setting = explanation_handler.get_experiment_setting(fractions, args)
-    results_file_path = osp.join(results_path, experiment_setting)
 
     # for i in range(0, len(tst_feat), args.chunk_size):
     for i, (imgs,_,_) in enumerate(tst_feat_for_expl):
-        print(f"Computing accuracy for chunk {i} to {i+args.chunk_size}")
         chunk_start = i*args.chunk_size
         chunk_end = min(chunk_start + args.chunk_size, len(tst_feat_for_dist))
-        explanations_chunk = explanations[i:chunk_end]
+        print(f"Computing accuracy for chunk {i} from {chunk_start} to {chunk_end}")
+        explanations_chunk = explanations[chunk_start:chunk_end]
         imgs = imgs.to(device)
         for n_closest in n_points_in_ball:
             print(f"Computing accuracy for {n_closest} closest points")
             top_labels = torch.argmax(predict_fn(imgs), dim=1).tolist()
-            n_closest, acc, rad = compute_gradmethod_accuracy_per_fraction(tst_feat_for_dist[i:i+args.chunk_size], 
+            n_closest, acc, rad = compute_gradmethod_accuracy_per_fraction(tst_feat_for_dist[chunk_start:chunk_end], 
                                                                                 top_labels,
                                                                                 df_feat_for_expl, 
                                                                                 explanations_chunk, 
@@ -104,7 +104,7 @@ def main(args):
             results["radius"][fraction_idx, i:i+args.chunk_size] = rad
             print(f"Finished computing accuracy for {n_closest} closest points")
         print(f"Finished computing accuracy for chunk {i} to {i+args.chunk_size}")
-        np.save(results_file_path, results)
+        np.savez(osp.join(results_path, experiment_setting), **results)
 
     print("Finished computing LIME accuracy and fraction of points in the ball")
 

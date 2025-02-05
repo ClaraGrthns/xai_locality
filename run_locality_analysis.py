@@ -14,11 +14,11 @@ def get_common_parser():
     # Common arguments between both methods
     parser.add_argument("--model_type", type=str, required=True,
                        help="Model type to analyze")
-    parser.add_argument("--results_folder", type=str, required=True,
+    parser.add_argument("--results_folder", type=str,
                        help="Path to save results")
     parser.add_argument("--distance_measure", type=str, default="euclidean",
                        help="Distance measure to use")
-    parser.add_argument("--max_frac", type=float, default=0.08,
+    parser.add_argument("--max_frac", type=float, default=0.1,
                        help="Maximum fraction of points to analyze")
     parser.add_argument("--num_frac", type=int, default=50,
                        help="Number of fractions to compute")
