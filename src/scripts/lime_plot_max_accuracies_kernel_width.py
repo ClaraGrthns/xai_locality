@@ -1,6 +1,6 @@
 import argparse
 import numpy as np
-from src.utils.plotting_utils import plot_accuracy_vs_fraction
+from src.utils.plotting_utils import plot_accuracy_vs_radius
 import os.path as osp
 from src.utils.misc import load_and_get_non_zero_cols
 
@@ -54,7 +54,7 @@ def main():
 
     kernel_id_to_width = {i: str(kw) for i, kw in enumerate(args.kernel_widths)}
     graphics_path = osp.join(results_path, "graphics", f"max_accuracy_vs_fraction_kernel.pdf")
-    plot_accuracy_vs_fraction(max_accuracies, selected_fractions, 
+    plot_accuracy_vs_radius(max_accuracies, selected_fractions, 
                               kernel_ids=max_indices, 
                               kernel_id_to_width=kernel_id_to_width, 
                               title_add_on=" - max over kernel widths",

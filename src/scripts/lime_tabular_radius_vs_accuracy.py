@@ -10,7 +10,7 @@ from sklearn.neighbors import BallTree
 from joblib import Parallel, delayed
 import random
 from functools import partial
-from src.utils.plotting_utils import plot_accuracy_vs_threshold, plot_accuracy_vs_fraction, plot_3d_scatter
+from src.utils.plotting_utils import plot_accuracy_vs_threshold, plot_accuracy_vs_radius, plot_3d_scatter
 from src.utils.misc import get_non_zero_cols, set_random_seeds
 from src.explanation_methods.lime_analysis.lime_local_classifier import compute_lime_accuracy_per_radius, compute_explanations
 import os
@@ -222,7 +222,7 @@ def main(args):
                                        thresholds=results["thresholds"], 
                                     #    model_predictions=model_predictions[:non_zero_cols], 
                                        save_path=osp.join(graphics_dir, acc_vs_treshhold))
-            plot_accuracy_vs_fraction(accuracy=results["accuracy"][:, :non_zero_cols], 
+            plot_accuracy_vs_radius(accuracy=results["accuracy"][:, :non_zero_cols], 
                                     fraction_points_in_ball=results["fraction_points_in_ball"][:, :non_zero_cols], 
                                     # model_predictions=model_predictions[:non_zero_cols], 
                                     save_path=osp.join(graphics_dir, acc_vs_fraction),
