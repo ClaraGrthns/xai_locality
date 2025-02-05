@@ -38,8 +38,15 @@ class InceptionV3_Handler(BaseModelHandler):
     
 class BinaryInceptionV3_Handler(BaseModelHandler):
     def load_model(self, model_path):
-        return InceptionV3BinaryClassifier()
-
+        device = torch.device("cpu")
+        self.model = models.inception_v3(pretrained=True)
+        self.model.fc = nn.Linear(self.model.fc.in_features, 1)
+        self.model.AuxLogits.fc = nn.Linear(self.model.AuxLogits.fc.in_features, 1)
+        state_dict = torch.load("/home/grotehans/xai_locality/pretrained_models/inception_v3/binary_cat_dog_best.pth", 
+                        map_location=device, weights_only=True)
+        self.model.load_state_dict(state_dict)
+        return self.model
+    
     def load_data(self, data_path = "/home/grotehans/xai_locality/data/cats_vs_dogs/test"):
         return CatsVsDogsDataset(data_path, transform="default")
     
