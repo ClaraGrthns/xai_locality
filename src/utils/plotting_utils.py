@@ -1,12 +1,71 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from src.explanation_methods.lime_analysis.lime_local_classifier import get_feat_coeff_intercept
+# from src.explanation_methods.lime_analysis.lime_local_classifier import get_feat_coeff_intercept
 from matplotlib.lines import Line2D
 from matplotlib import cm
+from typing import Optional
 
 light_red = "#ffa5b3"
 light_blue = "#9cdbfb"
 light_grey = "#61cff2"
+
+def plot_mean_accuracies_vs_fractions(means: list[np.array], fractions: np.array, kernels=None, explanation_method:str="LIME", y_lim:tuple=None):
+    plt.figure(figsize=(8, 5))
+    cmap = plt.get_cmap('tab10')
+    for i, mean_accuracies in enumerate(means):
+        color = cmap(i % 10)
+        label = f'Kernel width: {kernels[i]}' if kernels is not None else None
+        plt.scatter(fractions, mean_accuracies, color=color, s=50, marker='o', label=label)
+
+    plt.title(f'{explanation_method}: Mean Accuracies vs. neighbourhood of $x$, $\\frac{{|N_d(x,*)|}}{{|D_{{test}}|}}$', fontsize=16)
+    plt.xlabel('Relative Size of Approximation Region', fontsize=14)
+    plt.ylabel('Mean Accuracies', fontsize=14)
+    if y_lim is not None:
+        plt.ylim(y_lim)
+    if kernels is not None:
+        plt.legend(fontsize=10, loc='upper right', ncol=2)  
+
+    plt.grid(color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
+
+    plt.tight_layout()
+    plt.show()
+
+
+
+def plot_accuracy_vs_fraction(accuracy, 
+                            fraction_points_in_ball, 
+                            title_add_on="", 
+                            save_path=None,
+                            alpha=0.3):
+    mean_accuracy = np.mean(accuracy, axis=1)
+    color_array =  "#008080"
+
+    # Create figure and axis objects
+    fig, ax = plt.subplots()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    accuracy_t = accuracy.T.flatten()
+    fraction_points_in_ball_t = fraction_points_in_ball.repeat(accuracy.shape[1])
+
+    ax.scatter(fraction_points_in_ball_t, accuracy_t.flatten(), s=2, alpha = alpha, c=color_array)
+
+    ax.scatter(fraction_points_in_ball, mean_accuracy, s=10, c='k', marker='x', label='Mean')
+    ax.set_ylim(0, 1)
+
+    ax.axhline(0.5, color='k', linestyle='dashed', linewidth=1)
+    ax.set_xlabel("Relative Size of Approximation Region")
+    ax.set_ylabel("Mean Accuracy") 
+    ax.set_title(f"Accuracy vs. Relative Size of approximation region, {title_add_on}")
+
+    legend_elements = [
+        Line2D([0], [0], marker='x', color='k', linestyle='None', label='Mean', markersize=6)
+    ]
+    
+    ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()
+
 
 def plot_accuracy_vs_threshold(accuracy, 
                                 thresholds, 
@@ -53,7 +112,10 @@ def plot_accuracy_vs_threshold(accuracy,
     plt.show()
 
 
-def plot_accuracy_vs_fraction(accuracy, 
+
+
+
+def plot_accuracy_vs_radius(accuracy, 
                             fraction_points_in_ball, 
                             model_predictions=None, 
                             kernel_ids = None, 
