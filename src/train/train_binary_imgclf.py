@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import models, transforms
 from torch.utils.data import DataLoader
-from dataset.cats_vs_dogs import CatsVsDogsTrnDataset
+from src.dataset.cats_vs_dogs import CatsVsDogsDataset
 from torch.utils.tensorboard import SummaryWriter
 import os
 from sklearn.model_selection import train_test_split
@@ -23,12 +23,22 @@ def get_config():
     }
 
 def setup_model(device):
-    model = InceptionV3BinaryClassifier()
+    model = models.inception_v3(pretrained=True)
     for param in model.parameters():
         param.requires_grad = False
+    
+    model.fc = nn.Linear(model.fc.in_features, 1)
+    model.AuxLogits.fc = nn.Linear(model.AuxLogits.fc.in_features, 1)
+    
     for param in model.fc.parameters():
         param.requires_grad = True
+    for param in model.AuxLogits.fc.parameters():
+        param.requires_grad = True
         
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.eval()
+            
     model = model.to(device)
     return model
 
@@ -40,7 +50,7 @@ def get_transforms():
     ])
 
 def load_data(config):
-    dataset = CatsVsDogsTrnDataset("/home/grotehans/xai_locality/data/cats_vs_dogs/train", transform=get_transforms())
+    dataset = CatsVsDogsDataset("/home/grotehans/xai_locality/data/cats_vs_dogs/train", transform=get_transforms())
 
     train_indices, val_indices = train_test_split(
         list(range(len(dataset))),
@@ -61,10 +71,13 @@ def load_data(config):
 
 def train_epoch(model, train_loader, criterion, optimizer, device, writer, epoch):
     model.train()
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.eval()
     running_loss = 0.0
     running_accuracy = 0.0
     
-    for i, (images, labels) in enumerate(train_loader):
+    for i, (images, labels, _) in enumerate(train_loader):
         labels = labels.to(dtype=torch.float)
         images, labels = images.to(device), labels.to(device)
         
@@ -99,7 +112,7 @@ def validate(model, val_loader, criterion, device, writer):
     val_loss = 0.0
     
     with torch.no_grad():
-        for images, labels in val_loader:
+        for images, labels, _ in val_loader:
             labels = labels.to(dtype=torch.float)
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
@@ -123,9 +136,16 @@ def main():
     print(f"Using device: {device}")
     
     model = setup_model(device)
+    print("parameters unfreezed for training:")
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(name)
+
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = optim.SGD(model.fc.parameters(), lr=config['learning_rate'], momentum=config['momentum'])
-    
+    optimizer = optim.Adam(
+                list(model.fc.parameters()) + list(model.AuxLogits.fc.parameters()), 
+                lr=config['learning_rate']
+            )    
     train_loader, val_loader = load_data(config)
     writer = SummaryWriter(log_dir=config['log_dir'])
     
