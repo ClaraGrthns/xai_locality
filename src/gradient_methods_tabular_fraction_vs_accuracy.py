@@ -29,84 +29,55 @@ def validate_distance_measure(distance_measure):
 def main(args):
     print(f"Running analysis, with following arguments: {args}")
     set_random_seeds(args.random_seed)
-    results_path = args.results_folder
+
+    results_path = get_path(args.results_folder, args.results_path, args.setting)
     if not osp.exists(results_path):
         os.makedirs(results_path)
     print("saving results to: ", results_path)
-    device = torch.device("cpu")
-    print("device: ", device)
-    model_handler = ModelHandlerFactory.get_handler(args.model_type, model_path=None)
+    
+    model_handler = ModelHandlerFactory.get_handler(args.model_type)
     model = model_handler.model
-    model.eval()
-    model.to(device)
-
-    explanation_handler = ExplanationMethodHandlerFactory.get_handler(args.gradient_method, forward_func=model, multiply_by_inputs=False)
-
     dataset = model_handler.load_data()
     predict_fn = model_handler.predict_fn
-    print("dataset of length: ", len(dataset))
 
+    if args.method == "lime" and args.kernel_width is None:
+        args.kernel_width = np.round(np.sqrt(dataset[4].shape[1]) * .75, 2)  # Default value
+    
+    explanation_handler = ExplanationMethodHandlerFactory.get_handler(args.method)
+    explanation_handler.set_explainer(forward_func=model, 
+                                      multiply_by_inputs=False,
+                                      dataset=dataset,
+                                      class_names=model_handler.get_class_names(),
+                                      args = args,
+                                    )
+
+    tst_feat_for_dist, df_feat_for_dist, tst_feat_for_expl, df_feat_for_expl = explanation_handler.process_data(dataset, model_handler, args)
+    explanations = explanation_handler.compute_explanations(results_path=results_path, 
+                                                            predict_fn=predict_fn, 
+                                                            tst_data=tst_feat_for_expl, 
+                                                            args=args)
+    
     validate_distance_measure(args.distance_measure)
     distance_measure = "pyfunc" if args.distance_measure == "cosine" else args.distance_measure
     
-    #   tst_feat, analysis_feat, tst_data, analysis_data, data_loader_tst
-    tst_feat_for_dist, df_feat_for_dist, tst_feat_for_expl, df_feat_for_expl = explanation_handler.process_data(dataset, model_handler, args)
-
-    print("tst_feat shape: ", tst_feat_for_dist.shape)
-    print("analysis_feat shape: ", df_feat_for_dist.shape)
-    print("tst_data len: ", len(tst_feat_for_expl))
-    print("analysis_data len: ", len(df_feat_for_expl))
-
     tree = BallTree(df_feat_for_dist, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_feat_for_dist, metric=distance_measure, func=cosine_distance)
     n_points_in_ball = np.linspace(20, int(args.max_frac* len(df_feat_for_dist)), args.num_frac, dtype=int)
     fractions = n_points_in_ball / len(df_feat_for_dist)
     
-    explanation_handler = ExplanationMethodHandlerFactory.get_handler(args.gradient_method, forward_func=model, multiply_by_inputs=False)
-    explainer = explanation_handler.explainer
-    explanations = explanation_handler.compute_explanations(results_path=results_path, 
-                                                            explainer=explainer, 
-                                                            predict_fn=predict_fn, 
-                                                            tst_data=tst_feat_for_expl, 
-                                                            device=device, 
-                                                            args=args)
-
-    num_fractions = len(fractions)
-    results = {
-        "accuracy": np.zeros((num_fractions, args.max_test_points)),
-        "radius": np.zeros((num_fractions, args.max_test_points)),
-        "fraction_points_in_ball": fractions,
-        "ratio_all_ones": np.zeros((num_fractions, args.max_test_points)),
-    }
-
     experiment_setting = explanation_handler.get_experiment_setting(fractions, args)
+    explanation_handler.run_analysis(
+                     tst_feat_for_expl, 
+                     tst_feat_for_dist, 
+                     df_feat_for_expl, 
+                     df_feat_for_dist,
+                     explanations, 
+                     n_points_in_ball, 
+                     predict_fn, 
+                     tree,
+                     results_path,
+                     experiment_setting)
 
-    # for i in range(0, len(tst_feat), args.chunk_size):
-    for i, (imgs,_,_) in enumerate(tst_feat_for_expl):
-        chunk_start = i*args.chunk_size
-        chunk_end = min(chunk_start + args.chunk_size, len(tst_feat_for_dist))
-        print(f"Computing accuracy for chunk {i} from {chunk_start} to {chunk_end}")
-        explanations_chunk = explanations[chunk_start:chunk_end]
-        imgs = imgs.to(device)
-        for n_closest in n_points_in_ball:
-            print(f"Computing accuracy for {n_closest} closest points")
-            top_labels = torch.argmax(predict_fn(imgs), dim=1).tolist()
-            n_closest, acc, rad = compute_gradmethod_accuracy_per_fraction(tst_feat_for_dist[chunk_start:chunk_end], 
-                                                                                top_labels,
-                                                                                df_feat_for_expl, 
-                                                                                explanations_chunk, 
-                                                                                predict_fn, 
-                                                                                n_closest, 
-                                                                                tree, 
-                                                                                device,
-                                                                                pred_threshold=args.predict_threshold)
-            fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
-            results["accuracy"][fraction_idx, i:i+args.chunk_size] = acc.cpu().numpy()
-            results["radius"][fraction_idx, i:i+args.chunk_size] = rad
-            print(f"Finished computing accuracy for {n_closest} closest points")
-        print(f"Finished computing accuracy for chunk {i} to {i+args.chunk_size}")
-        np.savez(osp.join(results_path, experiment_setting), **results)
-
-    print("Finished computing LIME accuracy and fraction of points in the ball")
+    print("Finished computing accuracy and fraction of points in the ball")
 
    
 if __name__ == "__main__":

@@ -21,107 +21,54 @@ def validate_distance_measure(distance_measure):
 def main(args):
     print(f"Running analysis, with following arguments: {args}")
     set_random_seeds(args.random_seed)
-
-    data_path = get_path(args.data_folder, args.data_path, args.setting)
-    model_path = get_path(args.model_folder, args.model_path, args.setting, suffix="final_model_")
-    results_path = get_path(args.results_folder, args.results_path, args.setting)
-    if args.num_test_splits > 1:
-        results_path = osp.join(results_path, f"test_splits")
     
+    results_path = get_path(args.results_folder, args.results_path, args.setting)
     if not osp.exists(results_path):
         os.makedirs(results_path)
     print("saving results to: ", results_path)
 
-    # Add .npz extension specifically for data_path
-    if args.data_folder is not None:
-        data_path += ".npz"
-
-    model_handler = ModelHandlerFactory.get_handler(args.model_type, model_path)
-    dataset = model_handler.load_data(data_path)
-    trn_feat = dataset[4] if type(dataset) == tuple else dataset
-    
+    model_handler = ModelHandlerFactory.get_handler(args.model_type)
+    model = model_handler.model
+    dataset = model_handler.load_data()
     predict_fn = model_handler.predict_fn
     
-    class_names = model_handler.get_class_names()
-    explanation_handler = ExplanationMethodHandlerFactory.get_handler(method="LIME",
-                                                        trn_feat=trn_feat,
-                                                       feature_names=np.arange(trn_feat.shape[1]),
-                                                       class_names=class_names,
-                                                       discretize_continuous=True,
-                                                       random_state=args.random_seed,
-                                                       kernel_width=args.kernel_width)
-    explainer = explanation_handler.explainer
+    if args.method == "lime" and args.kernel_width is None:
+        args.kernel_width = np.round(np.sqrt(dataset[4].shape[1]) * .75, 2)  # Default value
+
+    explanation_handler = ExplanationMethodHandlerFactory.get_handler(method=args.method)
+    explanation_handler.set_explainer(dataset=dataset,
+                                    class_names=model_handler.get_class_names(),
+                                    args = args,
+                                    forward_func=model, 
+                                    multiply_by_inputs=False,)
 
     tst_feat_for_dist, df_feat_for_dist, tst_feat_for_expl, df_feat_for_expl = explanation_handler.process_data(dataset, model_handler, args)
-
-
+    
+    explanations = explanation_handler.compute_explanations(results_path=results_path, 
+                                                            predict_fn=predict_fn, 
+                                                            tst_data=tst_feat_for_expl, 
+                                                            args=args)
+    
     validate_distance_measure(args.distance_measure)
     distance_measure = "pyfunc" if args.distance_measure == "cosine" else args.distance_measure
     
     tree = BallTree(df_feat_for_dist, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_feat_for_dist, metric=distance_measure, func=cosine_distance)
     n_points_in_ball = np.linspace(20, int(args.max_frac* len(df_feat_for_dist)), args.num_frac, dtype=int)
-    
     fractions = n_points_in_ball / len(df_feat_for_dist)
     
-    if args.kernel_width is None:
-        args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2)  # Default value
-
-    explanations = explanation_handler.compute_explanations(results_path=results_path, 
-                                                            explainer=explainer, 
-                                                            predict_fn=predict_fn, 
-                                                            tst_data=tst_feat_for_dist, 
-                                                            device=None, 
-                                                            args=args)
     experiment_setting = explanation_handler.get_experiment_setting(fractions, args)
-    
-    
-    num_samples = len(tst_feat_for_dist)
-    num_fractions = len(fractions)
-    results = {
-        "accuracy": np.zeros((num_fractions, num_samples)),
-        "radius": np.zeros((num_fractions, num_samples)),
-        "fraction_points_in_ball": fractions,
-        "ratio_all_ones": np.zeros((num_fractions, num_samples)),
-    }
-    chunk_size = args.chunk_size
-    predict_threshold = args.predict_threshold
-    for i in range(0, len(tst_feat_for_dist), chunk_size):
-        if args.debug:
-            # Normal for loop for easier debugging
-            chunk_end = min(i + chunk_size, len(tst_feat_for_dist))
-            explanations_chunk = explanations[i:chunk_end]
-            for n_closest in n_points_in_ball:
-                print(f"Processing fraction {n_closest}")
-                chunk_results = compute_lime_accuracy_per_fraction(
-                    tst_feat_for_dist[i:i+chunk_size], df_feat_for_dist, explanations_chunk, explainer, predict_fn, n_closest, tree, predict_threshold
-                )
-                fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
-                results["accuracy"][fraction_idx, i:i+chunk_size] = chunk_results[1]
-                results["radius"][fraction_idx, i:i+chunk_size] = chunk_results[-1]
-            np.savez(osp.join(results_path, experiment_setting), **results)
-        else:
-            print(f"Processing chunk {i//chunk_size + 1}/{(len(tst_feat_for_dist) + chunk_size - 1)//chunk_size}")
-            # Parallel processing for normal execution
-            chunk_end = min(i + chunk_size, len(tst_feat_for_dist))
-            tst_chunk = tst_feat_for_dist[i:chunk_end]
-            explanations_chunk = explanations[i:chunk_end]
-            chunk_results = Parallel(n_jobs=-1)(
-                    delayed(compute_lime_accuracy_per_fraction)(
-                        tst_chunk, df_feat_for_dist, explanations_chunk, explainer, predict_fn, n_closest, tree, predict_threshold
-                    )
-                    for n_closest in n_points_in_ball
-                )
-            # Unpack results directly into the correct positions in the arrays
-            for n_closest, acc, ratio, R in chunk_results:
-                fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
-                results["accuracy"][fraction_idx, i:chunk_end] = acc
-                results["ratio_all_ones"][fraction_idx, i:chunk_end] = ratio
-                results["radius"][fraction_idx, i:chunk_end] = R
-
-        np.savez(osp.join(results_path, experiment_setting), **results)
-        print(f"Processed chunk {i//chunk_size + 1}/{(len(tst_feat_for_dist) + chunk_size - 1)//chunk_size}")
-
-    print("Finished computing LIME accuracy and fraction of points in the ball")
+    explanation_handler.run_analysis(
+                     tst_feat_for_expl, 
+                     tst_feat_for_dist, 
+                     df_feat_for_expl, 
+                     df_feat_for_dist,
+                     explanations, 
+                     n_points_in_ball, 
+                     predict_fn, 
+                     tree,
+                     results_path,
+                     experiment_setting)
+    print("Finished computing accuracy and fraction of points in the ball")
 
    
 if __name__ == "__main__":

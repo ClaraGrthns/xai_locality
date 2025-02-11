@@ -4,11 +4,11 @@ class ExplanationMethodHandlerFactory:
     METHOD_HANDLERS = {
         "IG": IntegratedGradientsHandler,
         "IG+SmoothGrad": SmoothGradHandler,
-        "LIME": LimeHandler
+        "lime": LimeHandler
     }
 
     @staticmethod
-    def get_handler(method, **kwargs):
+    def get_handler(method):
         if method not in ExplanationMethodHandlerFactory.METHOD_HANDLERS:
             raise ValueError(f"Unsupported explanation method: {method}")
-        return ExplanationMethodHandlerFactory.METHOD_HANDLERS[method](**kwargs)
+        return ExplanationMethodHandlerFactory.METHOD_HANDLERS[method]

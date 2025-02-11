@@ -16,7 +16,7 @@ class ModelHandlerFactory:
     }
 
     @staticmethod
-    def get_handler(model_type, model_path):
+    def get_handler(model_type):
         if model_type not in ModelHandlerFactory.MODEL_HANDLERS:
             raise ValueError(f"Unsupported model type: {model_type}")
-        return ModelHandlerFactory.MODEL_HANDLERS[model_type](model_path)
+        return ModelHandlerFactory.MODEL_HANDLERS[model_type]

@@ -7,15 +7,15 @@ from torch_frame.gbdt import XGBoost
 from src.model.base import BaseModelHandler
 
 class PTFrame_XGBoostHandler(BaseModelHandler):
-    def load_model(self, model_path):
+    def load_model(self):
         """Load an XGBoost model using the TorchFrame wrapper."""
         model = XGBoost(task_type=TaskType.BINARY_CLASSIFICATION, num_classes=2)
-        model.load(model_path)
+        model.load(self.model_path)
         return model
 
-    def load_data(self, data_path):
+    def load_data(self):
         """Load train, validation, and test datasets from a Torch tensor frame."""
-        data = torch.load(data_path)
+        data = torch.load(self.data_path)
         train_tensor_frame, val_tensor_frame, test_tensor_frame = data["train"], data["val"], data["test"]
 
         tst_feat, tst_y, _ = self.model._to_xgboost_input(test_tensor_frame)

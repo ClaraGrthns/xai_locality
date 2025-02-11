@@ -34,7 +34,7 @@ def load_and_get_non_zero_cols(data_path):
 
 
 def get_path(base_folder, base_path, setting, suffix=""):
-    if base_folder is None:
+    if base_path is not None:
         return base_path
-    assert setting is not None, "Setting must be specified if folder is provided"
+    assert (base_folder is not None) and (setting is not None), "Setting must be specified if folder is provided"
     return osp.join(base_folder, f"{suffix}{setting}")

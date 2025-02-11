@@ -5,13 +5,13 @@ import torch
 from src.model.base import BaseModelHandler
 
 class PTFrame_LightGBMHandler(BaseModelHandler):
-    def load_model(self, model_path):
+    def load_model(self):
         model = LightGBM(task_type=TaskType.BINARY_CLASSIFICATION, num_classes=2)
-        model.load(model_path)
+        model.load(self.model_path)
         return model
 
-    def load_data(self, data_path):
-        data = torch.load(data_path)
+    def load_data(self):
+        data = torch.load(self.data_path)
         train_tensor_frame, val_tensor_frame, test_tensor_frame = data["train"], data["val"], data["test"]
         tst_feat, tst_y, _ = self.model._to_lightgbm_input(test_tensor_frame)
         val_feat, val_y, _ = self.model._to_lightgbm_input(val_tensor_frame)
