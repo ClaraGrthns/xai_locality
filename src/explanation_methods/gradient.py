@@ -75,6 +75,7 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
                     predictions = predict_fn(imgs) #shape: num test samples x num classes
                     predictions_baseline = predict_fn(torch.zeros_like(imgs)) #
                 chunk_result = compute_gradmethod_mse_per_fraction(tst_feat_for_dist[chunk_start:chunk_end], 
+                                                                   imgs,
                                                                                     predictions,
                                                                                     predictions_baseline,
                                                                                     df_feat_for_expl, 
@@ -83,10 +84,12 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
                                                                                     n_closest, 
                                                                                     tree, 
                                                                                 )
-                n_closest, mse, rad = chunk_result
+                n_closest, mse, mse_lin_approx, variance_pred, rad = chunk_result
                 fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
-                results["mse"][fraction_idx, i:i+chunk_size] = mse.cpu().numpy()
-                results["radius"][fraction_idx, i:i+chunk_size] = rad
+                results["mse"][fraction_idx, chunk_start:chunk_end] = mse.cpu().numpy()
+                results["mse_lin_approx"][fraction_idx, chunk_start:chunk_end] = mse_lin_approx.cpu().numpy()
+                results["variance_pred"][fraction_idx, chunk_start:chunk_end] = variance_pred.cpu().numpy()
+                results["radius"][fraction_idx, chunk_start:chunk_end ] = rad
                 print(f"Finished computing mse/var for {n_closest} closest points")
             np.savez(osp.join(results_path, experiment_setting), **results)
 

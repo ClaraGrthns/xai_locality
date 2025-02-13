@@ -9,28 +9,32 @@ light_red = "#ffa5b3"
 light_blue = "#9cdbfb"
 light_grey = "#61cff2"
 
-def plot_mean_accuracies_vs_fractions(means: list[np.array], fractions: np.array, kernels=None, explanation_method:str="LIME", y_lim:tuple=None):
-    plt.figure(figsize=(8, 5))
+def plot_mean_metrics_vs_fractions(means: list[np.array], fractions: np.array, kernels=None, explanation_method:str="LIME", y_lim:tuple=None, metrics_string:str="Accuracy", ax=None):
+    if ax is None:
+        fig = plt.figure(figsize=(8, 5))
+        ax = plt.gca()
+    
     cmap = plt.get_cmap('tab10')
     for i, mean_accuracies in enumerate(means):
         color = cmap(i % 10)
         label = f'Kernel width: {kernels[i]}' if kernels is not None else None
-        plt.scatter(fractions, mean_accuracies, color=color, s=50, marker='o', label=label)
+        ax.scatter(fractions, mean_accuracies, color=color, s=50, marker='o', label=label)
 
-    plt.title(f'{explanation_method}: Mean Accuracies vs. neighbourhood of $x$, $\\frac{{|N_d(x,*)|}}{{|D_{{test}}|}}$', fontsize=16)
-    plt.xlabel('Relative Size of Approximation Region', fontsize=14)
-    plt.ylabel('Mean Accuracies', fontsize=14)
+    ax.set_title(f'{explanation_method}: Mean {metrics_string} vs. neighbourhood of $x$, $\\frac{{|N_d(x,*)|}}{{|D_{{test}}|}}$', fontsize=16)
+    ax.set_xlabel('Relative Size of Approximation Region', fontsize=14)
+    ax.set_ylabel(f'Mean Metric', fontsize=12)
     if y_lim is not None:
-        plt.ylim(y_lim)
+        ax.set_ylim(y_lim)
     if kernels is not None:
-        plt.legend(fontsize=10, loc='upper right', ncol=2)  
+        ax.legend(fontsize=10, loc='upper right', ncol=2)  
 
-    plt.grid(color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
-
-    plt.tight_layout()
-    plt.show()
-
-
+    ax.grid(color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
+    
+    if ax is None:
+        plt.tight_layout()
+        plt.show()
+    
+    return ax
 
 def plot_accuracy_vs_fraction(accuracy, 
                             fraction_points_in_ball, 

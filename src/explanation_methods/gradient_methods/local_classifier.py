@@ -3,9 +3,11 @@ from sklearn.neighbors import BallTree
 import torch
 import torch.nn.functional as F
 def linear_classifier(samples_in_ball, saliency_map):
-    #   linear_pred_appprox = torch.sum(attributions * (transformed_img - input)) + input_pred
-    #  
     return torch.einsum('bcij, bkcij -> bk', saliency_map.float(), samples_in_ball)
+
+def linear_approximation(samples_in_ball, reference_img, saliency_map):
+    return torch.einsum('bcij, bkcij -> bk', saliency_map.float(), (samples_in_ball - reference_img.unsqueeze(1)))
+
 
 def compute_gradmethod_accuracy_per_fraction(tst_feat, 
                                              top_labels, 
@@ -35,6 +37,7 @@ def compute_gradmethod_accuracy_per_fraction(tst_feat,
 
 
 def compute_gradmethod_mse_per_fraction(tst_feat, 
+                                        imgs,
                                         predictions,
                                         predictions_baseline, 
                                         analysis_data, 
@@ -56,11 +59,14 @@ def compute_gradmethod_mse_per_fraction(tst_feat,
     model_preds = model_preds.reshape(samples_in_ball.shape[0], samples_in_ball.shape[1], -1) #num test samples x num closest points x num classes
     variance_pred = torch.var(model_preds, dim=1).squeeze(-1) # num test samples x num classes 
     local_preds = linear_classifier(samples_in_ball, saliency_map) + predictions_baseline # num test samples x num closest points x num classes
+    local_approx = linear_approximation(samples_in_ball, imgs, saliency_map) + predictions
     if local_preds.ndim == 2:
         local_preds = local_preds.unsqueeze(-1)
+    if local_approx.ndim == 2:
+        local_approx = local_approx.unsqueeze(-1)
     mse = F.mse_loss(local_preds, model_preds, reduction='none').mean(dim=[1, 2])
-    weighted_mse = mse / variance_pred
-    return n_closest, weighted_mse, R
+    mse_lin_approx = F.mse_loss(local_approx, model_preds, reduction='none').mean(dim=[1, 2])
+    return n_closest, mse, mse_lin_approx, variance_pred, R
 
 
 def compute_saliency_maps(explainer, predict_fn, data_loader_tst, device):

@@ -44,6 +44,8 @@ class BaseExplanationMethodHandler:
         results = {
         "accuracy": np.zeros((num_fractions, self.args.max_test_points)),
         "mse": np.zeros((num_fractions, self.args.max_test_points)),
+        "mse_lin_approx": np.zeros((num_fractions, self.args.max_test_points)),
+        "variance_pred": np.zeros((num_fractions, self.args.max_test_points)),
         "radius": np.zeros((num_fractions, self.args.max_test_points)),
         "fraction_points_in_ball": fractions,
         "ratio_all_ones": np.zeros((num_fractions, self.args.max_test_points)),
