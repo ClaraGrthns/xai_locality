@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 import os
 import argparse
-import utils.misc as misc
+import src.utils.misc as misc
 from src.dataset.synthetic_data import create_synthetic_data_sklearn
 
 def main(args):
