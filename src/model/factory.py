@@ -3,7 +3,8 @@ from src.model.tab_inception_v3 import TabInceptionV3Handler, TabBinaryInception
 from src.model.pytorch_frame_lgm import PTFrame_LightGBMHandler
 from src.model.pytorch_frame_xgboost import PTFrame_XGBoostHandler
 from src.model.inception_v3 import BinaryInceptionV3_Handler, InceptionV3_Handler
-
+from src.model.excelformer import ExcelFormerHandler
+from src.model.mlp import MLPHandler
 class ModelHandlerFactory:
     MODEL_HANDLERS = {
         "lightgbm": LightGBMHandler,
@@ -12,8 +13,10 @@ class ModelHandlerFactory:
         "pt_frame_lgm": PTFrame_LightGBMHandler,
         "pt_frame_xgboost": PTFrame_XGBoostHandler,
         "binary_inception_v3": BinaryInceptionV3_Handler,
-        "inception_v3": InceptionV3_Handler
-    }
+        "inception_v3": InceptionV3_Handler,
+        "excelformer": ExcelFormerHandler,
+        "mlp": MLPHandler
+        }
 
     @staticmethod
     def get_handler(model_type):

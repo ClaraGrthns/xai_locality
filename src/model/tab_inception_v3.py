@@ -8,7 +8,8 @@ from src.model.base import BaseModelHandler
 from src.dataset.imgnet import ImageNetDataset
 from src.model.inception_v3 import InceptionV3BinaryClassifier
 from torchvision import models
-
+from torch.utils.data import DataLoader, Subset
+from src.dataset.tab_data import TabularDataset
 VALIDATION_PATH = "/common/datasets/ImageNet_ILSVRC2012/val"
 CLASS_MAPPING_FILE = "/common/datasets/ImageNet_ILSVRC2012/synset_words.txt"
 
@@ -34,17 +35,27 @@ class TabInceptionV3Handler(BaseModelHandler):
         file_path_val = "/home/grotehans/xai_locality/data/feature_vectors_img_net_val.csv"
         file_path_trn = "/home/grotehans/xai_locality/data/feature_vectors_img_net_trn_downsampled_5.0perc.csv"
 
-        # Load validation data
+        # Load data
         df_val = pd.read_csv(file_path_val)
         X_test = df_val.drop(columns=['label', 'image_path']).values
-        y_test = df_val['label'].values
-
-        # Load training data
         df_trn = pd.read_csv(file_path_trn)
         X_trn = df_trn.drop(columns=['label', 'image_path']).values
-        y_trn = df_trn['label'].values
 
-        return X_test, y_test, np.empty(0), np.empty(0), X_trn, y_trn
+        indices = np.random.permutation(len(X_test))
+        tst_indices, analysis_indices = np.split(indices, [self.args.max_test_points])
+        print("using the following indices for testing: ", tst_indices)
+        print("using the following indices for testing: ", tst_indices)
+        tst_feat = X_test[tst_indices]
+        df_feat = X_test[analysis_indices]
+
+        tst_data = TabularDataset(tst_feat)
+        analysis_data = TabularDataset(df_feat)
+
+        print("Length of data set for analysis", len(analysis_data))
+        print("Length of test set", len(tst_data))
+        # data_loader_tst = DataLoader(tst_data, batch_size=self.args.chunk_size, shuffle=False)
+        
+        return X_trn, tst_feat, df_feat, tst_data, analysis_data
 
     def predict_fn(self, X):
         """Perform inference using the feature-to-logits model."""

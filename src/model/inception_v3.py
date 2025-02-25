@@ -8,7 +8,7 @@ from src.model.base import BaseModelHandler
 from src.dataset.imgnet import ImageNetDataset
 from src.dataset.cats_vs_dogs import CatsVsDogsDataset
 from torchvision import models
-
+from torch.utils.data import DataLoader, Subset
 VALIDATION_PATH = "/common/datasets/ImageNet_ILSVRC2012/val"
 CLASS_MAPPING_FILE = "/common/datasets/ImageNet_ILSVRC2012/synset_words.txt"
 
@@ -30,6 +30,25 @@ class InceptionV3_Handler(BaseModelHandler):
         print("dataset of length: ", len(dataset))
         return dataset
     
+
+    # indices = np.random.permutation(len(tst_feat))
+    #     tst_indices, analysis_indices = np.split(indices, [self.args.max_test_points])
+    #     print("using the following indices for testing: ", tst_indices)
+    #     tst_feat = tst_feat[tst_indices]
+    #     df_feat = tst_feat[analysis_indices]
+    #     if self.args.include_trn:
+    #         df_feat = np.concatenate([trn_feat, df_feat], axis=0)
+    #     if self.args.include_val:
+    #         df_feat = np.concatenate([df_feat, val_feat], axis=0)  
+    #     tst_data = TabularDataset(tst_feat)
+    #     analysis_data = TabularDataset(df_feat)
+
+    #     print("Length of data set for analysis", len(analysis_data))
+    #     print("Length of test set", len(tst_data))
+    #     data_loader_tst = DataLoader(tst_data, batch_size=self.args.chunk_size, shuffle=False)
+        
+    #     return trn_feat, tst_feat, df_feat, data_loader_tst, df_feat
+
     
     # def predict_fn(self, X):
     #     """Perform inference using the feature-to-logits model."""
@@ -60,7 +79,24 @@ class BinaryInceptionV3_Handler(BaseModelHandler):
     
     def load_data(self):
         data_path = "/home/grotehans/xai_locality/data/cats_vs_dogs/test"
-        return CatsVsDogsDataset(data_path, transform="default")
+        data_path_train = "/home/grotehans/xai_locality/data/cats_vs_dogs/train"
+        dataset_tst = CatsVsDogsDataset(data_path, transform="default")
+        dataset_trn = CatsVsDogsDataset(data_path_train, transform="default")
+
+        indices = np.random.permutation(len(dataset_tst))
+        tst_indices, analysis_indices = np.split(indices, [self.args.max_test_points])
+        print("using the following indices for testing: ", tst_indices)
+
+        tst_data = Subset(dataset_tst, tst_indices)
+        df_for_expl = Subset(dataset_tst, analysis_indices)
+        print("Length of data set for analysis", len(df_for_expl))
+        print("Length of test set", len(tst_data))
+        
+        df_feat = self.load_feature_vectors(path = "/home/grotehans/xai_locality/data/cats_vs_dogs/feature_vectors_binary_inception_cats_dogs_test.csv")
+        tst_for_dist, df_for_dist = np.split(df_feat[indices], [self.args.max_test_points])
+        # tst_loader_for_expl = DataLoader(tst_data, batch_size=self.args.chunk_size, shuffle=False)
+
+        return dataset_trn, tst_for_dist, df_for_dist, tst_data, df_for_expl
     
     # def predict_fn(self, X):
     #     preds = torch.sigmoid(self.model(X))
@@ -72,9 +108,8 @@ class BinaryInceptionV3_Handler(BaseModelHandler):
     def get_class_names(self):
         return ["Cat", "Dog"]
     
-    def load_feature_vectors(self):
+    def load_feature_vectors(self, path):
         """Load pre-extracted feature vectors"""
-        path = "/home/grotehans/xai_locality/data/cats_vs_dogs/feature_vectors_binary_inception_cats_dogs_test.csv"
         feat_vec = pd.read_csv(path)
         feat_vec = feat_vec.drop(columns=['label'])
         feat_vec = feat_vec.drop(columns=['path'])
