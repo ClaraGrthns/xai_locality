@@ -54,46 +54,50 @@ class ConfigHandler:
     
     def update_args(self, args: Namespace) -> Namespace:
         """Update argparse namespace with config values"""
+
         if not self.config:
             self.load_config()
-            
+
+        # Helper function to update argument if not already set
+        def update_arg(arg_name, config_value):
+            if getattr(args, arg_name, None) is None:
+                setattr(args, arg_name, config_value)
+
+        args.method = self.config['explanation_method'].get('method', args.method)
+    
         # Update paths
-        print(self.config)
         if 'paths' in self.config:
             for key, value in self.config['paths'].items():
-                print(key, value)
                 if value is not None:
-                    print("Setting attribute")
-                    setattr(args, key, value)
-                    
+                    update_arg(key, value)
+
         # Update model config
         if 'model' in self.config:
-            args.model_type = self.config['model'].get('model_type', args.model_type)
-            args.method = self.config['model'].get('method', args.method)
-            args.gradient_method = self.config['model'].get('gradient_method', args.gradient_method)
-            
+            update_arg('model_type', self.config['model'].get('model_type'))
+            update_arg('gradient_method', self.config['model'].get('gradient_method'))
+
         # Update analysis parameters
         if 'analysis' in self.config:
-            args.distance_measure = self.config['analysis'].get('distance_measure', args.distance_measure)
-            args.max_frac = self.config['analysis'].get('max_frac', args.max_frac)
-            args.num_frac = self.config['analysis'].get('num_frac', args.num_frac)
-            args.include_trn = self.config['analysis'].get('include_trn', args.include_trn)
-            args.include_val = self.config['analysis'].get('include_val', args.include_val)
-            args.random_seed = self.config['analysis'].get('random_seed', args.random_seed)
-            args.chunk_size = self.config['analysis'].get('chunk_size', args.chunk_size)
-            args.debug = self.config['analysis'].get('debug', args.debug)
-            
+            update_arg('distance_measure', self.config['analysis'].get('distance_measure'))
+            update_arg('max_frac', self.config['analysis'].get('max_frac'))
+            update_arg('num_frac', self.config['analysis'].get('num_frac'))
+            update_arg('include_trn', self.config['analysis'].get('include_trn'))
+            update_arg('include_val', self.config['analysis'].get('include_val'))
+            update_arg('random_seed', self.config['analysis'].get('random_seed'))
+            update_arg('chunk_size', self.config['analysis'].get('chunk_size'))
+            update_arg('debug', self.config['analysis'].get('debug'))
+
         # Update LIME parameters
         if 'lime' in self.config:
-            args.kernel_width = self.config['lime'].get('kernel_width', args.kernel_width)
-            args.model_regressor = self.config['lime'].get('model_regressor', args.model_regressor)
-            args.num_lime_features = self.config['lime'].get('num_features', args.num_lime_features)
-            
+            update_arg('kernel_width', self.config['lime'].get('kernel_width'))
+            update_arg('model_regressor', self.config['lime'].get('model_regressor'))
+            update_arg('num_lime_features', self.config['lime'].get('num_features'))
+
         # Update other parameters
         if 'other' in self.config:
-            args.predict_threshold = self.config['other'].get('predict_threshold', args.predict_threshold)
-            args.max_test_points = self.config['other'].get('max_test_points', args.max_test_points)
-            
+            update_arg('predict_threshold', self.config['other'].get('predict_threshold'))
+            update_arg('max_test_points', self.config['other'].get('max_test_points'))
+
         return args
 
     def validate_config(self) -> bool:
