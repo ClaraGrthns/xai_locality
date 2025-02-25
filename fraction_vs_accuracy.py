@@ -4,11 +4,12 @@ import argparse
 from sklearn.neighbors import BallTree
 import os
 from sklearn.metrics.pairwise import cosine_similarity
-
+from sklearn.neighbors import KNeighborsClassifier
 from src.utils.misc import set_random_seeds, get_path
 from src.model.factory import ModelHandlerFactory
 from src.explanation_methods.factory import ExplanationMethodHandlerFactory
 from src.config.handler import ConfigHandler
+import torch
 
 def cosine_distance(x, y):
     cosine_sim = cosine_similarity(x.reshape(1, -1), y.reshape(1, -1))[0, 0]
@@ -29,50 +30,51 @@ def main(args):
 
     model_handler = ModelHandlerFactory.get_handler(args.model_type)(args)
     model = model_handler.model
-    dataset = model_handler.load_data()
+    trn_for_expl, tst_for_dist, df_for_dist, tst_for_expl, df_for_expl = model_handler.load_data()
+    print("Length of data set for analysis", len(df_for_dist))
+
     predict_fn = model_handler.predict_fn
     
     if args.method == "lime" and args.kernel_width is None:
-        args.kernel_width = np.round(np.sqrt(dataset[4].shape[1]) * .75, 2)  # Default value
+        args.kernel_width = np.round(np.sqrt(trn_for_expl.shape[1]) * .75, 2)  # Default value
 
     method = args.method if args.method != "gradient" else args.gradient_method
     explainer_handler = ExplanationMethodHandlerFactory.get_handler(method=method)(args)
-    explainer_handler.set_explainer(dataset=dataset,
+    explainer_handler.set_explainer(dataset=trn_for_expl,
                                     class_names=model_handler.get_class_names(),
                                     model=model)
     
-    df_feat = model_handler.load_feature_vectors()
-    tst_feat_for_dist, df_feat_for_dist, tst_feat_for_expl, df_feat_for_expl = explainer_handler.prepare_data_for_analysis(dataset,
-                                                                                                            df_feat)
-    
     explanations = explainer_handler.compute_explanations(results_path=results_path, 
                                                           predict_fn=predict_fn, 
-                                                          tst_data=tst_feat_for_expl)
+                                                          tst_data=tst_for_expl)
     
     validate_distance_measure(args.distance_measure)
     distance_measure = "pyfunc" if args.distance_measure == "cosine" else args.distance_measure
     
-    tree = BallTree(df_feat_for_dist, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_feat_for_dist, metric=distance_measure, func=cosine_distance)
-    n_points_in_ball = np.linspace(20, int(args.max_frac * len(df_feat_for_dist)), args.num_frac, dtype=int)
-
+    tree = BallTree(df_for_dist, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_for_dist, metric=distance_measure, func=cosine_distance)
+    print(int(args.max_frac * len(df_for_dist)))
+    n_points_in_ball = np.linspace(1, 500, 100, dtype=int)
+    print("Considering the closest neighbours: ", n_points_in_ball)
     
-    explainer_handler.run_analysis(
-                     tst_feat_for_expl = tst_feat_for_expl, 
-                     tst_feat_for_dist = tst_feat_for_dist, 
-                     df_feat_for_expl = df_feat_for_expl, 
+    results_g_x = explainer_handler.run_analysis(
+                     tst_feat_for_expl = tst_for_expl, 
+                     tst_feat_for_dist = tst_for_dist, 
+                     df_feat_for_expl = df_for_expl, 
                      explanations = explanations, 
                      n_points_in_ball = n_points_in_ball, 
                      predict_fn = predict_fn, 
                      tree = tree,
                      results_path = results_path,
                      )
+    
+
     print("Finished computing accuracy and fraction of points in the ball")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Locality Analyzer")
 
     # Configuration file
-    parser.add_argument("--config", type=str, help="Path to configuration file")
+    parser.add_argument("--config", type=str,  default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/excelformer/higgs/config.yaml", help="Path to configuration file")#default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/excelformer/higgs/config.yaml",
     
     # Data and model paths
     parser.add_argument("--data_folder", type=str, help="Path to the data folder")
@@ -90,12 +92,12 @@ if __name__ == "__main__":
     
     # Analysis parameters
     parser.add_argument("--distance_measure", type=str, default="euclidean", help="Distance measure")
-    parser.add_argument("--max_frac", type=float, default=1.0, help="Until when to compute the fraction of points in the ball")
-    parser.add_argument("--num_frac", type=int, default=10, help="Number of fractions to compute")
+    parser.add_argument("--max_frac", type=float, help="Until when to compute the fraction of points in the ball")
+    parser.add_argument("--num_frac", type=int, help="Number of fractions to compute")
     parser.add_argument("--include_trn", action="store_true", help="Include training data")
     parser.add_argument("--include_val", action="store_true", help="Include validation data")
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--chunk_size", type=int, default=2, help="Chunk size of test set computed at once")
+    parser.add_argument("--chunk_size", type=int, help="Chunk size of test set computed at once")
     parser.add_argument("--debug", action="store_true", help="Debug mode")
     
     # LIME-specific parameters

@@ -1,10 +1,12 @@
+explanation_method:
+  method: "gradient"
+
 paths:
   results_path: "/home/grotehans/xai_locality/results/gradient_methods/integrated_gradient/cats_vs_dogs"
 
 # Model and method configuration
 model:
   model_type: "binary_inception_v3"
-  method: "gradient"
   gradient_method: "IG"
 
 # Analysis parameters

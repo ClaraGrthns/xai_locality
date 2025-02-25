@@ -4,7 +4,7 @@ analysis:
   max_frac: 1.0
   num_frac: 50
   random_seed: 42
-  chunk_size: 20
+  chunk_size: 200
 
 # LIME-specific parameters
 lime:

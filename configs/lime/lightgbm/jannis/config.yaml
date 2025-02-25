@@ -1,0 +1,17 @@
+explanation_method:
+  method: "lime"
+
+paths:
+  data_path: "/home/grotehans/xai_locality/data/LightGBM_medium_6_normalized_data.pt"
+  model_path: "/home/grotehans/xai_locality/pretrained_models/lightgbm/jannis/lightgbm_normalized_binary_medium_6.pt"
+  results_path: "/home/grotehans/xai_locality/results/lime/lightgbm/jannis"
+                                
+model: 
+  model_type: "pt_frame_lgm"
+
+# Analysis parameters
+analysis:
+  include_trn: true
+  include_val: true
+  max_frac: 0.05
+  num_frac: 50
