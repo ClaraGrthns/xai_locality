@@ -2,7 +2,8 @@ import numpy as np
 import lime
 from sklearn.metrics import pairwise_distances
 from joblib import Parallel, delayed
-
+import time
+import torch
 
 def get_feat_coeff_intercept(exp):
     """
@@ -165,7 +166,7 @@ def compute_lime_accuracy_per_radius(tst_set, dataset, explanations, explainer, 
     accuracies_per_dp = np.array([np.mean(local_detect_of_top_label[i] == model_detect_of_top_label[i]) for i in range(len_test)])
     return dist_threshold, accuracies_per_dp, fraction_points_in_ball, n_samples_in_ball, ratio_all_ones
 
-def compute_lime_accuracy_per_fraction(tst_set, dataset, explanations, explainer, predict_fn, n_closest, tree, pred_threshold=None):
+def compute_lime_fidelity_per_kNN(tst_set, dataset, explanations, explainer, predict_fn, n_closest, tree, pred_threshold=None):
     """
     Computes the accuracy of a LIME explanation by comparing the local model's predictions
     to the original model's predictions for samples within a ball around the instance.
@@ -185,24 +186,45 @@ def compute_lime_accuracy_per_fraction(tst_set, dataset, explanations, explainer
             - num_samples (int): The number of samples within the distance threshold.
             - ratio_all_ones (float): The fraction of samples that are discretized into all 1s. 
     """
+    start_time = time.time()
+    
     if tst_set.ndim == 1:
         tst_set = tst_set.reshape(1, -1)
 
-    dist, idx= tree.query(tst_set, k=n_closest, return_distance=True)
-    R = np.max(dist, axis=-1)
+    if type(tst_set) == torch.Tensor:
+        tst_set = tst_set.numpy()
 
-    samples_in_ball = dataset[idx]
+    dist, idx = tree.query(tst_set, k=n_closest, return_distance=True)
+    R = np.max(dist, axis=-1)
+    # print(f"Query time: {time.time() - start_time:.4f} seconds")
+
+    samples_in_ball = [[dataset[idx][0] for idx in row] for row in idx]
+    if type(samples_in_ball[0]) == torch.Tensor:
+        samples_in_ball = [sample.numpy() for sample in samples_in_ball]
+    samples_in_ball = np.array([np.array(row) for row in samples_in_ball])
+
     binary_sample = get_binary_vectorized(samples_in_ball, tst_set, explainer)
+    # print(f"Binary vectorization time: {time.time() - start_time:.4f} seconds")
+
     ratio_all_ones = np.sum(np.all(binary_sample, axis=-1), axis=-1) / len(binary_sample)
     samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1])
     model_preds = predict_fn(samples_reshaped)
     model_preds = model_preds.reshape(samples_in_ball.shape[0], samples_in_ball.shape[1], -1)
-    # local_preds = np.array([lime_pred(b, explanations[i]) for i, b in enumerate(binary_sample)])
+    # print(f"Model prediction time: {time.time() - start_time:.4f} seconds")
+
     local_preds = lime_pred_vectorized(binary_sample, explanations)
+    # print(f"Local prediction time: {time.time() - start_time:.4f} seconds")
+
     if pred_threshold is None:
-        pred_threshold = 1/model_preds[0].ndim
+        pred_threshold = 1 / model_preds[0].ndim
     top_labels = np.array([exp.top_labels[0] for exp in explanations])
-    local_detect_of_top_label = local_preds>=  pred_threshold
-    model_detect_of_top_label =  np.argmax(model_preds, axis=-1) == top_labels[:, None]
-    accuracies_per_dp = np.mean(local_detect_of_top_label== model_detect_of_top_label, axis = -1)
-    return n_closest, accuracies_per_dp, ratio_all_ones, R
+    mse_local = np.mean((local_preds[:, :, None] - model_preds[:, :, top_labels]) ** 2, axis=(-1, -2))
+    local_detect_of_top_label = local_preds >= pred_threshold
+    model_detect_of_top_label = np.argmax(model_preds, axis=-1) == top_labels[:, None]
+    # print(f"Post-processing time: {time.time() - start_time:.4f} seconds")
+
+    ratio_all_ones_model_pred = np.sum(np.all(model_detect_of_top_label, axis=-1), axis=-1) / len(model_detect_of_top_label)
+    accuracies_per_dp = np.mean(local_detect_of_top_label == model_detect_of_top_label, axis=-1)
+    # print(f"Total computation time: {time.time() - start_time:.4f} seconds")
+
+    return n_closest, accuracies_per_dp, mse_local, ratio_all_ones_model_pred, R
