@@ -1,33 +1,41 @@
 # Master Thesis: How local are local explanations?
-## Currently supported explanation methods and models:
+## Currently supported Explanation Methods:
+- LIME
+- Gradient-based Methods:
+    - Integrated gradients (IG)
+    - Smooth Grad (SG + IG, SG + Vanilla Gradient)
 
-### LIME
-
-| Models ↓, Dataset →| Jannis | SynData: 2 inf feat., 2 cluster  | SynData: 20 inf feat. 2 cluster  | SynData: 20 inf feat., 5 cluster  | Higgs | Feature Vectors of ImageNet | Feature Vectors of Cats vs. Dogs |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Light GBM | x | x | x | x | x |  |  |
-| Inception V3 |  |  |  |  |  | x | x |
-
-### Gradient Methods
-
-**Integrated Gradients**
-
-|  Models ↓ Dataset →, | ImageNet | Cats vs. Dogs |
-| --- | --- | --- |
-| TabPFN |  |  |
-| Inception V3 |  | x |
-
-**SmoothGrad + Integrated Gradients**
-
-|  Models ↓, Dataset →| ImageNet | Cats vs. Dogs |
-| --- | --- | --- |
-| TabPFN |  |  |
-| Inception V3 |  | x |
+Still to come:
+- Anchors
+## Currently supported models:
+1. **Deep Tabular Models, implemented by Pytorch-Frame:**
+- [ResNet (Gorishniy et al., 2021)](https://github.com/gorishniy/resnet)
+- [ExcelFormer (Chen et al., 2023a)](https://github.com/Chen-ExcelFormer/excelformer)
+- [FTTransformer (Gorishniy et al., 2021)](https://github.com/gorishniy/fttransformer)
+- [TabNet (Arik Sercan O., 2021)](https://github.com/dreamquark-ai/tabnet)
+- [TabTransformer (Huang et al., 2020)](https://github.com/hyungkwonko/tab-transformer)
+- Simple MLP
 
 
+2. **Gradient Boosting Models** (non-gradient based XAI methods only)
+
+3. **"TabInception"**, i.e. Pretrained last layer of Inception Net for Feature Vector Classification
+
+### Implemented Model classes:
+- LightGBM
+- ExcelFormer
+- MLP
+- TabInception
+
+## Currently supported Datasets:
+All Datasets integrated into pytorch frame:
+e.g.:
+- [Yandex datasets](https://pytorch-frame.readthedocs.io/en/latest/generated/torch_frame.datasets.Yandex.html)
+- [TabularBenchmark](https://pytorch-frame.readthedocs.io/en/latest/generated/torch_frame.datasets.TabularBenchmark.html#torch_frame.datasets.TabularBenchmark)
 
 
-### Currently supported Datasets:
+### We trained and tuned models on the following datasets
+
 **Higgs**:
 
 [Link to dataset](https://archive.ics.uci.edu/dataset/280/higgs)
@@ -66,4 +74,8 @@ This initially creates clusters of points normally distributed (std=1) about ver
 - Images of Cats and dogs
 
 
-
+## Attribution
+This repository contains code adapted from the python package [PyTorch Frame (PyG-team)](https://github.com/pyg-team/pytorch_geometric).  
+- Original source: [GitHub link to original script](https://github.com/pyg-team/pytorch-frame/benchmark/data_frame_benchmark.py)  
+- License: MIT ([link](https://github.com/pyg-team/pytorch_geometric/pytorch-frame/LICENSE))  
+Modifications include dataset adaptation for our specific use case.
