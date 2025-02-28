@@ -20,26 +20,13 @@ class PTFrame_XGBoostHandler(BaseModelHandler):
         data = torch.load(self.data_path)
         train_tensor_frame, val_tensor_frame, test_tensor_frame = data["train"], data["val"], data["test"]
 
-        tst_feat, tst_y, _ = self.model._to_xgboost_input(test_tensor_frame)
-        val_feat, val_y, _ = self.model._to_xgboost_input(val_tensor_frame)
-        trn_feat, trn_y, _ = self.model._to_xgboost_input(train_tensor_frame)
-        indices = np.random.permutation(len(tst_feat))
-        tst_indices, analysis_indices = np.split(indices, [self.args.max_test_points])
-        print("using the following indices for testing: ", tst_indices)
-        df_feat = tst_feat[analysis_indices]
-        tst_feat = tst_feat[tst_indices]
-        if self.args.include_trn:
-            df_feat = np.concatenate([trn_feat, df_feat], axis=0)
-        if self.args.include_val:
-            df_feat = np.concatenate([df_feat, val_feat], axis=0)  
-        tst_data = TabularDataset(tst_feat)
-        analysis_data = TabularDataset(df_feat)
-
-        print("Length of data set for analysis", len(analysis_data))
-        print("Length of test set", len(tst_data))
-        # data_loader_tst = DataLoader(tst_data, batch_size=self.args.chunk_size, shuffle=False)
-        
-        return trn_feat, tst_feat, df_feat, tst_data, df_feat
+        tst_feat, _, _ = self.model._to_xgboost_input(test_tensor_frame)
+        val_feat, _, _ = self.model._to_xgboost_input(val_tensor_frame)
+        trn_feat, _, _ = self.model._to_xgboost_input(train_tensor_frame)
+        tst_feat, analysis_feat, tst_dataset, analysis_dataset = self._split_data_in_tst_analysis(tst_feat,
+                                                                                                val_feat,
+                                                                                                trn_feat)
+        return trn_feat, tst_feat, analysis_feat, tst_dataset, analysis_dataset
     
     def predict_fn(self, X):
         """Perform inference using the XGBoost model."""

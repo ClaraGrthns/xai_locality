@@ -57,17 +57,26 @@ class BaseExplanationMethodHandler:
         fractions = n_points_in_ball/len(df_feat_for_expl)        
         experiment_setting = self.get_experiment_setting(fractions)
         num_fractions = len(n_points_in_ball)
-        
         results = {
-        "accuracy": np.zeros((num_fractions, self.args.max_test_points)),
-        "mse": np.zeros((num_fractions, self.args.max_test_points)),
-        "mse_lin_approx": np.zeros((num_fractions, self.args.max_test_points)),
-        "variance_pred": np.zeros((num_fractions, self.args.max_test_points)),
-        "radius": np.zeros((num_fractions, self.args.max_test_points)),
-        "fraction_points_in_ball": fractions,
-        "n_points_in_ball": n_points_in_ball,
-        "ratio_all_ones": np.zeros((num_fractions, self.args.max_test_points)),
-        }  
+            "accuracy": np.zeros((num_fractions, self.args.max_test_points)),
+            "aucroc": np.zeros((num_fractions, self.args.max_test_points)),
+            "precision": np.zeros((num_fractions, self.args.max_test_points)),
+            "recall": np.zeros((num_fractions, self.args.max_test_points)),
+            "f1": np.zeros((num_fractions, self.args.max_test_points)),
+            
+            "mse": np.zeros((num_fractions, self.args.max_test_points)),
+            "mae": np.zeros((num_fractions, self.args.max_test_points)),
+            "r2": np.zeros((num_fractions, self.args.max_test_points)),
+            
+            "gini": np.zeros((num_fractions, self.args.max_test_points)),
+            "variance": np.zeros((num_fractions, self.args.max_test_points)),
+            "variance_logit": np.zeros((num_fractions, self.args.max_test_points)),
+            "ratio_all_ones": np.zeros((num_fractions, self.args.max_test_points)),
+            
+            "radius": np.zeros((num_fractions, self.args.max_test_points)),
+            "fraction_points_in_ball": fractions,
+            "n_points_in_ball": n_points_in_ball,
+        }
         # chunk_size = self.args.chunk_size
         # predict_threshold = self.args.predict_threshold
         # for i, batch in enumerate(tst_feat_for_expl):

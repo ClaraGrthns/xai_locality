@@ -1,6 +1,7 @@
 
 # model/base.py
 import numpy as np
+from src.dataset.tab_data import TabularDataset
 from src.utils.misc import get_path
 
 class BaseModelHandler:
@@ -23,6 +24,22 @@ class BaseModelHandler:
         if self.args.setting is not None:
             data_path += ".npz"
         return data_path
+    
+    def _split_data_in_tst_analysis(self, whole_tst_feat, val_feat, trn_feat):
+        indices = np.random.permutation(len(whole_tst_feat))
+        tst_indices, analysis_indices = np.split(indices, [self.args.max_test_points])
+        print("using the following indices for testing: ", tst_indices)
+        analysis_feat = whole_tst_feat[analysis_indices]
+        tst_feat = whole_tst_feat[tst_indices]
+        if self.args.include_trn:
+            analysis_feat = np.concatenate([analysis_feat, trn_feat], axis=0)
+        if self.args.include_val:
+            analysis_feat = np.concatenate([analysis_feat, val_feat], axis=0)  
+        tst_dataset = TabularDataset(tst_feat)
+        analysis_dataset = TabularDataset(analysis_feat)
+        print("Length of data set for analysis", len(analysis_dataset))
+        print("Length of test set", len(tst_dataset)) 
+        return tst_feat, analysis_feat, tst_dataset, analysis_dataset
 
     def load_model(self):
         """Load model from path"""

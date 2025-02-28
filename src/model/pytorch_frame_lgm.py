@@ -21,26 +21,10 @@ class PTFrame_LightGBMHandler(BaseModelHandler):
         tst_feat = np.array(tst_feat)
         val_feat = np.array(val_feat)
         trn_feat = np.array(trn_feat)
-        print(trn_feat.shape)
-
-        indices = np.random.permutation(len(tst_feat))
-        tst_indices, analysis_indices = np.split(indices, [self.args.max_test_points])
-        print("using the following indices for testing: ", tst_indices)
-        df_feat = tst_feat[analysis_indices]
-        tst_feat = tst_feat[tst_indices]
-        if self.args.include_trn:
-            df_feat = np.concatenate([trn_feat, df_feat], axis=0)
-        if self.args.include_val:
-            df_feat = np.concatenate([df_feat, val_feat], axis=0)  
-        tst_data = TabularDataset(tst_feat)
-        analysis_data = TabularDataset(df_feat)
-
-        print("Length of data set for analysis", len(analysis_data))
-        print("Length of test set", len(tst_data))
-        # data_loader_tst = DataLoader(tst_data, batch_size=self.args.chunk_size, shuffle=False)
-        
-        return trn_feat, tst_feat, df_feat, tst_data, analysis_data
-
+        tst_feat, analysis_feat, tst_dataset, analysis_dataset = self._split_data_in_tst_analysis(tst_feat,
+                                                                                                val_feat,
+                                                                                                trn_feat)
+        return trn_feat, tst_feat, analysis_feat, tst_dataset, analysis_dataset
 
     def predict_fn(self, X):
         pred = self.model.model.predict(X)

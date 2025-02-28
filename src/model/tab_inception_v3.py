@@ -10,6 +10,7 @@ from src.model.inception_v3 import InceptionV3BinaryClassifier
 from torchvision import models
 from torch.utils.data import DataLoader, Subset
 from src.dataset.tab_data import TabularDataset
+
 VALIDATION_PATH = "/common/datasets/ImageNet_ILSVRC2012/val"
 CLASS_MAPPING_FILE = "/common/datasets/ImageNet_ILSVRC2012/synset_words.txt"
 
@@ -40,22 +41,10 @@ class TabInceptionV3Handler(BaseModelHandler):
         X_test = df_val.drop(columns=['label', 'image_path']).values
         df_trn = pd.read_csv(file_path_trn)
         X_trn = df_trn.drop(columns=['label', 'image_path']).values
-
-        indices = np.random.permutation(len(X_test))
-        tst_indices, analysis_indices = np.split(indices, [self.args.max_test_points])
-        print("using the following indices for testing: ", tst_indices)
-        print("using the following indices for testing: ", tst_indices)
-        tst_feat = X_test[tst_indices]
-        df_feat = X_test[analysis_indices]
-
-        tst_data = TabularDataset(tst_feat)
-        analysis_data = TabularDataset(df_feat)
-
-        print("Length of data set for analysis", len(analysis_data))
-        print("Length of test set", len(tst_data))
-        # data_loader_tst = DataLoader(tst_data, batch_size=self.args.chunk_size, shuffle=False)
-        
-        return X_trn, tst_feat, df_feat, tst_data, analysis_data
+        tst_feat, analysis_feat, tst_dataset, analysis_dataset = self._split_data_in_tst_analysis(X_test,
+                                                                                                None,
+                                                                                                X_trn)
+        return X_trn, tst_feat, analysis_feat, tst_dataset, analysis_dataset
 
     def predict_fn(self, X):
         """Perform inference using the feature-to-logits model."""
@@ -98,19 +87,18 @@ class TabBinaryInceptionV3Handler(BaseModelHandler):
         file_path_val = "/home/grotehans/xai_locality/data/cats_vs_dogs/feature_vectors_binary_inception_cats_dogs_test.csv"
         file_path_trn = "/home/grotehans/xai_locality/data/cats_vs_dogs/feature_vectors_binary_inception_cats_dogs_train.csv"
 
-        # Load validation data
         df_val = pd.read_csv(file_path_val)
         X_test = df_val.drop(columns=['label', 'path']).values
-        y_test = df_val['label'].values
-
-        # Load training data
         df_trn = pd.read_csv(file_path_trn)
+        
         # downsample training data
         df_trn = df_trn.sample(frac=0.5, random_state=1)
         X_trn = df_trn.drop(columns=['label', 'path']).values
-        y_trn = df_trn['label'].values
-
-        return X_test, y_test, np.empty(0), np.empty(0), X_trn, y_trn
+        
+        tst_feat, analysis_feat, tst_dataset, analysis_dataset = self._split_data_in_tst_analysis(X_test,
+                                                                                                None,
+                                                                                                X_trn)
+        return X_trn, tst_feat, analysis_feat, tst_dataset, analysis_dataset
 
     def predict_fn(self, X):
         """Perform inference using the feature-to-logits model."""
