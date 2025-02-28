@@ -5,6 +5,14 @@ from joblib import Parallel, delayed
 import time
 import torch
 
+from src.utils.metrics import gini_impurity, binary_classification_metrics_per_row, regression_metrics_per_row, impurity_metrics_per_row
+
+
+def cut_off_probability(prob):
+    prob = np.where(prob < 0, 0, prob)
+    prob = np.where(prob > 1, 1, prob)
+    return prob
+
 def get_feat_coeff_intercept(exp):
     """
     Extracts the feature IDs, coefficients, and intercept from a LIME explanation.
@@ -113,15 +121,15 @@ def lime_pred(binary_x, exp):
     return local_pred
 
 def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features):
-    enumerated_data = list(enumerate(tst_feat))
+    if type(tst_feat) == torch.Tensor:
+        tst_feat = tst_feat.numpy()
     
-    # Run parallel computation with indices
-    indexed_explanations = Parallel(n_jobs=-1)(
-        delayed(lambda x: (x[0], explainer.explain_instance(x[1], predict_fn, top_labels=1, num_features = num_lime_features)))(item)
-        for item in enumerated_data
+    # Run parallel computation directly
+    explanations = Parallel(n_jobs=-1)(
+        delayed(explainer.explain_instance)(instance, predict_fn, top_labels=1, num_features=num_lime_features)
+        for instance in tst_feat
     )
-    sorted_explanations = [exp for _, exp in sorted(indexed_explanations, key=lambda x: x[0])]
-    return sorted_explanations
+    return explanations
 
 def compute_lime_accuracy_per_radius(tst_set, dataset, explanations, explainer, predict_fn, dist_threshold, tree, pred_threshold=None):
     """
@@ -186,8 +194,6 @@ def compute_lime_fidelity_per_kNN(tst_set, dataset, explanations, explainer, pre
             - num_samples (int): The number of samples within the distance threshold.
             - ratio_all_ones (float): The fraction of samples that are discretized into all 1s. 
     """
-    start_time = time.time()
-    
     if tst_set.ndim == 1:
         tst_set = tst_set.reshape(1, -1)
 
@@ -196,35 +202,42 @@ def compute_lime_fidelity_per_kNN(tst_set, dataset, explanations, explainer, pre
 
     dist, idx = tree.query(tst_set, k=n_closest, return_distance=True)
     R = np.max(dist, axis=-1)
-    # print(f"Query time: {time.time() - start_time:.4f} seconds")
+    top_labels = np.array([exp.top_labels[0] for exp in explanations])
 
+    # 1. Get all the kNN samples from the analysis dataset
     samples_in_ball = [[dataset[idx][0] for idx in row] for row in idx]
     if type(samples_in_ball[0]) == torch.Tensor:
         samples_in_ball = [sample.numpy() for sample in samples_in_ball]
     samples_in_ball = np.array([np.array(row) for row in samples_in_ball])
+    binary_sample = get_binary_vectorized(samples_in_ball, tst_set, explainer) #binarize for lime prediction
+    samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) #shape: (n tst samples * n closest points) x n features
+    
+    # 2. Predict labels of the kNN samples with the model
+    model_preds = predict_fn(samples_reshaped) #shape: (n tst samples * n closest points) x n classes
+    model_preds = model_preds.reshape(samples_in_ball.shape[0], samples_in_ball.shape[1], -1) #shape: n tst samples x n closest points x n classes
+    ## i) Get probability for the top label
+    model_prob_of_top_label = model_preds[np.arange(model_preds.shape[0]), :, top_labels]
+    variance_preds = model_prob_of_top_label.var(axis=-1)
 
-    binary_sample = get_binary_vectorized(samples_in_ball, tst_set, explainer)
-    # print(f"Binary vectorization time: {time.time() - start_time:.4f} seconds")
+    ## ii) Get label predictions, is prediction the same as the top label?
+    labels_model_preds = np.argmax(model_preds, axis=-1) #shape: n tst samples x n closest points
+    model_predicted_top_label = labels_model_preds == top_labels[:, None]
 
-    ratio_all_ones = np.sum(np.all(binary_sample, axis=-1), axis=-1) / len(binary_sample)
-    samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1])
-    model_preds = predict_fn(samples_reshaped)
-    model_preds = model_preds.reshape(samples_in_ball.shape[0], samples_in_ball.shape[1], -1)
-    # print(f"Model prediction time: {time.time() - start_time:.4f} seconds")
-
+   
+    # 3. Predict labels of the kNN samples with the LIME explanation
+    ## i)+ii) Get probability for top label, if prob > threshold, predict as top label
     local_preds = lime_pred_vectorized(binary_sample, explanations)
-    # print(f"Local prediction time: {time.time() - start_time:.4f} seconds")
-
     if pred_threshold is None:
         pred_threshold = 1 / model_preds[0].ndim
-    top_labels = np.array([exp.top_labels[0] for exp in explanations])
-    mse_local = np.mean((local_preds[:, :, None] - model_preds[:, :, top_labels]) ** 2, axis=(-1, -2))
-    local_detect_of_top_label = local_preds >= pred_threshold
-    model_detect_of_top_label = np.argmax(model_preds, axis=-1) == top_labels[:, None]
-    # print(f"Post-processing time: {time.time() - start_time:.4f} seconds")
+    
+    # 4. Compute metrics for binary and regression tasks
+    res_binary_classification = binary_classification_metrics_per_row(model_predicted_top_label, 
+                                                                      local_preds, 
+                                                                      pred_threshold)
+    res_regression = regression_metrics_per_row(model_prob_of_top_label,
+                                                cut_off_probability(local_preds))
+    res_impurity = impurity_metrics_per_row(model_predicted_top_label)
+    res_impurity = (*res_impurity, variance_preds)
+    
 
-    ratio_all_ones_model_pred = np.sum(np.all(model_detect_of_top_label, axis=-1), axis=-1) / len(model_detect_of_top_label)
-    accuracies_per_dp = np.mean(local_detect_of_top_label == model_detect_of_top_label, axis=-1)
-    # print(f"Total computation time: {time.time() - start_time:.4f} seconds")
-
-    return n_closest, accuracies_per_dp, mse_local, ratio_all_ones_model_pred, R
+    return n_closest, res_binary_classification, res_regression, res_impurity, R

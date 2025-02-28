@@ -8,11 +8,14 @@ import numpy as np
 from joblib import Parallel, delayed
 from torch.utils.data import Subset, DataLoader
 import time
+import torch
 
 class LimeHandler(BaseExplanationMethodHandler):
     def set_explainer(self, **kwargs):
         args = self.args
         trn_feat = kwargs.get('dataset')
+        if type(trn_feat)== torch.Tensor:
+            trn_feat = trn_feat.numpy()
         class_names = kwargs.get('class_names')
         self.explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat, 
                                                     feature_names=np.arange(trn_feat.shape[1]),
@@ -98,7 +101,6 @@ class LimeHandler(BaseExplanationMethodHandler):
             chunk_start = i * chunk_size
             chunk_end = min(chunk_start + chunk_size, len(df_feat_for_expl))
             print(f"Processing chunk {i // chunk_size + 1}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
-            chunk_end = min(i + chunk_size, len(tst_feat_for_expl))
             explanations_chunk = explanations[chunk_start:chunk_end]
 
             if self.args.debug:
@@ -106,14 +108,30 @@ class LimeHandler(BaseExplanationMethodHandler):
                 for n_closest in n_points_in_ball:
                     start_time = time.time()
                     print(f"Processing {n_closest} nearest neighbours")
-                    n_closest, acc, mse_local, ratio, R = compute_lime_fidelity_per_kNN(
+                    n_closest, res_binary_classification, res_regression, res_impurity, R = compute_lime_fidelity_per_kNN(
                     tst_chunk, df_feat_for_expl, explanations_chunk, self.explainer, predict_fn, n_closest, tree, predict_threshold
                     )
+                    aucroc, acc, precision, recall, f1 = res_binary_classification
+                    mse, mae, r2 = res_regression
+                    gini, ratio, variance = res_impurity
                     fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
+                    
+                    results["aucroc"][fraction_idx, chunk_start:chunk_end] = aucroc
                     results["accuracy"][fraction_idx, chunk_start:chunk_end] = acc
+                    results["precision"][fraction_idx, chunk_start:chunk_end] = precision
+                    results["recall"][fraction_idx, chunk_start:chunk_end] = recall
+                    results["f1"][fraction_idx, chunk_start:chunk_end] = f1
+                    
+                    results["mse"][fraction_idx, chunk_start:chunk_end] = mse
+                    results["mae"][fraction_idx, chunk_start:chunk_end] = mae
+                    results["r2"][fraction_idx, chunk_start:chunk_end] = r2
+
+                    results["gini"][fraction_idx, chunk_start:chunk_end] = gini
                     results["ratio_all_ones"][fraction_idx, chunk_start:chunk_end] = ratio
+                    results["variance"][fraction_idx, chunk_start:chunk_end] = variance
+
                     results["radius"][fraction_idx, chunk_start:chunk_end] = R
-                    results["mse"][fraction_idx, chunk_start:chunk_end] = mse_local
+
                     print(f"Time taken: {time.time() - start_time}")
             else:
                 chunk_results = Parallel(n_jobs=-1)(
@@ -123,12 +141,27 @@ class LimeHandler(BaseExplanationMethodHandler):
                     for n_closest in n_points_in_ball
                 )
                 # Unpack results directly into the correct positions in the arrays
-                for n_closest, acc, mse_local, ratio, R in chunk_results:
+                for n_closest, res_binary_classification, res_regression, res_impurity, R  in chunk_results:
+                    aucroc, acc, precision, recall, f1 = res_binary_classification
+                    mse, mae, r2 = res_regression
+                    gini, ratio, variance = res_impurity
+
                     fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
+                    results["aucroc"][fraction_idx, chunk_start:chunk_end] = aucroc
                     results["accuracy"][fraction_idx, chunk_start:chunk_end] = acc
+                    results["precision"][fraction_idx, chunk_start:chunk_end] = precision
+                    results["recall"][fraction_idx, chunk_start:chunk_end] = recall
+                    results["f1"][fraction_idx, chunk_start:chunk_end] = f1
+                    
+                    results["mse"][fraction_idx, chunk_start:chunk_end] = mse
+                    results["mae"][fraction_idx, chunk_start:chunk_end] = mae
+                    results["r2"][fraction_idx, chunk_start:chunk_end] = r2
+
+                    results["gini"][fraction_idx, chunk_start:chunk_end] = gini
                     results["ratio_all_ones"][fraction_idx, chunk_start:chunk_end] = ratio
+                    results["variance"][fraction_idx, chunk_start:chunk_end] = variance
+
                     results["radius"][fraction_idx, chunk_start:chunk_end] = R
-                    results["mse"][fraction_idx, chunk_start:chunk_end] = mse_local
 
             np.savez(osp.join(results_path, experiment_setting), **results)
             print(f"Processed chunk {i // chunk_size + 1}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")

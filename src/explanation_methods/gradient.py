@@ -25,10 +25,12 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
                                         "saliency_maps")
         saliency_map_file_path = osp.join(saliency_map_folder, f"saliency_map_{self.args.gradient_method}.h5")
         if osp.exists(saliency_map_file_path):
+            print(f"Using precomputed saliency maps from: {saliency_map_file_path}")
             with h5py.File(saliency_map_file_path, "r") as f:
                 saliency_maps = f["saliency_map"][:]
             saliency_maps = torch.tensor(saliency_maps).float().to(device)
         else:
+            print("Precomputed saliency maps not found. Computing saliency maps for the test set...")
             if not osp.exists(saliency_map_folder):
                 os.makedirs(saliency_map_folder)
             saliency_maps = compute_saliency_maps(self.explainer, predict_fn, tst_feat_for_expl_loader)
@@ -95,13 +97,30 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
                                                                     tree,
                                                                     top_labels 
                                                                 )
-                n_closest, mse, accuracy, variance_pred, rad = chunk_result
+                n_closest, res_binary_classification, res_regression, res_impurity, R = chunk_result
+                aucroc, acc, precision, recall, f1 = res_binary_classification
+                mse, mae, r2 = res_regression
+                gini, ratio, variance, variance_probs = res_impurity
+
                 fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
-                results["mse"][fraction_idx, chunk_start:chunk_end] = mse.cpu().numpy()
-                results["accuracy"][fraction_idx, chunk_start:chunk_end] = accuracy.cpu().numpy()
-                results["variance_pred"][fraction_idx, chunk_start:chunk_end] = variance_pred.cpu().numpy()
-                results["radius"][fraction_idx, chunk_start:chunk_end ] = rad
+                results["aucroc"][fraction_idx, chunk_start:chunk_end] = aucroc
+                results["accuracy"][fraction_idx, chunk_start:chunk_end] = acc
+                results["precision"][fraction_idx, chunk_start:chunk_end] = precision
+                results["recall"][fraction_idx, chunk_start:chunk_end] = recall
+                results["f1"][fraction_idx, chunk_start:chunk_end] = f1
+                
+                results["mse"][fraction_idx, chunk_start:chunk_end] = mse
+                results["mae"][fraction_idx, chunk_start:chunk_end] = mae
+                results["r2"][fraction_idx, chunk_start:chunk_end] = r2
+
+                results["gini"][fraction_idx, chunk_start:chunk_end] = gini
+                results["ratio_all_ones"][fraction_idx, chunk_start:chunk_end] = ratio
+                results["variance"][fraction_idx, chunk_start:chunk_end] = variance_probs
+                results["variance_logit"][fraction_idx, chunk_start:chunk_end] = variance
+
+                results["radius"][fraction_idx, chunk_start:chunk_end] = R
                 print(f"Finished computing mse/var for {n_closest} closest points")
+                
             np.savez(osp.join(results_path, experiment_setting), **results)
         return results
 
