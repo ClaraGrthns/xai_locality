@@ -3,7 +3,7 @@ explanation_method:
 
 paths:
   data_path: "/home/grotehans/xai_locality/data/ExcelFormer_large_0_normalized_data.pt"
-  model_path: "/home/grotehans/xai_locality/pretrained_models/excelformer/ExcelFormer_normalized_binary_large_0.pt"
+  model_path: "/home/grotehans/xai_locality/pretrained_models/excelformer/higgs/ExcelFormer_normalized_binary_large_0.pt"
   results_path: "/home/grotehans/xai_locality/results/lime/excelformer/higgs"
                                 
 model: 

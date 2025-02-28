@@ -2,9 +2,9 @@ explanation_method:
   method: "gradient"
 
 paths:
-  results_path: "/home/grotehans/xai_locality/results/gradient_methods/integrated_gradient/excelformer/higgs"
-  data_path: "/home/grotehans/xai_locality/data/ExcelFormer_large_0_normalized_data.pt"
-  model_path: "/home/grotehans/xai_locality/pretrained_models/excelformer/higgs/ExcelFormer_normalized_binary_large_0.pt"
+  results_path: "/home/grotehans/xai_locality/results/gradient_methods/integrated_gradient/excelformer/jannis"
+  data_path: "/home/grotehans/xai_locality/data/ExcelFormer_medium_6_normalized_data.pt"
+  model_path: "/home/grotehans/xai_locality/pretrained_models/excelformer/jannis/ExcelFormer_normalized_binary_medium_6.pt"
 # Model and method configuration
 model:
   model_type: "excelformer"
