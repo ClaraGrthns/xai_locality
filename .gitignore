@@ -10,3 +10,6 @@ __pycache__/*
 pretrained_models/*
 src/train/runs/*
 run_analysis.py
+rename_folders.sh
+rename_files.sh
+submit_all_jobs.sh
