@@ -4,7 +4,6 @@ import argparse
 from sklearn.neighbors import BallTree
 import os
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.neighbors import KNeighborsClassifier
 from src.utils.misc import set_random_seeds, get_path
 from src.model.factory import ModelHandlerFactory
 from src.explanation_methods.factory import ExplanationMethodHandlerFactory
@@ -28,7 +27,7 @@ def main(args):
         os.makedirs(results_path)
     print("saving results to: ", results_path)
 
-    model_handler = ModelHandlerFactory.get_handler(args.model_type)(args)
+    model_handler = ModelHandlerFactory.get_handler(args)
     model = model_handler.model
     trn_for_expl, tst_for_dist, df_for_dist, tst_for_expl, df_for_expl = model_handler.load_data()
     print("Length of data set for analysis", len(df_for_dist))
@@ -52,8 +51,7 @@ def main(args):
     distance_measure = "pyfunc" if args.distance_measure == "cosine" else args.distance_measure
     
     tree = BallTree(df_for_dist, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_for_dist, metric=distance_measure, func=cosine_distance)
-    print(int(args.max_frac * len(df_for_dist)))
-    n_points_in_ball = np.linspace(1, 500, 100, dtype=int)
+    n_points_in_ball = np.linspace(1, 400, 100, dtype=int)
     print("Considering the closest neighbours: ", n_points_in_ball)
     
     results_g_x = explainer_handler.run_analysis(
@@ -74,7 +72,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Locality Analyzer")
 
     # Configuration file
-    parser.add_argument("--config", type=str,  default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/excelformer/higgs/config.yaml", help="Path to configuration file")#default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/excelformer/higgs/config.yaml",
+    # default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml"
+    # default="/home/grotehans/xai_locality/configs/lime/ExcelFormer/higgs/config.yaml",
+    parser.add_argument("--config", type=str,  default="/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml", help="Path to configuration file")#default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml",
     
     # Data and model paths
     parser.add_argument("--data_folder", type=str, help="Path to the data folder")
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     parser.add_argument("--results_path", type=str,  help="Path to save results")
     
     # Model and method configuration
-    parser.add_argument("--model_type", type=str, help="Model type: lightgbm, tab_inception_v3, pt_frame_lgm, pt_frame_xgboost, binary_inception_v3, inception_v3")
+    parser.add_argument("--model_type", type=str, help="Model type: LightGBM, tab_inception_v3, pt_frame_lgm, pt_frame_xgboost, binary_inception_v3, inception_v3")
     parser.add_argument("--method", type=str,help="Explanation method to use (lime or gradient)")
     parser.add_argument("--gradient_method", type=str, help="Which Gradient Method to use: [IG, IG+SmoothGrad]")
     

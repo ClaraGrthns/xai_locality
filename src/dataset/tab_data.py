@@ -14,7 +14,7 @@ class TabularDataset(Dataset):
 
     def __getitem__(self, idx):
         features = self.features[idx]
-        return features, self.targets[idx] if self.train else features
+        return (features, self.targets[idx]) if self.train else features
     
 
 class TabularTensorDataset(Dataset):

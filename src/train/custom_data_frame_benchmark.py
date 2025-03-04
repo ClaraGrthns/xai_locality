@@ -274,7 +274,7 @@ else:
             'num_prompts': [64, 128, 192],
         }
         train_search_space = {
-            'batch_size': [128, 256],
+            'batch_size': [128],
             'base_lr': [0.01, 0.001],
             'gamma_rate': [0.9, 0.95, 1.],
         }
@@ -330,8 +330,8 @@ else:
     assert col_stats is not None
     assert set(train_search_space.keys()) == set(TRAIN_CONFIG_KEYS)
     col_names_dict = train_tensor_frame.col_names_dict
-    torch.save(col_names_dict, os.path.join(data_folder, data_path_wo_file_ending + "_col_names_dict.pt"))
-    torch.save(col_stats, os.path.join(data_folder, data_path_wo_file_ending + "_col_stats.pt"))
+    torch.save(col_names_dict, os.path.join(data_folder, data_path_wo_file_ending + "_normalized_tensor_frame_col_names_dict.pt"))
+    torch.save(col_stats, os.path.join(data_folder, data_path_wo_file_ending + "_normalized_tensor_frame_col_stats.pt"))
 
 if args.data_path:
     normalized_data = {
@@ -444,12 +444,14 @@ def train_and_eval_with_cfg(
                 best_val_metric = val_metric
                 best_test_metric = test(model, test_loader)
                 # save new best model
+                best_model_state_dict = model.state_dict()
                 model_path = os.path.join(args.result_folder,  f'{args.model_type}_{data_path_wo_file_ending}_best_model.pt')
                 torch.save(model.state_dict(), model_path)
         else:
             if val_metric < best_val_metric:
                 best_val_metric = val_metric
                 best_test_metric = test(model, test_loader)
+                best_model_state_dict = model.state_dict()
                 model_path = os.path.join(args.result_folder,  f'{args.model_type}_{data_path_wo_file_ending}_best_model.pt')
                 torch.save(model.state_dict(), model_path)
         lr_scheduler.step()
@@ -462,7 +464,7 @@ def train_and_eval_with_cfg(
 
     print(
         f'Best val: {best_val_metric:.4f}, Best test: {best_test_metric:.4f}')
-    return model, best_val_metric, best_test_metric
+    return best_model_state_dict, best_val_metric, best_test_metric
 
 
 def objective(trial: optuna.trial.Trial) -> float:
@@ -503,7 +505,7 @@ def main_deep_models():
     best_val_metrics = []
     best_test_metrics = []
     for _ in range(args.num_repeats):
-        model, best_val_metric, best_test_metric = train_and_eval_with_cfg(
+        best_model_state_dict, best_val_metric, best_test_metric = train_and_eval_with_cfg(
             best_model_cfg, best_train_cfg)
         best_val_metrics.append(best_val_metric)
         best_test_metrics.append(best_test_metric)
@@ -520,15 +522,15 @@ def main_deep_models():
         'best_test_metric': best_test_metrics.mean(),
         'best_train_cfg': best_train_cfg,
         'best_model_cfg': best_model_cfg,
-        'search_time': search_time,
+        # 'search_time': search_time,
         'final_model_time': final_model_time,
-        'total_time': search_time + final_model_time,
+        # 'total_time': search_time + final_model_time,
     }
     print(result_dict)
     # Save results
     results_file_path = os.path.join(args.result_folder, f'{args.model_type}_{data_path_wo_file_ending}_results.pt')
     os.makedirs(args.result_folder, exist_ok=True)
-    torch.save({'model_state_dict': model.state_dict(), **result_dict},
+    torch.save({'model_state_dict': best_model_state_dict, **result_dict},
                 results_file_path)
 
 

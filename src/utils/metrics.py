@@ -5,7 +5,7 @@ def regression_metrics_per_row(y_true, y_pred):
     return mean_squared_error(y_true.T, y_pred.T, multioutput='raw_values'), mean_absolute_error(y_true.T, y_pred.T, multioutput='raw_values'), r2_score(y_true.T, y_pred.T, multioutput='raw_values')
 
 
-def binary_classification_metrics(y_true, y_pred_prob, prediction_threshold):
+def binary_classification_metrics(y_true, y_pred_label, y_pred_proba):
     """
     Compute binary classification metrics for a single row.
     
@@ -21,28 +21,27 @@ def binary_classification_metrics(y_true, y_pred_prob, prediction_threshold):
     tuple
         A tuple containing AUROC, accuracy, precision, recall, and F1 score.
     """
-    y_pred = (y_pred_prob > prediction_threshold).astype(int)
     if len(y_true) == 1:
         aucroc = 0
     else:     
         try:
-            aucroc = roc_auc_score(y_true, y_pred_prob)
+            aucroc = roc_auc_score(y_true, y_pred_proba)
         except ValueError:
             aucroc = None
     return (
         aucroc,
-        accuracy_score(y_true, y_pred),
-        precision_score(y_true, y_pred, zero_division=0),
-        recall_score(y_true, y_pred, zero_division=0),
-        f1_score(y_true, y_pred, zero_division=0)
+        accuracy_score(y_true, y_pred_label),
+        precision_score(y_true, y_pred_label, zero_division=0),
+        recall_score(y_true, y_pred_label, zero_division=0),
+        f1_score(y_true, y_pred_label, zero_division=0)
     )
 
-def binary_classification_metrics_per_row(y_true, y_pred_prob, prediction_threshold):
+def binary_classification_metrics_per_row(y_true, y_pred_label, y_pred_proba):
     """
     Vectorized computation of classification metrics.
     """
     metrics = np.array([
-        binary_classification_metrics(y_true[i], y_pred_prob[i], prediction_threshold)
+        binary_classification_metrics(y_true[i], y_pred_label[i], y_pred_proba[i])
         for i in range(y_true.shape[0])
     ])
     

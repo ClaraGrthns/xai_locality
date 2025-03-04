@@ -23,14 +23,25 @@ def get_non_zero_cols(array):
     return array.shape[1] - np.sum(np.all(array == 0, axis=0))
 
 def load_and_get_non_zero_cols(data_path):
-    print(f"loading data from {data_path}")
-    accuracy_array, fraction_array, thresholds, _, _= load_results(data_path)
-    non_zero_cols = get_non_zero_cols(fraction_array)
-    print(f"computed up to {non_zero_cols} data points")
-
-    accuracy_complete = accuracy_array[:, :non_zero_cols]
-    fraction_complete = fraction_array[:, :non_zero_cols]
-    return accuracy_complete, fraction_complete, thresholds, non_zero_cols
+    results = np.load(data_path, allow_pickle=True)
+    nr_non_zero_columns = get_non_zero_cols(results['accuracy']) 
+    n_points_in_ball = results['n_points_in_ball']
+    accuracy= results['accuracy'][:, :nr_non_zero_columns]
+    precision= results['precision'][:, :nr_non_zero_columns]
+    recall= results['recall'][:, :nr_non_zero_columns]
+    f1= results['f1'][:, :nr_non_zero_columns]
+    mse= results['mse'][:, :nr_non_zero_columns]
+    mae= results['mae'][:, :nr_non_zero_columns]
+    r2=results['r2'][:, :nr_non_zero_columns]
+    gini= results['gini'][:, :nr_non_zero_columns]
+    ratio_all_ones= results['ratio_all_ones'][:, :nr_non_zero_columns]
+    variance_proba = results['variance'][:, :nr_non_zero_columns]
+    if 'variance_logit' in results:
+        variance_logit = results['variance_logit'][:, :nr_non_zero_columns]
+    else:
+        variance_logit = None
+    radius= results['radius'][:, :nr_non_zero_columns]
+    return (accuracy, precision, recall, f1, mse, mae, r2, gini, ratio_all_ones, variance_proba, variance_logit, radius), n_points_in_ball
 
 
 def get_path(base_folder, base_path, setting, suffix=""):

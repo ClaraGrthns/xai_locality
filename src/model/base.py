@@ -3,6 +3,7 @@
 import numpy as np
 from src.dataset.tab_data import TabularDataset
 from src.utils.misc import get_path
+import torch
 
 class BaseModelHandler:
     def __init__(self, args):
@@ -16,7 +17,7 @@ class BaseModelHandler:
         self.model = self.load_model()
 
     def get_model_path(self):
-        model_path = get_path(self.args.model_folder, self.args.model_path, self.args.setting, suffix="final_model_")
+        model_path = get_path(self.args.model_folder, self.args.model_path, self.args.setting, suffix=self.args.model_type + "_")
         return model_path
     
     def get_data_path(self):
@@ -32,9 +33,15 @@ class BaseModelHandler:
         analysis_feat = whole_tst_feat[analysis_indices]
         tst_feat = whole_tst_feat[tst_indices]
         if self.args.include_trn:
-            analysis_feat = np.concatenate([analysis_feat, trn_feat], axis=0)
+            if isinstance(trn_feat, np.ndarray):
+                analysis_feat = np.concatenate([analysis_feat, trn_feat], axis=0)
+            else:
+                analysis_feat = torch.cat([analysis_feat, trn_feat], dim=0)
         if self.args.include_val:
-            analysis_feat = np.concatenate([analysis_feat, val_feat], axis=0)  
+            if isinstance(val_feat, np.ndarray):
+                analysis_feat = np.concatenate([analysis_feat, val_feat], axis=0)
+            else:
+                analysis_feat = torch.cat([analysis_feat, val_feat], dim=0) 
         tst_dataset = TabularDataset(tst_feat)
         analysis_dataset = TabularDataset(analysis_feat)
         print("Length of data set for analysis", len(analysis_dataset))

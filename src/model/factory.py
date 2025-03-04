@@ -1,25 +1,38 @@
+from torch_frame.nn import Trompt, ExcelFormer, MLP
+
 from src.model.lightgbm import LightGBMHandler
 from src.model.tab_inception_v3 import TabInceptionV3Handler, TabBinaryInceptionV3Handler 
 from src.model.pytorch_frame_lgm import PTFrame_LightGBMHandler
 from src.model.pytorch_frame_xgboost import PTFrame_XGBoostHandler
 from src.model.inception_v3 import BinaryInceptionV3_Handler, InceptionV3_Handler
-from src.model.excelformer import ExcelFormerHandler
-from src.model.mlp import MLPHandler
+from src.model.pytorch_frame_handler import TorchFrameHandler
+
 class ModelHandlerFactory:
     MODEL_HANDLERS = {
-        "lightgbm": LightGBMHandler,
+        "LightGBM": LightGBMHandler,
         "tab_inception_v3": TabInceptionV3Handler,
         "tab_binary_inception_v3": TabBinaryInceptionV3Handler,
         "pt_frame_lgm": PTFrame_LightGBMHandler,
         "pt_frame_xgboost": PTFrame_XGBoostHandler,
         "binary_inception_v3": BinaryInceptionV3_Handler,
         "inception_v3": InceptionV3_Handler,
-        "excelformer": ExcelFormerHandler,
-        "mlp": MLPHandler
-        }
+    }
+
+    # Dynamically handle all PyTorch Frame models
+    TORCH_FRAME_MODELS = {
+        "Trompt": Trompt,
+        "MLP": MLP,
+        "ExcelFormer": ExcelFormer,
+    }
 
     @staticmethod
-    def get_handler(model_type):
-        if model_type not in ModelHandlerFactory.MODEL_HANDLERS:
-            raise ValueError(f"Unsupported model type: {model_type}")
-        return ModelHandlerFactory.MODEL_HANDLERS[model_type]
+    def get_handler(args):
+        model_type = args.model_type
+        if model_type in ModelHandlerFactory.MODEL_HANDLERS:
+            return ModelHandlerFactory.MODEL_HANDLERS[model_type](args)
+        
+        if model_type in ModelHandlerFactory.TORCH_FRAME_MODELS:
+            model_class = ModelHandlerFactory.TORCH_FRAME_MODELS[model_type]
+            return TorchFrameHandler(args, model_class)
+        
+        raise ValueError(f"Unsupported model type: {model_type}")

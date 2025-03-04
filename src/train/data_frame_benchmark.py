@@ -19,6 +19,7 @@ import os
 import os.path as osp
 import time
 from typing import Any, Optional
+from pathlib import Path
 
 import numpy as np
 import optuna
@@ -54,24 +55,6 @@ def set_random_seeds(seed=42):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-
-idx_for_testing = [90944, 66143, 22225, 58691, 82312, 76685, 90459, 43405, 65002, 11714, 8821, 44263,
-    73689, 10540, 89173, 30909, 46528, 16853, 67266, 24994, 16344, 76198, 36635, 34107,
-    12173, 11619, 33421, 41837, 55496, 91996, 41774, 65050, 80167, 18726, 18338, 93921,
-    63633, 61952, 20138, 5268, 66339, 33768, 9002, 86617, 20014, 9410, 53157, 70747,
-    20648, 34653, 928, 39003, 12250, 34270, 79992, 32564, 34661, 54472, 79229, 59762,
-    56885, 70008, 25252, 5854, 74158, 55552, 3221, 50032, 54500, 36957, 55376, 73175,
-    79833, 13804, 91170, 78936, 89620, 13179, 28399, 7777, 48307, 40976, 3789, 6933,
-    65860, 42414, 32025, 23120, 37296, 56560, 16421, 15323, 81084, 19437, 26381, 26985,
-    45917, 43498, 28103, 36351, 28068, 63040, 6479, 65854, 59014, 62007, 48769, 16990,
-    69130, 11425, 79995, 3254, 31290, 83322, 16520, 14365, 57968, 63502, 42757, 33045,
-    22750, 46483, 42248, 27585, 8638, 32163, 21006, 39096, 21499, 56803, 36625, 51144,
-    62795, 85960, 28319, 45666, 55257, 65489, 1060, 34788, 65653, 980, 91835, 42223,
-    91220, 47065, 76119, 87677, 53748, 8665, 23948, 52336, 51898, 74091, 63653, 22330,
-    68902, 15062, 3085, 8492, 62477, 60440, 93189, 41686, 33101, 5447, 33794, 39292,
-    35496, 87409, 83467, 64767, 3229, 45003, 65208, 14824, 53859, 77800, 21948, 13561,
-    20776, 71511, 91389, 89145, 85472, 20756, 86611, 80442, 10565, 4343, 14406, 46482,
-    60745, 17814, 10762, 56713, 53674, 22021, 14930, 91842]
 
 # After the dataset splits and before model setup, add:
 def normalize_tensor_frame(train_tf, val_tf, test_tf):
@@ -128,7 +111,10 @@ parser.add_argument(
         'ExcelFormer', 'FTTransformerBucket', 'XGBoost', 'CatBoost', 'LightGBM'
     ])
 parser.add_argument('--seed', type=int, default=42)
-parser.add_argument('--result_path', type=str, default='')
+# parser.add_argument('--result_path', type=str, default='')
+parser.add_argument('--result_folder', type=str, default='')
+parser.add_argument('--data_folder', type=str, default='')
+
 args = parser.parse_args()
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -136,6 +122,9 @@ torch.manual_seed(args.seed)
 set_random_seeds(args.seed)
 # Prepare datasets
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data')
+os.makedirs(args.result_folder, exist_ok=True)
+
+
 dataset = DataFrameBenchmark(root=path, task_type=TaskType(args.task_type),
                              scale=args.scale, 
                              idx=args.idx,
@@ -156,15 +145,6 @@ print(f"Train: {len(train_tensor_frame)}, Val: {len(val_tensor_frame)}, "
 train_tensor_frame, val_tensor_frame, test_tensor_frame = normalize_tensor_frame(
     train_tensor_frame, val_tensor_frame, test_tensor_frame
 )
-# If you want to save the normalized data:
-# if args.result_path:
-#     normalized_data = {
-#         'train': train_tensor_frame,
-#         'val': val_tensor_frame,
-#         'test': test_tensor_frame
-#     }
-#     norm_path = os.path.join(os.path.dirname(args.result_path), f'{args.model_type}_{args.scale}_{args.idx}_normalized_data.pt')
-#     torch.save(normalized_data, norm_path)
     
 
 if args.model_type in GBDT_MODELS:
@@ -283,7 +263,7 @@ else:
             'num_prompts': [64, 128, 192],
         }
         train_search_space = {
-            'batch_size': [128, 256],
+            'batch_size': [128],
             'base_lr': [0.01, 0.001],
             'gamma_rate': [0.9, 0.95, 1.],
         }
@@ -339,16 +319,18 @@ else:
     assert col_stats is not None
     assert set(train_search_space.keys()) == set(TRAIN_CONFIG_KEYS)
     col_names_dict = train_tensor_frame.col_names_dict
-    torch.save(col_names_dict, f"/home/grotehans/xai_locality/data/{args.model_type}_{args.scale}_{args.idx}col_names_dict.pt")
-    torch.save(col_stats, f"/home/grotehans/xai_locality/data/{args.model_type}_{args.scale}_{args.idx}col_stats.pt")
-    if args.result_path:
-        normalized_data = {
-            'train': train_tensor_frame,
-            'val': val_tensor_frame,
-            'test': test_tensor_frame
-        }
-        norm_path = os.path.join(os.path.dirname(args.result_path), f'{args.model_type}_{args.scale}_{args.idx}_normalized_data.pt')
-        torch.save(normalized_data, norm_path)
+    print(f"save data under: {os.path.join(args.data_folder, f'{args.model_type}_{args.scale}_{args.idx}_normalized_data_col_names_dict.pt')}")
+    torch.save(col_names_dict, 
+               os.path.join(args.data_folder, f"{args.model_type}_{args.scale}_{args.idx}_normalized_data_col_names_dict.pt"))
+    torch.save(col_stats, 
+               os.path.join(args.data_folder,f"{args.model_type}_{args.scale}_{args.idx}_normalized_data_col_stats.pt"))
+normalized_data = {
+    'train': train_tensor_frame,
+    'val': val_tensor_frame,
+    'test': test_tensor_frame
+}
+norm_path = os.path.join(args.data_folder, f'{args.model_type}_{args.scale}_{args.idx}_normalized_data.pt')
+torch.save(normalized_data, norm_path)
 
 
 def train(
@@ -438,15 +420,6 @@ def train_and_eval_with_cfg(
                             batch_size=train_cfg['batch_size'])
     test_loader = DataLoader(test_tensor_frame,
                              batch_size=train_cfg['batch_size'])
-    if args.result_path:
-        normalized_data = {
-            'train': train_tensor_frame,
-            'val': val_tensor_frame,
-            'test': test_tensor_frame
-        }
-        norm_path = os.path.join(os.path.dirname(args.result_path), f'{args.model_type}_{args.scale}_{args.idx}_normalized_data_v2.pt')
-        torch.save(normalized_data, norm_path)
-
 
     if higher_is_better:
         best_val_metric = 0
@@ -460,13 +433,13 @@ def train_and_eval_with_cfg(
             if val_metric > best_val_metric:
                 best_test_metric = test(model, test_loader)
                 # save new best model
-                norm_path = os.path.join(os.path.dirname(args.result_path), f'{args.model_type}_{args.scale}_{args.idx}_best_model.pt')
+                norm_path = os.path.join(args.result_folder, f'{args.model_type}_{args.scale}_{args.idx}_best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         else:
             if val_metric < best_val_metric:
                 best_val_metric = val_metric
                 best_test_metric = test(model, test_loader)
-                norm_path = os.path.join(os.path.dirname(args.result_path), f'{args.model_type}_{args.scale}_{args.idx}_best_model.pt')
+                norm_path = os.path.join(args.result_folder, f'{args.model_type}_{args.scale}_{args.idx}_best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         lr_scheduler.step()
         print(f'Train Loss: {train_loss:.4f}, Val: {val_metric:.4f}')
@@ -542,10 +515,10 @@ def main_deep_models():
     }
     print(result_dict)
     # Save results
-    if args.result_path != '':
-        os.makedirs(os.path.dirname(args.result_path), exist_ok=True)
-        torch.save({'model_state_dict': model.state_dict(), **result_dict},
-                    args.result_path)
+    
+    os.makedirs(args.result_folder, exist_ok=True)
+    torch.save({'model_state_dict': model.state_dict(), **result_dict},
+                os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{args.scale}_{args.idx}_results.pt'))
 
 
 
@@ -574,17 +547,13 @@ def main_gbdt():
     }
     print(result_dict)
     # Save results
-    if args.result_path != '':
-        os.makedirs(os.path.dirname(args.result_path), exist_ok=True)
-        torch.save(result_dict, args.result_path)
-        model.save(args.result_path)
+    os.makedirs(args.result_folder, exist_ok=True)
+    torch.save(result_dict, os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{args.scale}_{args.idx}_results.pt'))
+    model.save(os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{args.scale}_{args.idx}_results.pt'))
 
 
 if __name__ == '__main__':
     print(args)
-    if os.path.exists(args.result_path):
-        print(f"Result file {args.result_path} already exists. Exiting.")
-        exit(-1)
     if args.model_type in ["XGBoost", "CatBoost", "LightGBM"]:
         main_gbdt()
     else:
