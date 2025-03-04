@@ -89,27 +89,31 @@ def compute_gradmethod_fidelity_per_kNN(tst_feat,
     else:
         local_preds += predictions_baseline[torch.arange(len(top_labels)), top_labels]
     local_pred_sigmoid = torch.sigmoid(local_preds)
-
     if pred_threshold is None:
         pred_threshold = 0.5
+    local_pred_labels = (local_pred_sigmoid >= pred_threshold).cpu().numpy().astype(int)
 
     
     # 4. Compute metrics for binary and regression tasks
     res_binary_classification = binary_classification_metrics_per_row(model_predicted_top_label.cpu().numpy(), 
+                                                                      local_pred_labels, 
                                                                       local_pred_sigmoid.cpu().numpy(), 
-                                                                      pred_threshold)
+                                                                      )
     res_regression = regression_metrics_per_row(model_preds_top_label.cpu().numpy(),
                                                 local_preds.cpu().numpy())
+    res_regression_proba = regression_metrics_per_row(model_probs_top_label.cpu().numpy(),
+                                                local_pred_sigmoid.cpu().numpy())
+    
     res_impurity = impurity_metrics_per_row(model_predicted_top_label.cpu().numpy())
     res_impurity = (*res_impurity, variance_pred, variance_prob_pred)
 
-    return n_closest, res_binary_classification, res_regression, res_impurity, R
+    return n_closest, res_binary_classification, res_regression, res_regression_proba, res_impurity, R
 
 
 def compute_saliency_maps(explainer, predict_fn, data_loader_tst, transform = None):
     saliency_map = []
     for i, batch in enumerate(data_loader_tst):
-        Xs = batch[0]
+        Xs = batch#[0]
         preds = predict_fn(Xs)
         if preds.ndim == 2:
             saliency = explainer.attribute(Xs).float()

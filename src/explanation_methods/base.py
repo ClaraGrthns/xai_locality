@@ -67,6 +67,10 @@ class BaseExplanationMethodHandler:
             "mse": np.zeros((num_fractions, self.args.max_test_points)),
             "mae": np.zeros((num_fractions, self.args.max_test_points)),
             "r2": np.zeros((num_fractions, self.args.max_test_points)),
+
+            "mse_proba": np.zeros((num_fractions, self.args.max_test_points)),
+            "mae_proba": np.zeros((num_fractions, self.args.max_test_points)),
+            "r2_proba": np.zeros((num_fractions, self.args.max_test_points)),
             
             "gini": np.zeros((num_fractions, self.args.max_test_points)),
             "variance": np.zeros((num_fractions, self.args.max_test_points)),

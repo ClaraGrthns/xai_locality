@@ -120,15 +120,22 @@ def lime_pred(binary_x, exp):
     local_pred = intercept + binary_x_selected @ coeffs
     return local_pred
 
-def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features):
+def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features, sequential_computation=True):
+    """
+    Computes the LIME explanations for a set of instances.
+    """
+
     if type(tst_feat) == torch.Tensor:
         tst_feat = tst_feat.numpy()
     
-    # Run parallel computation directly
-    explanations = Parallel(n_jobs=-1)(
+    if not sequential_computation:
+        explanations = Parallel(n_jobs=-1)(
         delayed(explainer.explain_instance)(instance, predict_fn, top_labels=1, num_features=num_lime_features)
         for instance in tst_feat
     )
+    else:
+        explanations = [explainer.explain_instance(instance, predict_fn, top_labels=1, num_features=num_lime_features) for instance in tst_feat]
+    
     return explanations
 
 def compute_lime_accuracy_per_radius(tst_set, dataset, explanations, explainer, predict_fn, dist_threshold, tree, pred_threshold=None):
@@ -229,11 +236,13 @@ def compute_lime_fidelity_per_kNN(tst_set, dataset, explanations, explainer, pre
     local_preds = lime_pred_vectorized(binary_sample, explanations)
     if pred_threshold is None:
         pred_threshold = 1 / model_preds[0].ndim
+    local_preds_label = (local_preds >= pred_threshold).astype(np.int32)
     
     # 4. Compute metrics for binary and regression tasks
     res_binary_classification = binary_classification_metrics_per_row(model_predicted_top_label, 
-                                                                      local_preds, 
-                                                                      pred_threshold)
+                                                                      local_preds_label,
+                                                                      local_preds
+                                                                      )
     res_regression = regression_metrics_per_row(model_prob_of_top_label,
                                                 cut_off_probability(local_preds))
     res_impurity = impurity_metrics_per_row(model_predicted_top_label)
