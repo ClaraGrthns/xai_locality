@@ -1,0 +1,15 @@
+explanation_method:
+  method: "lime"
+
+paths:
+  results_path: "/home/grotehans/xai_locality/results/lime/Trompt/MiniBooNE"
+  data_path: "/home/grotehans/xai_locality/data/Trompt_MiniBooNE_normalized_data.pt"
+  model_path: "/home/grotehans/xai_locality/pretrained_models/Trompt/MiniBooNE/Trompt_normalized_binary_MiniBooNE_results.pt"
+                                
+model: 
+  model_type: "Trompt"
+
+# Analysis parameters
+analysis:
+  max_frac: 0.05
+  num_frac: 100

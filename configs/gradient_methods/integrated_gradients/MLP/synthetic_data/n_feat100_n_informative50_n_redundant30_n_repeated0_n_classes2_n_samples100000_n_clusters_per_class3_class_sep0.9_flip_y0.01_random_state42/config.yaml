@@ -1,0 +1,23 @@
+explanation_method:
+  method: "gradient"
+
+paths:
+  results_path: "/home/grotehans/xai_locality/results/gradient_methods/integrated_gradient/MLP/synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42"
+  data_path: "/home/grotehans/xai_locality/data/synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42_normalized_tensor_frame.pt"
+  model_path: "/home/grotehans/xai_locality/pretrained_models/MLP/synthetic_data/MLP_n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42_results.pt"
+# Model and method configuration
+model:
+  model_type: "MLP"
+  gradient_method: "IG"
+
+# Analysis parameters
+analysis:
+  distance_measure: "euclidean"
+  max_frac: 0.05
+  num_frac: 50
+  random_seed: 42
+  chunk_size: 100
+
+# Other parameters
+other:
+  max_test_points: 200

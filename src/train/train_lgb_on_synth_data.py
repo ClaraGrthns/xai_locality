@@ -96,7 +96,7 @@ def main(args):
         num_boost_round=1000
     )
 
-    model_setting = f'final_model_n_feat{args.n_features}_n_informative{args.n_informative}_n_redundant{args.n_redundant}_n_repeated{args.n_repeated}_n_classes{args.n_classes}_n_samples{args.n_samples}_n_clusters_per_class{args.n_clusters_per_class}_class_sep{args.class_sep}_flip_y{args.flip_y}_random_state{args.random_seed}'
+    model_setting = f'LightGBM_n_feat{args.n_features}_n_informative{args.n_informative}_n_redundant{args.n_redundant}_n_repeated{args.n_repeated}_n_classes{args.n_classes}_n_samples{args.n_samples}_n_clusters_per_class{args.n_clusters_per_class}_class_sep{args.class_sep}_flip_y{args.flip_y}_random_state{args.random_seed}'
     final_model.save_model(os.path.join(args.model_folder, model_setting))
 
     final_preds = final_model.predict(X_test)

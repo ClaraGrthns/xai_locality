@@ -8,9 +8,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Plot accuracy vs fraction for different kernel widths.")
     parser.add_argument('--kernel_widths', nargs='+', type=float, default = [1.0, 2.5, 5.3, 16.0],   help='List of kernel widths.')
     parser.add_argument("--results_folder", type=str, help="Path to the results folder")
-    parser.add_argument("--results_path", type=str, help="Path to save results", default="/home/grotehans/xai_locality/results/lightgbm/jannis")
+    parser.add_argument("--results_path", type=str, help="Path to save results", default="/home/grotehans/xai_locality/results/LightGBM/jannis")
     parser.add_argument('--setting', type=str,  help='Setting string.')
-    parser.add_argument("--experiment_setting", type=str, default = "thresholds-0-4.0-max63.0num_tresh-150_only_test_kernel_width-{kw}_model_regr-ridge_model_type-lightgbm_accuracy_fraction.npy.npz", help="Leave kernel_width as")
+    parser.add_argument("--experiment_setting", type=str, default = "thresholds-0-4.0-max63.0num_tresh-150_only_test_kernel_width-{kw}_model_regr-ridge_model_type-LightGBM_accuracy_fraction.npy.npz", help="Leave kernel_width as")
     return parser.parse_args()
 
 def main():

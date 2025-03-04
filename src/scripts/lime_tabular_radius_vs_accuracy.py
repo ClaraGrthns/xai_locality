@@ -47,9 +47,9 @@ def main(args):
     # Load model and data based on model type
     if args.model_type == "xgboost":
         from model.pytorch_frame_xgboost import load_model, load_data, predict_fn
-    elif args.model_type == "lightgbm" and ("synthetic" in results_path):
+    elif args.model_type == "LightGBM" and ("synthetic" in results_path):
         from model.lightgbm import load_model, load_data, predict_fn
-    elif args.model_type == "lightgbm":
+    elif args.model_type == "LightGBM":
         from model.pytorch_frame_lgm import load_model, load_data, predict_fn
     elif args.model_type == "inception_v3":
         from model.tab_inception_v3 import load_model, load_data, predict_fn, get_class_names
@@ -237,12 +237,12 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Locality Analyzer")
     parser.add_argument("--data_folder", type=str, help="Path to the data folder")#, default = "/home/grotehans/xai_locality/data/synthetic_data")
-    parser.add_argument("--model_folder", type=str, help="Path to the model folder")#, default = "/home/grotehans/xai_locality/pretrained_models/lightgbm/synthetic_data" )
-    parser.add_argument("--results_folder", type=str, help="Path to the results folder")#, default="/home/grotehans/xai_locality/results/lightgbm/synthetic_data")
+    parser.add_argument("--model_folder", type=str, help="Path to the model folder")#, default = "/home/grotehans/xai_locality/pretrained_models/LightGBM/synthetic_data" )
+    parser.add_argument("--results_folder", type=str, help="Path to the results folder")#, default="/home/grotehans/xai_locality/results/LightGBM/synthetic_data")
     parser.add_argument("--setting", type=str, help="Setting of the experiment")#, default= "n_feat50_n_informative20_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class5_class_sep0.9_flip_y0.01_random_state42")
     parser.add_argument("--data_path", type=str, help="Path to the data")
     parser.add_argument("--model_path", type=str, help="Path to the model")
-    parser.add_argument("--model_type", type=str, default="lightgbm", help="Model type, so far only 'xgboost' and 'lightgbm' is supported")
+    parser.add_argument("--model_type", type=str, default="LightGBM", help="Model type, so far only 'xgboost' and 'LightGBM' is supported")
     parser.add_argument("--results_path", type=str, help="Path to save results")#, default=" ")
     parser.add_argument("--distance_measure", type=str, default="euclidean", help="Distance measure")
     parser.add_argument("--num_tresh", type=int, default=50, help="Number of thresholds")

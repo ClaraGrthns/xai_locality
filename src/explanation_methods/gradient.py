@@ -8,6 +8,7 @@ import h5py
 import numpy as np
 from torch.utils.data import DataLoader
 from torch.utils.data import Subset
+import time 
 
 class IntegratedGradientsHandler(BaseExplanationMethodHandler):
     def set_explainer(self, **kwargs):
@@ -69,13 +70,15 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         tst_feat_for_expl_loader = DataLoader(tst_feat_for_expl, batch_size=chunk_size, shuffle=False)
 
         for i, batch in enumerate(tst_feat_for_expl_loader):
-            tst_chunk = batch[0]
+            tst_chunk = batch#[0]
             chunk_start = i*chunk_size
             chunk_end = min(chunk_start + chunk_size, len(tst_feat_for_dist))
             print(f"Computing mse/var for chunk {i} from {chunk_start} to {chunk_end}")
             explanations_chunk = explanations[chunk_start:chunk_end]
             for n_closest in n_points_in_ball:
                 print(f"Computing mse/var for {n_closest} closest points")
+                start_time = time.time()
+
                 # top_labels = torch.argmax(predict_fn(imgs), dim=1).tolist()
                 with torch.no_grad():
                     predictions = predict_fn(tst_chunk) #shape: num test samples x num classes
@@ -97,9 +100,10 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
                                                                     tree,
                                                                     top_labels 
                                                                 )
-                n_closest, res_binary_classification, res_regression, res_impurity, R = chunk_result
+                n_closest, res_binary_classification, res_regression, res_regression_proba, res_impurity, R = chunk_result
                 aucroc, acc, precision, recall, f1 = res_binary_classification
                 mse, mae, r2 = res_regression
+                mse_proba, mae_proba, r2_proba = res_regression_proba
                 gini, ratio, variance, variance_probs = res_impurity
 
                 fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
@@ -113,13 +117,17 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
                 results["mae"][fraction_idx, chunk_start:chunk_end] = mae
                 results["r2"][fraction_idx, chunk_start:chunk_end] = r2
 
+                results["mse_proba"][fraction_idx, chunk_start:chunk_end] = mse_proba
+                results["mae_proba"][fraction_idx, chunk_start:chunk_end] = mae_proba
+                results["r2_proba"][fraction_idx, chunk_start:chunk_end] = r2_proba
+
                 results["gini"][fraction_idx, chunk_start:chunk_end] = gini
                 results["ratio_all_ones"][fraction_idx, chunk_start:chunk_end] = ratio
                 results["variance"][fraction_idx, chunk_start:chunk_end] = variance_probs
                 results["variance_logit"][fraction_idx, chunk_start:chunk_end] = variance
 
                 results["radius"][fraction_idx, chunk_start:chunk_end] = R
-                print(f"Finished computing mse/var for {n_closest} closest points")
+                print(f"Finished computing mse/var for {n_closest} closest points in {time.time() - start_time} seconds")
                 
             np.savez(osp.join(results_path, experiment_setting), **results)
         return results

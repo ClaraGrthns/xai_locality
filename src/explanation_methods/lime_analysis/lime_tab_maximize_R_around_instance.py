@@ -103,7 +103,7 @@ def optimize_radius_ball_around_x(x, dataset, explainer, dist_measure="euclidean
     }
 
 data_path = "/home/grotehans/pytorch-frame/data/"
-model_path = '/home/grotehans/pytorch-frame/benchmark/results/xgboost_binary_medium_6.pt'
+model_path = '/home/grotehans/pytorch-frame/benchmark/results/xgboost_binary_jannis.pt'
 distance_measure = "euclidean"
 target_accuracy = 0.8
 include_trn = True

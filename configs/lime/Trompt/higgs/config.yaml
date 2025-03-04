@@ -1,0 +1,15 @@
+explanation_method:
+  method: "lime"
+
+paths:
+  data_path: "/home/grotehans/xai_locality/data/Trompt_higgs_normalized_data.pt"
+  model_path: "/home/grotehans/xai_locality/pretrained_models/Trompt/higgs/Trompt_normalized_binary_higgs_results_results.pt"
+  results_path: "/home/grotehans/xai_locality/results/lime/Trompt/higgs"
+                                
+model: 
+  model_type: "Trompt"
+
+# Analysis parameters
+analysis:
+  max_frac: 0.05
+  num_frac: 100

@@ -1,0 +1,15 @@
+explanation_method:
+  method: "lime"
+
+paths:
+  data_path: "/home/grotehans/xai_locality/data/MLP_higgs_normalized_data.pt"
+  model_path: "/home/grotehans/xai_locality/pretrained_models/MLP/higgs/MLP_normalized_binary_higgs_results.pt"
+  results_path: "/home/grotehans/xai_locality/results/lime/MLP/higgs"
+                                
+model: 
+  model_type: "MLP"
+
+# Analysis parameters
+analysis:
+  max_frac: 0.05
+  num_frac: 100

@@ -1,0 +1,15 @@
+explanation_method:
+  method: "lime"
+
+paths:
+  results_path: "/home/grotehans/xai_locality/results/lime/MLP/jannis"
+  data_path: "/home/grotehans/xai_locality/data/MLP_jannis_normalized_data.pt"
+  model_path: "/home/grotehans/xai_locality/pretrained_models/MLP/jannis/MLP_normalized_binary_jannis_results.pt"
+                                
+model: 
+  model_type: "MLP"
+
+# Analysis parameters
+analysis:
+  max_frac: 0.05
+  num_frac: 100

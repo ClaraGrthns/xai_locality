@@ -52,7 +52,7 @@ class LimeHandler(BaseExplanationMethodHandler):
         else:
             tst_data = tst_data.features
             print("Precomputed explanations not found. Computing explanations for the test set...")
-            explanations = compute_explanations(self.explainer, tst_data, predict_fn, args.num_lime_features)
+            explanations = compute_explanations(self.explainer, tst_data, predict_fn, args.num_lime_features, sequential_computation=args.debug)
             
             # Save the explanations to the appropriate file
             np.save(explanation_file_path, explanations)
@@ -97,10 +97,10 @@ class LimeHandler(BaseExplanationMethodHandler):
         predict_threshold = self.args.predict_threshold
         tst_feat_for_expl_loader = DataLoader(tst_feat_for_expl, batch_size=chunk_size, shuffle=False)
         for i, batch in enumerate(tst_feat_for_expl_loader):
-            tst_chunk = batch[0].numpy()
+            tst_chunk = batch.numpy()#[0]
             chunk_start = i * chunk_size
             chunk_end = min(chunk_start + chunk_size, len(df_feat_for_expl))
-            print(f"Processing chunk {i // chunk_size + 1}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
+            print(f"Processing chunk {i}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
             explanations_chunk = explanations[chunk_start:chunk_end]
 
             if self.args.debug:
@@ -122,9 +122,9 @@ class LimeHandler(BaseExplanationMethodHandler):
                     results["recall"][fraction_idx, chunk_start:chunk_end] = recall
                     results["f1"][fraction_idx, chunk_start:chunk_end] = f1
                     
-                    results["mse"][fraction_idx, chunk_start:chunk_end] = mse
-                    results["mae"][fraction_idx, chunk_start:chunk_end] = mae
-                    results["r2"][fraction_idx, chunk_start:chunk_end] = r2
+                    results["mse_proba"][fraction_idx, chunk_start:chunk_end] = mse
+                    results["mae_proba"][fraction_idx, chunk_start:chunk_end] = mae
+                    results["r2_proba"][fraction_idx, chunk_start:chunk_end] = r2
 
                     results["gini"][fraction_idx, chunk_start:chunk_end] = gini
                     results["ratio_all_ones"][fraction_idx, chunk_start:chunk_end] = ratio
