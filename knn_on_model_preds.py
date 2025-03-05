@@ -134,7 +134,7 @@ if __name__ == "__main__":
     # Other parameters
     parser.add_argument("--max_test_points", type=int, default=200)
     parser.add_argument("--min_k", type=int, default=1)
-    parser.add_argument("--max_k", type=int, default=20)
+    parser.add_argument("--max_k", type=int, default=25)
     parser.add_argument("--k_step", type=int, default=1)
     
     args = parser.parse_args()
