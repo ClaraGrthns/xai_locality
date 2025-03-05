@@ -47,6 +47,58 @@ from torch_frame.nn.models import (
 )
 from torch_frame.typing import TaskType
 import random 
+# Lookup table for datasets
+dataset_lookup = {
+    "binary_classification": {
+        "small": {
+            0: "adult_census_income",
+            1: "mushroom",
+            2: "bank_marketing",
+            3: "magic_telescope",
+            4: "bank_marketing",
+            5: "california",
+            6: "credit",
+            7: "default_of_credit_card_clients",
+            8: "electricity",
+            9: "eye_movements",
+            10: "heloc",
+            11: "house_16H",
+            12: "pol",
+            13: "adult",
+        },
+        "medium": {
+            0: "dota2",
+            1: "kdd_census_income",
+            2: "diabetes130us",
+            3: "MiniBooNE",
+            4: "albert",
+            5: "covertype",
+            6: "jannis",
+            7: "road_safety",
+            8: "higgs_small",
+        },
+        "large": {
+            0: "higgs",
+        },
+    },
+    "multiclass_classification": {
+        "medium": {
+            0: "aloi",
+            1: "helena",
+            2: "jannis",
+        },
+        "large": {
+            0: "forest_cover_type",
+            1: "poker_hand",
+            2: "covtype",
+        },
+    },
+}
+
+# Function to get dataset name
+def get_dataset_name(classification_type, scale, index):
+    return dataset_lookup.get(classification_type, {}).get(scale, {}).get(index, "Dataset not found")
+
 
 def set_random_seeds(seed=42):
     random.seed(seed)
@@ -123,6 +175,8 @@ set_random_seeds(args.seed)
 # Prepare datasets
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data')
 os.makedirs(args.result_folder, exist_ok=True)
+dataset_name = get_dataset_name(args.task_type, args.scale, args.idx)
+print(f"Dataset: {dataset_name}")
 
 
 dataset = DataFrameBenchmark(root=path, task_type=TaskType(args.task_type),
@@ -319,17 +373,17 @@ else:
     assert col_stats is not None
     assert set(train_search_space.keys()) == set(TRAIN_CONFIG_KEYS)
     col_names_dict = train_tensor_frame.col_names_dict
-    print(f"save data under: {os.path.join(args.data_folder, f'{args.model_type}_{args.scale}_{args.idx}_normalized_data_col_names_dict.pt')}")
+    print(f"save data under: {os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt')}")
     torch.save(col_names_dict, 
-               os.path.join(args.data_folder, f"{args.model_type}_{args.scale}_{args.idx}_normalized_data_col_names_dict.pt"))
+               os.path.join(args.data_folder, f"{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt"))
     torch.save(col_stats, 
-               os.path.join(args.data_folder,f"{args.model_type}_{args.scale}_{args.idx}_normalized_data_col_stats.pt"))
+               os.path.join(args.data_folder,f"{args.model_type}_{dataset_name}_normalized_data_col_stats.pt"))
 normalized_data = {
     'train': train_tensor_frame,
     'val': val_tensor_frame,
     'test': test_tensor_frame
 }
-norm_path = os.path.join(args.data_folder, f'{args.model_type}_{args.scale}_{args.idx}_normalized_data.pt')
+norm_path = os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data.pt')
 torch.save(normalized_data, norm_path)
 
 
@@ -433,13 +487,13 @@ def train_and_eval_with_cfg(
             if val_metric > best_val_metric:
                 best_test_metric = test(model, test_loader)
                 # save new best model
-                norm_path = os.path.join(args.result_folder, f'{args.model_type}_{args.scale}_{args.idx}_best_model.pt')
+                norm_path = os.path.join(args.result_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         else:
             if val_metric < best_val_metric:
                 best_val_metric = val_metric
                 best_test_metric = test(model, test_loader)
-                norm_path = os.path.join(args.result_folder, f'{args.model_type}_{args.scale}_{args.idx}_best_model.pt')
+                norm_path = os.path.join(args.result_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         lr_scheduler.step()
         print(f'Train Loss: {train_loss:.4f}, Val: {val_metric:.4f}')
@@ -518,7 +572,7 @@ def main_deep_models():
     
     os.makedirs(args.result_folder, exist_ok=True)
     torch.save({'model_state_dict': model.state_dict(), **result_dict},
-                os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{args.scale}_{args.idx}_results.pt'))
+                os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
 
 
 
@@ -548,8 +602,8 @@ def main_gbdt():
     print(result_dict)
     # Save results
     os.makedirs(args.result_folder, exist_ok=True)
-    torch.save(result_dict, os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{args.scale}_{args.idx}_results.pt'))
-    model.save(os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{args.scale}_{args.idx}_results.pt'))
+    torch.save(result_dict, os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
+    model.save(os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
 
 
 if __name__ == '__main__':
