@@ -1,6 +1,6 @@
 from src.explanation_methods.base import BaseExplanationMethodHandler
 import lime.lime_tabular
-from src.explanation_methods.lime_analysis.lime_local_classifier import compute_lime_fidelity_per_kNN, compute_explanations
+from src.explanation_methods.lime_analysis.lime_local_classifier import compute_lime_fidelity_per_kNN, compute_explanations, get_lime_preds_for_all_kNN
 from src.utils.misc import get_path
 import os.path as osp
 import os
@@ -9,6 +9,7 @@ from joblib import Parallel, delayed
 from torch.utils.data import Subset, DataLoader
 import time
 import torch
+from src.utils.metrics import binary_classification_metrics_per_row, regression_metrics_per_row, impurity_metrics_per_row
 
 class LimeHandler(BaseExplanationMethodHandler):
     def set_explainer(self, **kwargs):
@@ -27,8 +28,6 @@ class LimeHandler(BaseExplanationMethodHandler):
     def explain_instance(self, **kwargs):
         return self.explainer.explain_instance(**kwargs)
 
-    def compute_accuracy(self, tst_set, analysis_dataset, explanations, explainer, predict_fn, n_closest, tree, pred_threshold, top_labels=None):
-        return compute_lime_fidelity_per_kNN(tst_set, analysis_dataset, explanations, explainer, predict_fn, n_closest, tree, pred_threshold)
     
     def compute_explanations(self, results_path, predict_fn, tst_data):
         args = self.args
@@ -62,7 +61,7 @@ class LimeHandler(BaseExplanationMethodHandler):
     def get_experiment_setting(self, fractions):
         args = self.args
         df_setting = "complete_df" if args.include_trn and args.include_val else "only_test"
-        experiment_setting = f"fractions-{0}-{np.round(fractions[-1])}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_accuracy_fraction.npy"
+        experiment_setting = f"fractions-{0}-{np.round(fractions, 2)}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_accuracy_fraction"
         # if args.num_lime_features > 10:
         #     experiment_setting = f"num_features-{args.num_lime_features}_{experiment_setting}"
         # if args.num_test_splits > 1:
@@ -91,9 +90,7 @@ class LimeHandler(BaseExplanationMethodHandler):
                      results_path,
                      experiment_setting,
                      results):
-        print(len(tst_feat_for_expl))
-        print(len(df_feat_for_expl))
-        chunk_size = self.args.chunk_size
+        chunk_size = int(np.min((self.args.chunk_size, len(tst_feat_for_expl))))
         predict_threshold = self.args.predict_threshold
         tst_feat_for_expl_loader = DataLoader(tst_feat_for_expl, batch_size=chunk_size, shuffle=False)
         for i, batch in enumerate(tst_feat_for_expl_loader):
@@ -102,70 +99,48 @@ class LimeHandler(BaseExplanationMethodHandler):
             chunk_end = min(chunk_start + chunk_size, len(df_feat_for_expl))
             print(f"Processing chunk {i}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
             explanations_chunk = explanations[chunk_start:chunk_end]
-
-            if self.args.debug:
-                # Normal for loop for easier debugging
-                for n_closest in n_points_in_ball:
-                    start_time = time.time()
-                    print(f"Processing {n_closest} nearest neighbours")
-                    n_closest, res_binary_classification, res_regression, res_impurity, R = compute_lime_fidelity_per_kNN(
-                    tst_chunk, df_feat_for_expl, explanations_chunk, self.explainer, predict_fn, n_closest, tree, predict_threshold
-                    )
-                    aucroc, acc, precision, recall, f1 = res_binary_classification
-                    mse, mae, r2 = res_regression
-                    gini, ratio, variance = res_impurity
-                    fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
-                    
-                    results["aucroc"][fraction_idx, chunk_start:chunk_end] = aucroc
-                    results["accuracy"][fraction_idx, chunk_start:chunk_end] = acc
-                    results["precision"][fraction_idx, chunk_start:chunk_end] = precision
-                    results["recall"][fraction_idx, chunk_start:chunk_end] = recall
-                    results["f1"][fraction_idx, chunk_start:chunk_end] = f1
-                    
-                    results["mse_proba"][fraction_idx, chunk_start:chunk_end] = mse
-                    results["mae_proba"][fraction_idx, chunk_start:chunk_end] = mae
-                    results["r2_proba"][fraction_idx, chunk_start:chunk_end] = r2
-
-                    results["gini"][fraction_idx, chunk_start:chunk_end] = gini
-                    results["ratio_all_ones"][fraction_idx, chunk_start:chunk_end] = ratio
-                    results["variance"][fraction_idx, chunk_start:chunk_end] = variance
-
-                    results["radius"][fraction_idx, chunk_start:chunk_end] = R
-
-                    print(f"Time taken: {time.time() - start_time}")
-            else:
-                chunk_results = Parallel(n_jobs=-1)(
-                    delayed(compute_lime_fidelity_per_kNN)(
-                    tst_chunk, df_feat_for_expl, explanations_chunk, self.explainer, predict_fn, n_closest, tree, predict_threshold
-                    )
-                    for n_closest in n_points_in_ball
-                )
-                # Unpack results directly into the correct positions in the arrays
-                for n_closest, res_binary_classification, res_regression, res_impurity, R  in chunk_results:
-                    aucroc, acc, precision, recall, f1 = res_binary_classification
-                    mse, mae, r2 = res_regression
-                    gini, ratio, variance = res_impurity
-
-                    fraction_idx = np.where(n_points_in_ball == n_closest)[0][0]
-                    results["aucroc"][fraction_idx, chunk_start:chunk_end] = aucroc
-                    results["accuracy"][fraction_idx, chunk_start:chunk_end] = acc
-                    results["precision"][fraction_idx, chunk_start:chunk_end] = precision
-                    results["recall"][fraction_idx, chunk_start:chunk_end] = recall
-                    results["f1"][fraction_idx, chunk_start:chunk_end] = f1
-                    
-                    results["mse"][fraction_idx, chunk_start:chunk_end] = mse
-                    results["mae"][fraction_idx, chunk_start:chunk_end] = mae
-                    results["r2"][fraction_idx, chunk_start:chunk_end] = r2
-
-                    results["gini"][fraction_idx, chunk_start:chunk_end] = gini
-                    results["ratio_all_ones"][fraction_idx, chunk_start:chunk_end] = ratio
-                    results["variance"][fraction_idx, chunk_start:chunk_end] = variance
-
-                    results["radius"][fraction_idx, chunk_start:chunk_end] = R
-
-            np.savez(osp.join(results_path, experiment_setting), **results)
-            print(f"Processed chunk {i // chunk_size + 1}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
+            res = get_lime_preds_for_all_kNN(tst_chunk, 
+                                             df_feat_for_expl, 
+                                             explanations_chunk, 
+                                             self.explainer, 
+                                             predict_fn, 
+                                             n_points_in_ball, 
+                                             tree, 
+                                             predict_threshold)
+            model_predicted_top_label, model_prob_of_top_label, local_preds_label, local_preds, dist = res
+            for idx in range(n_points_in_ball):
+                # 4. Compute metrics for binary and regression tasks
+                R = np.max(dist[:,:idx+1], axis=-1)
                 
+
+                aucroc, acc, precision, recall, f1 = binary_classification_metrics_per_row(model_predicted_top_label[:,:idx+1], 
+                                                                                local_preds_label[:,:idx+1],
+                                                                                local_preds[:,:idx+1]
+                                                                                )
+                mse, mae, r2 = regression_metrics_per_row(model_prob_of_top_label[:,:idx+1],
+                                                            local_preds[:,:idx+1])
+                gini, ratio = impurity_metrics_per_row(model_predicted_top_label[:,:idx+1])
+                variance_preds = np.var(model_prob_of_top_label[:,:idx+1], axis=1)
+                    
+                results["aucroc"][idx, chunk_start:chunk_end] = aucroc
+                results["accuracy"][idx, chunk_start:chunk_end] = acc
+                results["precision"][idx, chunk_start:chunk_end] = precision
+                results["recall"][idx, chunk_start:chunk_end] = recall
+                results["f1"][idx, chunk_start:chunk_end] = f1
+                
+                results["mse_proba"][idx, chunk_start:chunk_end] = mse
+                results["mae_proba"][idx, chunk_start:chunk_end] = mae
+                results["r2_proba"][idx, chunk_start:chunk_end] = r2
+
+                results["gini"][idx, chunk_start:chunk_end] = gini
+                results["ratio_all_ones"][idx, chunk_start:chunk_end] = ratio
+                results["variance_proba"][idx, chunk_start:chunk_end] = variance_preds
+
+                results["radius"][idx, chunk_start:chunk_end] = R
+
+           
+            np.savez(osp.join(results_path, experiment_setting), **results)
+            print(f"Processed chunk {i}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
         return results
             
 
