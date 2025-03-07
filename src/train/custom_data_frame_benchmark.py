@@ -50,6 +50,12 @@ from torch_frame.nn.models import (
 )
 from torch_frame.typing import TaskType
 import random 
+import sys
+sys.path.append(osp.join(os.getcwd(), '..'))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.dataset.synthetic_data import create_synthetic_data_sklearn
 
 def set_random_seeds(seed=42):
     random.seed(seed)
@@ -112,6 +118,21 @@ parser.add_argument(
 parser.add_argument('--seed', type=int, default=42)
 parser.add_argument('--result_folder', type=str, default='')
 parser.add_argument('--data_path', type=str)
+parser.add_argument("--n_features", type=int, default=20)
+parser.add_argument("--n_informative", type=int, default=15)
+parser.add_argument("--n_clusters_per_class", type=int, default=2)
+parser.add_argument("--class_sep", type=float, default=1.0)
+parser.add_argument("--flip_y", type=float, default=0.01)
+parser.add_argument("--n_redundant", type=int, default=5)
+parser.add_argument("--n_repeated", type=int, default=0)
+parser.add_argument("--n_classes", type=int, default=2)
+parser.add_argument("--n_samples", type=int, default=1000000)
+parser.add_argument("--n_trials", type=int, default=100)
+parser.add_argument("--timeout", type=int, default=3600)
+parser.add_argument("--data_folder", type=str, default="/home/grotehans/xai_locality/data/synthetic_data")
+parser.add_argument("--test_size", type=float, default=0.4)
+parser.add_argument("--val_size", type=float, default=0.1)
+
 args = parser.parse_args()
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -120,12 +141,35 @@ set_random_seeds(args.seed)
 # Prepare datasets
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data')
 
-data_path_wo_file_ending = Path(args.data_path).stem
-data_folder = os.path.dirname(args.data_path)
+if args.data_path:
+    data_path_wo_file_ending = Path(args.data_path).stem
 
-data = np.load(args.data_path)
-tst_feat, val_feat, trn_feat = data['X_test'], data['X_val'], data['X_train'] 
-y_test, y_val, y_train = data['y_test'], data['y_val'], data['y_train']
+    if os.path.exists(os.path.join(args.result_folder, f'{args.model_type}_{data_path_wo_file_ending}_results.pt')):
+        print(f"Results file for {args.model_type} on {data_path_wo_file_ending} already exists.")
+        exit()
+
+
+    data_folder = os.path.dirname(args.data_path)
+
+    data = np.load(args.data_path)
+    tst_feat, val_feat, trn_feat = data['X_test'], data['X_val'], data['X_train'] 
+    y_test, y_val, y_train = data['y_test'], data['y_val'], data['y_train']
+else: 
+    data_path_wo_file_ending, trn_feat, val_feat, tst_feat, y_train, y_val, y_test = create_synthetic_data_sklearn(args.n_features,
+                                                                                    args.n_informative, 
+                                                                                    args.n_redundant, 
+                                                                                    args.n_repeated,
+                                                                                    args.n_classes, 
+                                                                                    args.n_samples, 
+                                                                                    args.n_clusters_per_class, 
+                                                                                    args.class_sep, 
+                                                                                    args.flip_y, 
+                                                                                    args.seed, 
+                                                                                    args.data_folder,
+                                                                                    test_size=args.test_size,
+                                                                                    val_size=args.val_size)
+    data_folder = args.data_folder
+
 df_trn = pd.DataFrame(trn_feat)
 df_trn['y'] = y_train
 df_val = pd.DataFrame(val_feat)
@@ -134,6 +178,8 @@ df_tst = pd.DataFrame(tst_feat)
 df_tst['y'] = y_test
 col_to_stype = {col: torch_frame.numerical for col in df_trn.columns}
 col_to_stype['y'] = torch_frame.categorical
+
+os.makedirs(args.result_folder, exist_ok=True)
 
 train_dataset = Dataset(df_trn, col_to_stype=col_to_stype, target_col='y')
 val_dataset = Dataset(df_val, col_to_stype=col_to_stype, target_col='y')
@@ -452,7 +498,7 @@ def train_and_eval_with_cfg(
                 best_val_metric = val_metric
                 best_test_metric = test(model, test_loader)
                 best_model_state_dict = model.state_dict()
-                model_path = os.path.join(args.result_folder,  f'{args.model_type}_{data_path_wo_file_ending}_best_model.pt')
+                model_path = os.path.join(args.result_folder, f'{args.model_type}_{data_path_wo_file_ending}_best_model.pt')
                 torch.save(model.state_dict(), model_path)
         lr_scheduler.step()
         print(f'Train Loss: {train_loss:.4f}, Val: {val_metric:.4f}')

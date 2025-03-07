@@ -13,7 +13,7 @@ def main(args):
     misc.set_random_seeds(args.random_seed)
 
     if args.data_path is None:
-        X_train, X_val, X_test, y_train, y_val, y_test = create_synthetic_data_sklearn(args.n_features,
+        setting_name, X_train, X_val, X_test, y_train, y_val, y_test = create_synthetic_data_sklearn(args.n_features,
                                                                                     args.n_informative, 
                                                                                     args.n_redundant, 
                                                                                     args.n_repeated,

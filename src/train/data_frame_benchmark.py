@@ -178,6 +178,11 @@ os.makedirs(args.result_folder, exist_ok=True)
 dataset_name = get_dataset_name(args.task_type, args.scale, args.idx)
 print(f"Dataset: {dataset_name}")
 
+if os.path.exists(os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt')):
+    print(f"File {args.model_type}_normalized_binary_{dataset_name}_results.pt already exists.")
+    exit()
+
+
 
 dataset = DataFrameBenchmark(root=path, task_type=TaskType(args.task_type),
                              scale=args.scale, 
