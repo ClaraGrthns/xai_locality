@@ -1,6 +1,26 @@
 from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score, mean_squared_error, mean_absolute_error, r2_score
 import numpy as np
 
+def transform_ratios_to_weights(ratios):
+    weights = 1-(np.abs(ratios-0.5)*2)
+    return np.where(weights == 0, 0.0001, weights)
+def weighted_avg_and_var(values, weights, axis=None):
+    """
+    Return the weighted average and standard deviation.
+
+    They weights are in effect first normalized so that they 
+    sum to 1 (and so they must not all be 0).
+
+    values, weights -- NumPy ndarrays with the same shape.
+    """
+    if axis is None:
+        axis = -1
+    average = np.average(values, weights=weights, axis=axis)
+    # Fast and numerically precise:
+    variance = np.average((values-average[:, None])**2, weights=weights, axis=axis)
+    return (average, variance)
+
+
 def regression_metrics_per_row(y_true, y_pred):
     return mean_squared_error(y_true.T, y_pred.T, multioutput='raw_values'), mean_absolute_error(y_true.T, y_pred.T, multioutput='raw_values'), r2_score(y_true.T, y_pred.T, multioutput='raw_values')
 

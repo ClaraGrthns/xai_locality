@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset
-
+import os
 class BaseExplanationMethodHandler:
     def __init__(self,args):
         # self.explainer = self.set_explainer(**kwargs)
@@ -54,9 +54,14 @@ class BaseExplanationMethodHandler:
                      results_path,
                      ):
         
-        fractions = n_points_in_ball/len(df_feat_for_expl)        
-        experiment_setting = self.get_experiment_setting(fractions)
-        num_fractions = len(n_points_in_ball)
+        max_fraction = n_points_in_ball/len(df_feat_for_expl)        
+        experiment_setting = self.get_experiment_setting(max_fraction)
+        experiment_path = os.path.join(results_path, experiment_setting +".npz")
+        if os.path.exists(experiment_path):
+            print(f"Experiment with setting {experiment_setting} already exists.")
+            exit(-1)
+
+        num_fractions = len(np.arange(n_points_in_ball))
         results = {
             "accuracy": np.zeros((num_fractions, self.args.max_test_points)),
             "aucroc": np.zeros((num_fractions, self.args.max_test_points)),
@@ -73,31 +78,13 @@ class BaseExplanationMethodHandler:
             "r2_proba": np.zeros((num_fractions, self.args.max_test_points)),
             
             "gini": np.zeros((num_fractions, self.args.max_test_points)),
-            "variance": np.zeros((num_fractions, self.args.max_test_points)),
+            "variance_proba": np.zeros((num_fractions, self.args.max_test_points)),
             "variance_logit": np.zeros((num_fractions, self.args.max_test_points)),
             "ratio_all_ones": np.zeros((num_fractions, self.args.max_test_points)),
             
             "radius": np.zeros((num_fractions, self.args.max_test_points)),
-            "fraction_points_in_ball": fractions,
-            "n_points_in_ball": n_points_in_ball,
+            "n_points_in_ball": np.arange(n_points_in_ball),
         }
-        # chunk_size = self.args.chunk_size
-        # predict_threshold = self.args.predict_threshold
-        # for i, batch in enumerate(tst_feat_for_expl):
-        #     tst_chunk = batch[0]
-        #     chunk_start = i*chunk_size
-        #     chunk_end = min(chunk_start + chunk_size, len(df_feat_for_expl))
-        #     print(f"Processing chunk {i//chunk_size + 1}/{(len(tst_feat_for_expl) + chunk_size - 1)//chunk_size}")
-        #     chunk_end = min(i + chunk_size, len(tst_feat_for_expl))
-        #     explanations_chunk = explanations[chunk_start:chunk_end]
-        #     chunk_results = self.iterate_over_data(tst_chunk = tst_chunk, 
-        #                                            df_feat_for_expl = df_feat_for_expl, 
-        #                                            explanations_chunk = explanations_chunk, 
-        #                                            predict_fn = predict_fn, 
-        #                                            n_points_in_ball = n_points_in_ball, 
-        #                                            tree = tree, 
-        #                                            predict_threshold = predict_threshold)
-
         results = self.iterate_over_data(tst_feat_for_expl = tst_feat_for_expl, 
                      tst_feat_for_dist = tst_feat_for_dist, 
                      df_feat_for_expl = df_feat_for_expl, 

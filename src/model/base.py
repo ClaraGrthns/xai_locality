@@ -4,7 +4,10 @@ import numpy as np
 from src.dataset.tab_data import TabularDataset
 from src.utils.misc import get_path
 import torch
-
+from src.utils.pytorch_frame_utils import (
+   tensor_to_tensorframe,
+    tensorframe_to_tensor
+) 
 class BaseModelHandler:
     def __init__(self, args):
         self.args = args
@@ -26,10 +29,34 @@ class BaseModelHandler:
             data_path += ".npz"
         return data_path
     
-    def _split_data_in_tst_analysis(self, whole_tst_feat, val_feat, trn_feat):
+    def _get_split_indices(self, whole_tst_feat):
         indices = np.random.permutation(len(whole_tst_feat))
         tst_indices, analysis_indices = np.split(indices, [self.args.max_test_points])
         print("using the following indices for testing: ", tst_indices)
+        return tst_indices, analysis_indices
+    
+    def _get_tst_feat_label_forKNN(self, whole_tst_feat, y):
+        tst_indices, analysis_indices = self._get_split_indices(whole_tst_feat)
+        analysis_feat = whole_tst_feat[analysis_indices].numpy()
+        tst_feat = whole_tst_feat[tst_indices].numpy()
+        analysis_y = y[analysis_indices].numpy()
+        tst_y = y[tst_indices].numpy()
+        return tst_feat, analysis_feat, tst_y, analysis_y
+    
+    def load_data_for_kNN(self):
+        if self.data_path.endswith(".pt"):
+            data = torch.load(self.data_path)
+            test_tensor_frame = data["test"]
+            whole_tst_feat = tensorframe_to_tensor(test_tensor_frame)
+            y = test_tensor_frame.y
+        else:
+            data = np.load(self.data_path)
+            whole_tst_feat = data['X_test']
+            y = data['y_test']
+        return self._get_tst_feat_label_forKNN(whole_tst_feat, y)
+    
+    def _split_data_in_tst_analysis(self, whole_tst_feat, val_feat, trn_feat):
+        tst_indices, analysis_indices = self._get_split_indices(whole_tst_feat)
         analysis_feat = whole_tst_feat[analysis_indices]
         tst_feat = whole_tst_feat[tst_indices]
         if self.args.include_trn:

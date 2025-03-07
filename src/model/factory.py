@@ -1,4 +1,4 @@
-from torch_frame.nn import Trompt, ExcelFormer, MLP
+from torch_frame.nn import Trompt, ExcelFormer, MLP, TabNet, TabTransformer, FTTransformer
 
 from src.model.lightgbm import LightGBMHandler
 from src.model.tab_inception_v3 import TabInceptionV3Handler, TabBinaryInceptionV3Handler 
@@ -23,6 +23,9 @@ class ModelHandlerFactory:
         "Trompt": Trompt,
         "MLP": MLP,
         "ExcelFormer": ExcelFormer,
+        "TabNet": TabNet,
+        "TabTransformer": TabTransformer,
+        "FTTransformer": FTTransformer,
     }
 
     @staticmethod

@@ -29,6 +29,8 @@ def main(args):
 
     model_handler = ModelHandlerFactory.get_handler(args)
     model = model_handler.model
+    pytorch_total_params = sum(p.numel() for p in model.parameters())
+    print(f"Total number of parameters: {pytorch_total_params}")
     trn_for_expl, tst_for_dist, df_for_dist, tst_for_expl, df_for_expl = model_handler.load_data()
     print("Length of data set for analysis", len(df_for_dist))
 
@@ -51,7 +53,7 @@ def main(args):
     distance_measure = "pyfunc" if args.distance_measure == "cosine" else args.distance_measure
     
     tree = BallTree(df_for_dist, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_for_dist, metric=distance_measure, func=cosine_distance)
-    n_points_in_ball = np.linspace(1, 400, 100, dtype=int)
+    n_points_in_ball = 400
     print("Considering the closest neighbours: ", n_points_in_ball)
     
     results_g_x = explainer_handler.run_analysis(
@@ -72,9 +74,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Locality Analyzer")
 
     # Configuration file
-    # default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml"
+    #, default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml"
     # default="/home/grotehans/xai_locality/configs/lime/ExcelFormer/higgs/config.yaml",
-    parser.add_argument("--config", type=str,  default="/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml", help="Path to configuration file")#default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml",
+    parser.add_argument("--config", type=str, 
+                        default = "/home/grotehans/xai_locality/configs/lime//Trompt/synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42/config.yaml",  
+                        help="Path to configuration file") #default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml",
     
     # Data and model paths
     parser.add_argument("--data_folder", type=str, help="Path to the data folder")
