@@ -1,0 +1,15 @@
+analysis:
+  chunk_size: 20
+  num_features: 50
+  num_samples: 1000
+  random_seed: 42
+explanation_method:
+  method: lime
+model:
+  model_type: TabNet
+other:
+  max_test_points: 200
+paths:
+  data_path: /home/grotehans/xai_locality/data/synthetic_data/n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42_normalized_tensor_frame.pt
+  model_path: /home/grotehans/xai_locality/pretrained_models/TabNet/synthetic_data/TabNet_n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42_results.pt
+  results_path: /home/grotehans/xai_locality/results/lime/TabNet/synthetic_data/n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42

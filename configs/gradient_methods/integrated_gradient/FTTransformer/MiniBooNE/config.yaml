@@ -1,0 +1,17 @@
+analysis:
+  chunk_size: 100
+  distance_measure: euclidean
+  max_frac: 0.05
+  num_frac: 50
+  random_seed: 42
+explanation_method:
+  method: gradient
+model:
+  gradient_method: IG
+  model_type: FTTransformer
+other:
+  max_test_points: 200
+paths:
+  data_path: /home/grotehans/xai_locality/data/FTTransformer_MiniBooNE_normalized_data.pt
+  model_path: /home/grotehans/xai_locality/pretrained_models/FTTransformer/MiniBooNE/FTTransformer_normalized_binary_MiniBooNE_results.pt
+  results_path: /home/grotehans/xai_locality/results/gradient_methods/integrated_gradient/FTTransformer/MiniBooNE

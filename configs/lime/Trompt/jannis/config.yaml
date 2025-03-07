@@ -1,15 +1,15 @@
-explanation_method:
-  method: "lime"
-
-paths:
-  results_path: "/home/grotehans/xai_locality/results/lime/Trompt/jannis"
-  data_path: "/home/grotehans/xai_locality/data/Trompt_jannis_normalized_data.pt"
-  model_path: "/home/grotehans/xai_locality/pretrained_models/Trompt/jannis/Trompt_normalized_binary_jannis.pt"
-                                
-model: 
-  model_type: "Trompt"
-
-# Analysis parameters
 analysis:
-  max_frac: 0.05
-  num_frac: 100
+  chunk_size: 20
+  num_features: 50
+  num_samples: 1000
+  random_seed: 42
+explanation_method:
+  method: lime
+model:
+  model_type: Trompt
+other:
+  max_test_points: 200
+paths:
+  data_path: /home/grotehans/xai_locality/data/Trompt_jannis_normalized_data.pt
+  model_path: /home/grotehans/xai_locality/pretrained_models/Trompt/jannis/Trompt_normalized_binary_jannis_results.pt
+  results_path: /home/grotehans/xai_locality/results/lime/Trompt/jannis

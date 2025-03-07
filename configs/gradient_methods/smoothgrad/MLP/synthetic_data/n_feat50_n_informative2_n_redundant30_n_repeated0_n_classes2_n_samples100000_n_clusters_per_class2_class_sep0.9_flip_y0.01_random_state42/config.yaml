@@ -1,0 +1,17 @@
+analysis:
+  chunk_size: 100
+  distance_measure: euclidean
+  max_frac: 0.05
+  num_frac: 50
+  random_seed: 42
+explanation_method:
+  method: gradient
+model:
+  gradient_method: IG+SmoothGrad
+  model_type: MLP
+other:
+  max_test_points: 200
+paths:
+  data_path: /home/grotehans/xai_locality/data/synthetic_data/n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42_normalized_tensor_frame.pt
+  model_path: /home/grotehans/xai_locality/pretrained_models/MLP/synthetic_data/MLP_n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42_results.pt
+  results_path: /home/grotehans/xai_locality/results/gradient_methods/smoothgrad/MLP/synthetic_data/n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42

@@ -1,0 +1,15 @@
+analysis:
+  chunk_size: 20
+  num_features: 50
+  num_samples: 1000
+  random_seed: 42
+explanation_method:
+  method: lime
+model:
+  model_type: FTTransformer
+other:
+  max_test_points: 200
+paths:
+  data_path: /home/grotehans/xai_locality/data/FTTransformer_higgs_normalized_data.pt
+  model_path: /home/grotehans/xai_locality/pretrained_models/FTTransformer/higgs/FTTransformer_normalized_binary_higgs_results.pt
+  results_path: /home/grotehans/xai_locality/results/lime/FTTransformer/higgs

@@ -13,3 +13,9 @@ run_analysis.py
 rename_folders.sh
 rename_files.sh
 submit_all_jobs.sh
+src/data/Diabetes130US.csv
+src/data/higgs_small.zip
+src/data/jannis.csv
+src/data/MiniBooNE.csv
+src/data/Higgs.csv
+src/data/
