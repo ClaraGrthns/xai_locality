@@ -18,16 +18,13 @@ MODELS = {
 
 # Model type mapping for GBT models
 GBT_MODEL_TYPES = {
-    'LightGBM': {
-        'standard': 'pt_frame_lgm',
-        'synthetic': 'LightGBM'
-    }
+    'LightGBM': 'pt_frame_lgm',
+    "XGBoost": 'pt_frame_xgboost',
 }
 
 def get_gbt_paths_synthetic_data(model, dataset):
-    data_path = f'/home/grotehans/xai_locality/data/synthetic_data/{dataset}.npz'
-    model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/synthetic_data/{model}_{dataset}'
-    return data_path, model_path
+    model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/synthetic_data/{model}_{dataset}.pt'
+    return model_path
 
 def create_lime_config(model, dataset, is_synthetic=False):
     # Determine if it's a GBT model
@@ -35,21 +32,18 @@ def create_lime_config(model, dataset, is_synthetic=False):
     
     # Get correct model type for GBT models
     if model in GBT_MODEL_TYPES:
-        model_type = GBT_MODEL_TYPES[model]['synthetic' if is_synthetic else 'standard']
+        model_type = GBT_MODEL_TYPES[model]#['synthetic' if is_synthetic else 'standard']
     else:
         model_type = model
 
     # Get correct paths based on model type
-    if is_gbt and is_synthetic:
-        data_path, model_path = get_gbt_paths_synthetic_data(model, dataset)
+    if is_synthetic:
+        model_path = get_gbt_paths_synthetic_data(model, dataset) if is_gbt else f'/home/grotehans/xai_locality/pretrained_models/{model}/synthetic_data/{model}_{dataset}_results.pt'
+        data_path = f'/home/grotehans/xai_locality/data/synthetic_data/{dataset}_normalized_tensor_frame.pt'
     else:
-        data_path = f'/home/grotehans/xai_locality/data/{model}_{dataset}_normalized_data.pt'
-        if is_synthetic:
-            model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/synthetic_data/{model}_{dataset}_results.pt'
-            data_path =  f'/home/grotehans/xai_locality/data/synthetic_data/{dataset}_normalized_tensor_frame.pt'
-        else:
-            model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/{dataset}/{model}_normalized_binary_{dataset}_results.pt'
-            data_path =  f'/home/grotehans/xai_locality/data/{model}_{dataset}_normalized_data.pt'
+        model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/{dataset}/{model}_normalized_binary_{dataset}_results.pt'
+        data_path =  f'/home/grotehans/xai_locality/data/{model}_{dataset}_normalized_data.pt'
+    
     config = {
         'explanation_method': {
             'method': 'lime'
