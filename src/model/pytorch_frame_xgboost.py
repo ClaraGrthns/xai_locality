@@ -11,7 +11,14 @@ from src.dataset.tab_data import TabularDataset
 class PTFrame_XGBoostHandler(BaseModelHandler):
     def load_model(self):
         """Load an XGBoost model using the TorchFrame wrapper."""
-        model = XGBoost(task_type=TaskType.BINARY_CLASSIFICATION, num_classes=2)
+        train_tensor_frame = torch.load(self.data_path)["train"]
+        y = train_tensor_frame.y.numpy()
+        num_classes = len(np.unique(y))
+        if num_classes == 2:
+            task_type = TaskType.BINARY_CLASSIFICATION
+        else:
+            task_type = TaskType.MULTICLASS_CLASSIFICATION
+        model = XGBoost(task_type=task_type, num_classes=num_classes)
         model.load(self.model_path)
         return model
 

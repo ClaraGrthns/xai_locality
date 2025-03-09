@@ -9,7 +9,6 @@ from src.model.pytorch_frame_handler import TorchFrameHandler
 
 class ModelHandlerFactory:
     MODEL_HANDLERS = {
-        "LightGBM": LightGBMHandler,
         "tab_inception_v3": TabInceptionV3Handler,
         "tab_binary_inception_v3": TabBinaryInceptionV3Handler,
         "pt_frame_lgm": PTFrame_LightGBMHandler,

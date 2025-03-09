@@ -58,6 +58,7 @@ class LimeHandler(BaseExplanationMethodHandler):
             print(f"Finished computing and saving explanations to: {explanation_file_path}")
         return explanations
     
+    
     def get_experiment_setting(self, fractions):
         args = self.args
         df_setting = "complete_df" if args.include_trn and args.include_val else "only_test"
@@ -121,7 +122,12 @@ class LimeHandler(BaseExplanationMethodHandler):
                                                             local_preds[:,:idx+1])
                 gini, ratio = impurity_metrics_per_row(model_predicted_top_label[:,:idx+1])
                 variance_preds = np.var(model_prob_of_top_label[:,:idx+1], axis=1)
-                    
+
+                top_labels = np.array([exp.top_labels[0] for exp in explanations_chunk])
+                acc_constant_clf = np.mean(model_predicted_top_label[:, :idx+1] == top_labels[:, None], axis=1)
+
+                results["accuraccy_constant_clf"][idx, chunk_start:chunk_end] = acc_constant_clf
+                   
                 results["aucroc"][idx, chunk_start:chunk_end] = aucroc
                 results["accuracy"][idx, chunk_start:chunk_end] = acc
                 results["precision"][idx, chunk_start:chunk_end] = precision

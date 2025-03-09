@@ -8,7 +8,14 @@ from torch.utils.data import DataLoader
 
 class PTFrame_LightGBMHandler(BaseModelHandler):
     def load_model(self):
-        model = LightGBM(task_type=TaskType.BINARY_CLASSIFICATION, num_classes=2)
+        train_tensor_frame = torch.load(self.data_path)["train"]
+        y = train_tensor_frame.y.numpy()
+        num_classes = len(np.unique(y))
+        if num_classes == 2:
+            task_type = TaskType.BINARY_CLASSIFICATION
+        else:
+            task_type = TaskType.MULTICLASS_CLASSIFICATION
+        model = LightGBM(task_type=task_type, num_classes=num_classes)
         model.load(self.model_path)
         return model
 
@@ -25,7 +32,7 @@ class PTFrame_LightGBMHandler(BaseModelHandler):
                                                                                                 val_feat,
                                                                                                 trn_feat)
         return trn_feat, tst_feat, analysis_feat, tst_dataset, analysis_dataset
-
+  
     def predict_fn(self, X):
         pred = self.model.model.predict(X)
         if self.model.task_type == TaskType.BINARY_CLASSIFICATION:

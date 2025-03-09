@@ -56,6 +56,13 @@ def main(args):
     n_points_in_ball = 400
     print("Considering the closest neighbours: ", n_points_in_ball)
     
+    max_fraction = n_points_in_ball/len(df_for_expl)        
+    experiment_setting = explainer_handler.get_experiment_setting(max_fraction)
+    experiment_path = os.path.join(results_path, experiment_setting +".npz")
+    if os.path.exists(experiment_path) and not args.force:
+        print(f"Experiment with setting {experiment_setting} already exists.")
+        exit(-1)
+    
     results_g_x = explainer_handler.run_analysis(
                      tst_feat_for_expl = tst_for_expl, 
                      tst_feat_for_dist = tst_for_dist, 
@@ -77,8 +84,8 @@ if __name__ == "__main__":
     #, default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml"
     # default="/home/grotehans/xai_locality/configs/lime/ExcelFormer/higgs/config.yaml",
     parser.add_argument("--config", type=str, 
-                        default = "/home/grotehans/xai_locality/configs/lime//Trompt/synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42/config.yaml",  
-                        help="Path to configuration file") #default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml",
+                        default = "/home/grotehans/xai_locality/configs/lime/TabTransformer/higgs/config.yaml" , 
+                        help="Path to configuration file") 
     
     # Data and model paths
     parser.add_argument("--data_folder", type=str, help="Path to the data folder")
@@ -91,7 +98,7 @@ if __name__ == "__main__":
     
     # Model and method configuration
     parser.add_argument("--model_type", type=str, help="Model type: LightGBM, tab_inception_v3, pt_frame_lgm, pt_frame_xgboost, binary_inception_v3, inception_v3")
-    parser.add_argument("--method", type=str,help="Explanation method to use (lime or gradient)")
+    parser.add_argument("--method", default = "lime", type=str,help="Explanation method to use (lime or gradient)")
     parser.add_argument("--gradient_method", type=str, help="Which Gradient Method to use: [IG, IG+SmoothGrad]")
     
     # Analysis parameters
@@ -112,6 +119,7 @@ if __name__ == "__main__":
     # Other parameters
     parser.add_argument("--predict_threshold", type=float, default=None, help="Threshold for classifying sample as top prediction")
     parser.add_argument("--max_test_points", type=int, default=200)
+    parser.add_argument("--force", action="store_true", help="Force overwrite of existing results")
     
     args = parser.parse_args()
     config_handler = ConfigHandler(args.config)

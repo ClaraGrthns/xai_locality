@@ -19,7 +19,8 @@ def weighted_avg_and_var(values, weights, axis=None):
     # Fast and numerically precise:
     variance = np.average((values-average[:, None])**2, weights=weights, axis=axis)
     return (average, variance)
-
+def regression_metrics(y_true, y_pred):
+    return mean_squared_error(y_true, y_pred), mean_absolute_error(y_true, y_pred), r2_score(y_true, y_pred)
 
 def regression_metrics_per_row(y_true, y_pred):
     return mean_squared_error(y_true.T, y_pred.T, multioutput='raw_values'), mean_absolute_error(y_true.T, y_pred.T, multioutput='raw_values'), r2_score(y_true.T, y_pred.T, multioutput='raw_values')

@@ -84,8 +84,9 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
                 else:
                     predictions_sm = torch.softmax(predictions, dim=-1)
                 top_labels = torch.argmax(predictions_sm, dim=1).tolist()
-                
-            proba_output = self.model_type in ["LightGBM", "XGBoost", "pt_frame_lgm", "pt_frame_xgb"]
+
+            proba_output = self.args.model_type in ["LightGBM", "XGBoost", "pt_frame_lgm", "pt_frame_xgb"]
+            
             chunk_result = compute_gradmethod_preds_for_all_kNN(tst_feat_for_dist[chunk_start:chunk_end], 
                                                                 tst_chunk,
                                                                 predictions,
@@ -111,11 +112,14 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
                 
                 mse_proba, mae_proba, r2_proba = regression_metrics_per_row(model_probs_top_label[:, :idx+1],
                                                 local_probs_top_label[:, :idx+1])
-                
-                gini, ratio = impurity_metrics_per_row(model_preds_top_label[:, :idx+1])
+                gini, ratio = impurity_metrics_per_row(model_binary_pred_top_label[:, :idx+1])
                 variance_preds = np.var(model_preds_top_label[:, :idx+1], axis=1)
                 variance_pred_proba = np.var(model_probs_top_label[:, :idx+1], axis=1)
 
+                top_labels = np.array(top_labels)
+                acc_constant_clf = np.mean(model_binary_pred_top_label[:, :idx+1] == top_labels[:, None], axis=1)
+
+                results["accuraccy_constant_clf"][idx, chunk_start:chunk_end] = acc_constant_clf
 
                 results["aucroc"][idx, chunk_start:chunk_end] = aucroc
                 results["accuracy"][idx, chunk_start:chunk_end] = acc

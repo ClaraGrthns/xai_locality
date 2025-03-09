@@ -7,8 +7,10 @@ from src.utils.pytorch_frame_utils import (
     tensor_to_tensorframe, 
     PytorchFrameWrapper, 
     load_dataframes, 
+    tensorframe_to_tensor,
     transform_logit_to_class_proba
 )
+import numpy as np
 
 class TorchFrameHandler(BaseModelHandler):
     def __init__(self, args, model_class):
@@ -50,11 +52,15 @@ class TorchFrameHandler(BaseModelHandler):
             whole_tst_feat, val_feat, trn_feat
         )
         return trn_feat, tst_feat, analysis_feat, tst_dataset, analysis_dataset
-
+    
     def transform(self, X):
         return partial(tensor_to_tensorframe, col_names_dict=self.col_names_dict)(X)
 
     def predict_fn(self, X):
+        if isinstance(X, np.ndarray):
+            X = torch.Tensor(X)
+        if X.dtype == torch.double:
+            X = X.float()
         pred = self.model(X)
         if self.args.method == "lime":
             pred = transform_logit_to_class_proba(pred)

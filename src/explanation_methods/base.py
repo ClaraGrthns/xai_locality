@@ -43,6 +43,9 @@ class BaseExplanationMethodHandler:
     def iterate_over_data(self):
         raise NotImplementedError
     
+    def set_experiment_setting(self, max_fraction):
+        self.experiment_setting = self.get_experiment_setting(max_fraction)
+    
     def run_analysis(self, 
                      tst_feat_for_expl, 
                      tst_feat_for_dist, 
@@ -56,13 +59,11 @@ class BaseExplanationMethodHandler:
         
         max_fraction = n_points_in_ball/len(df_feat_for_expl)        
         experiment_setting = self.get_experiment_setting(max_fraction)
-        experiment_path = os.path.join(results_path, experiment_setting +".npz")
-        if os.path.exists(experiment_path):
-            print(f"Experiment with setting {experiment_setting} already exists.")
-            exit(-1)
+        
 
         num_fractions = len(np.arange(n_points_in_ball))
         results = {
+            "accuraccy_constant_clf": np.zeros((num_fractions, self.args.max_test_points)),
             "accuracy": np.zeros((num_fractions, self.args.max_test_points)),
             "aucroc": np.zeros((num_fractions, self.args.max_test_points)),
             "precision": np.zeros((num_fractions, self.args.max_test_points)),
