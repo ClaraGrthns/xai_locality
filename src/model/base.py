@@ -37,23 +37,29 @@ class BaseModelHandler:
     
     def _get_tst_feat_label_forKNN(self, whole_tst_feat, y):
         tst_indices, analysis_indices = self._get_split_indices(whole_tst_feat)
-        analysis_feat = whole_tst_feat[analysis_indices].numpy()
-        tst_feat = whole_tst_feat[tst_indices].numpy()
-        analysis_y = y[analysis_indices].numpy()
-        tst_y = y[tst_indices].numpy()
+        analysis_feat = whole_tst_feat[analysis_indices]
+        tst_feat = whole_tst_feat[tst_indices]
+        analysis_y = y[analysis_indices]
+        tst_y = y[tst_indices]
         return tst_feat, analysis_feat, tst_y, analysis_y
     
     def load_data_for_kNN(self):
         if self.data_path.endswith(".pt"):
             data = torch.load(self.data_path)
             test_tensor_frame = data["test"]
-            whole_tst_feat = tensorframe_to_tensor(test_tensor_frame)
-            y = test_tensor_frame.y
+            whole_tst_feat = tensorframe_to_tensor(test_tensor_frame).numpy()
+            y = test_tensor_frame.y.numpy()
+            trn_tensor_frame = data["train"]
+            trn_feat = tensorframe_to_tensor(trn_tensor_frame).numpy()
+            y_trn = trn_tensor_frame.y.numpy()
         else:
             data = np.load(self.data_path)
             whole_tst_feat = data['X_test']
             y = data['y_test']
-        return self._get_tst_feat_label_forKNN(whole_tst_feat, y)
+            trn_feat = data['X_train']
+            y_trn = data['y_train']
+        tst_feat, analysis_feat, tst_y, analysis_y = self._get_tst_feat_label_forKNN(whole_tst_feat, y)
+        return trn_feat, analysis_feat, tst_feat, y_trn, analysis_y, tst_y 
     
     def _split_data_in_tst_analysis(self, whole_tst_feat, val_feat, trn_feat):
         tst_indices, analysis_indices = self._get_split_indices(whole_tst_feat)
