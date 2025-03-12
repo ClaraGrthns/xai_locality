@@ -6,6 +6,7 @@ import time
 import torch
 
 from src.utils.metrics import gini_impurity, binary_classification_metrics_per_row, regression_metrics_per_row, impurity_metrics_per_row
+from tqdm import tqdm
 
 
 def cut_off_probability(prob):
@@ -82,7 +83,7 @@ def lime_pred_vectorized(binary_xs, exps):
     local_pred = intercept_array[:, None] + np.matmul(binary_x_selected, coeffs_array.transpose(0, 2, 1)).squeeze(-1)
     return local_pred
 
-def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features, sequential_computation=True):
+def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features, distance_metric, sequential_computation=True):
     """
     Computes the LIME explanations for a set of instances.
     """
@@ -92,11 +93,11 @@ def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features, seq
     
     if not sequential_computation:
         explanations = Parallel(n_jobs=-1)(
-        delayed(explainer.explain_instance)(instance, predict_fn, top_labels=1, num_features=num_lime_features)
+        delayed(explainer.explain_instance)(instance, predict_fn, top_labels=1, num_features=num_lime_features, distance_metric=distance_metric)
         for instance in tst_feat
     )
     else:
-        explanations = [explainer.explain_instance(instance, predict_fn, top_labels=1, num_features=num_lime_features) for instance in tst_feat]
+        explanations = [explainer.explain_instance(instance, predict_fn, top_labels=1, num_features=num_lime_features, distance_metric=distance_metric) for instance in tqdm(tst_feat)]
     
     return explanations
 

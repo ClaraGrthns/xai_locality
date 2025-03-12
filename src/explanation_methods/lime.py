@@ -32,7 +32,11 @@ class LimeHandler(BaseExplanationMethodHandler):
     def compute_explanations(self, results_path, predict_fn, tst_data):
         args = self.args
         # Construct the explanation file name and path
-        explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}"
+        if args.distance_measure in ["euclidean", "minowski", "l2"]:
+            explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}"
+        else:
+            explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}_distance_measure-{args.distance_measure}"
+
         # if args.num_lime_features > 10:
         #     explanation_file_name += f"_num_features-{args.num_lime_features}"
         # if args.num_test_splits > 1:
@@ -51,7 +55,7 @@ class LimeHandler(BaseExplanationMethodHandler):
         else:
             tst_data = tst_data.features
             print("Precomputed explanations not found. Computing explanations for the test set...")
-            explanations = compute_explanations(self.explainer, tst_data, predict_fn, args.num_lime_features, sequential_computation=args.debug)
+            explanations = compute_explanations(self.explainer, tst_data, predict_fn, args.num_lime_features, sequential_computation=args.debug, distance_metric=args.distance_measure)
             
             # Save the explanations to the appropriate file
             np.save(explanation_file_path, explanations)
@@ -62,7 +66,7 @@ class LimeHandler(BaseExplanationMethodHandler):
     def get_experiment_setting(self, fractions):
         args = self.args
         df_setting = "complete_df" if args.include_trn and args.include_val else "only_test"
-        experiment_setting = f"fractions-{0}-{np.round(fractions, 2)}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_accuracy_fraction"
+        experiment_setting = f"fractions-{0}-{np.round(fractions, 2)}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_accuracy_fraction"
         # if args.num_lime_features > 10:
         #     experiment_setting = f"num_features-{args.num_lime_features}_{experiment_setting}"
         # if args.num_test_splits > 1:
@@ -123,8 +127,7 @@ class LimeHandler(BaseExplanationMethodHandler):
                 gini, ratio = impurity_metrics_per_row(model_predicted_top_label[:,:idx+1])
                 variance_preds = np.var(model_prob_of_top_label[:,:idx+1], axis=1)
 
-                top_labels = np.array([exp.top_labels[0] for exp in explanations_chunk])
-                acc_constant_clf = np.mean(model_predicted_top_label[:, :idx+1] == top_labels[:, None], axis=1)
+                acc_constant_clf = np.mean(model_predicted_top_label[:, :idx+1], axis=1)
 
                 results["accuraccy_constant_clf"][idx, chunk_start:chunk_end] = acc_constant_clf
                    

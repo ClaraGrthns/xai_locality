@@ -1,4 +1,4 @@
-from torch_frame.nn import Trompt, ExcelFormer, MLP, TabNet, TabTransformer, FTTransformer
+from torch_frame.nn import Trompt, ExcelFormer, MLP, TabNet, TabTransformer, FTTransformer, ResNet
 
 from src.model.lightgbm import LightGBMHandler
 from src.model.tab_inception_v3 import TabInceptionV3Handler, TabBinaryInceptionV3Handler 
@@ -11,10 +11,11 @@ class ModelHandlerFactory:
     MODEL_HANDLERS = {
         "tab_inception_v3": TabInceptionV3Handler,
         "tab_binary_inception_v3": TabBinaryInceptionV3Handler,
-        "pt_frame_lgm": PTFrame_LightGBMHandler,
-        "pt_frame_xgboost": PTFrame_XGBoostHandler,
+        "LightGBM": PTFrame_LightGBMHandler,
+        "XGBoost": PTFrame_XGBoostHandler,
         "binary_inception_v3": BinaryInceptionV3_Handler,
         "inception_v3": InceptionV3_Handler,
+
     }
 
     # Dynamically handle all PyTorch Frame models
@@ -25,6 +26,7 @@ class ModelHandlerFactory:
         "TabNet": TabNet,
         "TabTransformer": TabTransformer,
         "FTTransformer": FTTransformer,
+        "ResNet": ResNet
     }
 
     @staticmethod

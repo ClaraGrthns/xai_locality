@@ -608,8 +608,8 @@ def main_gbdt():
     # Save results
     os.makedirs(args.result_folder, exist_ok=True)
     file_path_wo_ending = os.path.join(args.result_folder, f"{args.model_type}_{data_path_wo_file_ending}")
-    torch.save(result_dict, file_path_wo_ending + ".pt")
-    model.save(file_path_wo_ending)
+    torch.save(result_dict, file_path_wo_ending + "_args.pt")
+    model.save(file_path_wo_ending+ ".pt")
 
 
 if __name__ == '__main__':

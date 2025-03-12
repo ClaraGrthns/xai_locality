@@ -18,8 +18,8 @@ MODELS = {
 
 # Model type mapping for GBT models
 GBT_MODEL_TYPES = {
-    'LightGBM': 'pt_frame_lgm',
-    "XGBoost": 'pt_frame_xgboost',
+    'LightGBM': 'LightGBM',
+    "XGBoost": 'XGBoost',
 }
 
 def get_gbt_paths_synthetic_data(model, dataset):

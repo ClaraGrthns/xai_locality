@@ -1,17 +1,22 @@
 import os
 import numpy as np
 
-def get_results_files_dict(explanation_method: str, models: list[str], datasets: list[str]) -> dict:
+def file_matching(file, distance_measure):
+        if distance_measure == "euclidean":
+            return file.endswith("fraction.npz") and "dist_measure" not in file
+        else:
+            return file.endswith("fraction.npz") and distance_measure in file
+        
+def get_results_files_dict(explanation_method: str, models: list[str], datasets: list[str], distance_measure:str="euclidean") -> dict:
     results_folder = f"/home/grotehans/xai_locality/results/{explanation_method}"
     results_files_dict = {}
-    
     for model in models:
         results_files_dict[model] = {}
         for dataset in datasets:
             path_to_results = os.path.join(results_folder, model, dataset)
             if not os.path.exists(path_to_results):
                 continue
-            res = [os.path.join(path_to_results, f) for f in os.listdir(f"{results_folder}/{model}/{dataset}") if f.endswith('fraction.npz')]
+            res = [os.path.join(path_to_results, f) for f in os.listdir(f"{results_folder}/{model}/{dataset}") if file_matching(f, distance_measure)]
             if len(res) > 0:
                 results_files_dict[model][dataset] = res[0]
     
@@ -32,10 +37,38 @@ def get_non_zero_cols(array):
 
 
 def load_and_get_non_zero_cols(data_path):
+    """
+    Load results from a numpy file and extract non-zero columns for various metrics.
+
+    Parameters:
+    data_path (str): Path to the numpy file containing the results.
+
+    Returns:
+    tuple: A tuple containing:
+        - A tuple of numpy arrays for the following metrics, each truncated to non-zero columns:
+            - accuracy
+            - precision
+            - recall
+            - f1
+            - mse_proba
+            - mae_proba
+            - r2_proba
+            - mse (if available else None)
+            - mae (if available else None)
+            - r2 (if available else None)
+            - gini
+            - ratio_all_ones
+            - variance_proba
+            - variance_logit (if available else None)
+            - radius
+            - accuraccy_constant_clf
+        - n_points_in_ball (numpy array): Number of points in the ball.
+    """
     results = np.load(data_path, allow_pickle=True)
     nr_non_zero_columns = get_non_zero_cols(results['accuracy']) 
     n_points_in_ball = results['n_points_in_ball']
     # Common metrics for both methods
+    accuraccy_constant_clf = results['accuraccy_constant_clf'][:, :nr_non_zero_columns]
     accuracy = results['accuracy'][:, :nr_non_zero_columns]
     precision = results['precision'][:, :nr_non_zero_columns]
     recall = results['recall'][:, :nr_non_zero_columns]
@@ -65,5 +98,7 @@ def load_and_get_non_zero_cols(data_path):
             mse, mae, r2,
             gini, ratio_all_ones, variance_proba,
             variance_logit,
-            radius), n_points_in_ball
+            radius,
+            accuraccy_constant_clf,
+            ), n_points_in_ball
 

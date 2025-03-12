@@ -6,6 +6,7 @@ from matplotlib import cm
 from typing import Optional
 from src.utils.process_results import load_and_get_non_zero_cols
 from src.utils.metrics import weighted_avg_and_var
+from src.explanation_methods.lime_analysis.lime_local_classifier import get_feat_coeff_intercept
 import os
 light_red = "#ffa5b3"
 light_blue = "#9cdbfb"
@@ -77,7 +78,113 @@ def plot_metrics_per_sample(metric, neighbourhood_size, metric_str, ax = None, x
     ax.grid(True)
     return ax
 
-def get_best_accuracy_of_knn(model, dataset, synthetic=False):
+SYNTHETIC_DATASET_MAPPING = {
+    "synthetic (simple)": "n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42",
+    "synthetic (medium)":"n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42",
+    "synthetic (complex)":"n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42"
+}
+
+def plot_mean_metrics_per_model_and_dataset(results_files_dict, 
+                                            metric_strs=["Accuracy", "MSE prob."], 
+                                            distance_measure="euclidean",
+                                            max_neighbours=None,
+                                            plot_knn_metrics=True):
+    metrics_str_to_idx = {
+        "Accuracy": 0,
+        "Precision": 1,
+        "Recall": 2,
+        "F1": 3,
+        "MSE prob.": 4,
+        "MAE prob.": 5,
+        "R2  prob.": 6,
+        "MSE logit": 7,
+        "MAE logit": 8,
+        "R2 logit": 9,
+        "Gini Impurity": 10,
+        "Ratio All Ones": 11,
+        "Variance prob.": 12, 
+        "Variance Logit": 13,
+        "Radius": 14,
+        "Accuraccy (vs. constant clf)": 15,
+    }
+
+    datasets = sorted(set(ds for model_data in results_files_dict.values() for ds in model_data.keys()))
+    models = list(results_files_dict.keys())
+    n_metrics = len(metric_strs)
+
+    fig, axes = plt.subplots(len(datasets), n_metrics, figsize=(6 * n_metrics, 4 * len(datasets)))
+    if len(datasets) == 1:
+        axes = np.array([axes])  # Ensure axes is always a 2D array
+    
+    cmap = plt.get_cmap('tab10')
+    model_lines = {}  # Store one line per model for a single legend
+
+    for i, dataset in enumerate(datasets):
+        for j, metric_str in enumerate(metric_strs):
+            ax = axes[i, j]
+            metric_idx = metrics_str_to_idx[metric_str]
+
+            for k, model in enumerate(models):
+                if dataset in results_files_dict[model]:
+                    metrics, n_nearest_neighbours = load_and_get_non_zero_cols(results_files_dict[model][dataset])
+                    metric = metrics[metric_idx]
+
+                    if max_neighbours is None:
+                        max_neighbours = len(n_nearest_neighbours)
+                    metric = metric[:max_neighbours, :]
+                    n_nearest_neighbours = n_nearest_neighbours[:max_neighbours]
+
+                    if metric is not None and np.all(metric == None):
+                        print(f"Warning: {model} - {dataset} - {metric_str} contains only None values")
+                        continue
+
+                    color = cmap(k % 10)
+                    line, = ax.plot(n_nearest_neighbours, np.mean(metric, axis=1), '-', color=color, linewidth=2)
+                    
+                    if model not in model_lines:  
+                        model_lines[model] = line  # Store for single legend
+
+                    # Add reference horizontal lines for best kNN performance
+                    if plot_knn_metrics:
+                        synthetic = "synthetic" in dataset
+                        dataset_str = dataset if not synthetic else SYNTHETIC_DATASET_MAPPING[dataset]
+                        out = get_best_metrics_of_knn(model, dataset_str, metric_str, synthetic)
+                        if out is not None:
+                            ax.axhline(y=out[0], color=color, linestyle='--', alpha=0.7, label=f"{model} ({out[1]}-NN)")  
+
+            ax.set_title(f"{dataset}: {metric_str}", fontsize=10)
+            ax.set_xlabel("# Neighbors", fontsize=9)
+            ax.set_ylabel(metric_str, fontsize=9)
+            ax.grid(True, linestyle=':', linewidth=0.5)  # Subtle grid lines
+            ax.tick_params(axis='both', which='major', labelsize=8)
+
+    # Adjust layout for readability
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.9)
+
+    # Single legend outside the plots
+    fig.legend(model_lines.values(), model_lines.keys(), loc='upper center', ncol=4, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 0.95))
+    fig.suptitle(f'Model Performance Metrics Across Different Datasets, distance metrics: {distance_measure}', fontsize=12, y=0.98)
+    plt.show()
+
+
+
+def get_best_metrics_of_knn(model, dataset, metric_sr, synthetic=False):
+    metric_str_to_key_pair = {
+        "Accuracy": ("classification", 0),
+        "Precision": ("classification", 1),
+        "Recall": ("classification", 2),
+        "F1": ("classification", 3),
+        "MSE prob.": ("proba_regression", 0),
+        "MAE prob.": ("proba_regression", 1),
+        "R2  prob.": ("proba_regression", 2),
+        "MSE logit": ("logit_regression", 0),
+        "MAE logit": ("logit_regression", 1),
+        "R2 logit": ("logit_regression", 2)
+    }
+    if metric_sr not in metric_str_to_key_pair:
+        return None
+    metric_key_pair = metric_str_to_key_pair[metric_sr]
     if synthetic:
         # Get dataset name without synthetic_data/ prefix
         dataset_name = dataset.split('/')[-1]
@@ -95,74 +202,10 @@ def get_best_accuracy_of_knn(model, dataset, synthetic=False):
     
     try:
         res = np.load(file_path, allow_pickle=True)
-        return np.max(res['metrics'][:, 0])
+        return np.max(res[metric_key_pair[0]][:, metric_key_pair[1]]), np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])
     except Exception as e:
         print(f"Error loading {file_path}: {e}")
         return None
-
-def plot_mean_metrics_per_model_and_dataset(results_files_dict, metric_strs = ["Accuracy", "MSE prob."], max_neighbours=None):
-    # Common metrics for both methods
-    metrics_str_to_idx = {
-        "Accuracy": 0,
-        "Precision": 1,
-        "Recall": 2,
-        "F1": 3,
-        "MSE prob.": 4,
-        "MAE prob.": 5,
-        "R2  prob.": 6,
-        "MSE logit": 7,
-        "MAE logit": 8,
-        "R2 logit": 9,
-        "Gini Impurity": 10,
-        "Ratio All Ones": 11,
-        "Variance prob.": 12, 
-        "Variance Logit": 13,
-        "Radius": 14
-    }
-    datasets = sorted(set(ds for model_data in results_files_dict.values() for ds in model_data.keys()))
-    models = list(results_files_dict.keys())
-    n_metrics = len(metric_strs)
-
-    fig, axes = plt.subplots(len(datasets), n_metrics, figsize=(5*n_metrics, 3*len(datasets)))
-    if len(datasets) == 1:
-        axes = axes.reshape(1, -1)
-    
-    cmap = plt.get_cmap('tab10')
-        
-    
-    for i, dataset in enumerate(datasets):
-        for j, metric_str in enumerate(metric_strs):
-            ax = axes[i, j]
-            metric_idx = metrics_str_to_idx[metric_str]
-            for k, model in enumerate(models):
-                if dataset in results_files_dict[model]:
-                    
-                    metrics, n_nearest_neighbours = load_and_get_non_zero_cols(results_files_dict[model][dataset])
-                    metric = metrics[metric_idx]
-                    if max_neighbours is None:
-                        max_neighbours = len(n_nearest_neighbours)
-                    metric = metric[:max_neighbours, :]
-                    n_nearest_neighbours = n_nearest_neighbours[:max_neighbours]
-                    if metric is not None and np.all(metric == None):
-                        print(f"Warning: {model} - {dataset} - {metric_str} contains only None values")
-                        continue
-                    color = cmap(k % 10)
-                    ax.plot(n_nearest_neighbours, np.mean(metric, axis=1), '-', label=model, color=color, linewidth=2)
-                    if metric_str == "Accuracy":
-                        synthetic = "synthetic" in dataset
-                        dataset_str = dataset if not synthetic else SYNTHETIC_DATASET_MAPPING[dataset]
-                        accuracy_of_knn = get_best_accuracy_of_knn(model, dataset_str, synthetic)
-                        if accuracy_of_knn is not None:
-                            ax.axhline(y=accuracy_of_knn, color=color, linestyle='--', alpha=0.5)
-
-            ax.set_title(f"{dataset} - {metric_str} vs Nearest Neighbors")
-            ax.set_xlabel("Number of Neighbors")
-            ax.set_ylabel(metric_str)
-            ax.legend()
-            ax.grid(True)
-    
-    plt.tight_layout()
-    plt.show()
 
 
 
