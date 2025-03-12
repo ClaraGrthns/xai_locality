@@ -19,3 +19,5 @@ src/data/jannis.csv
 src/data/MiniBooNE.csv
 src/data/Higgs.csv
 src/data/
+
+submit_all_jobs_knn.sh

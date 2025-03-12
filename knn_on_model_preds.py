@@ -63,18 +63,25 @@ def main(args):
     if isinstance(X_trn, torch.Tensor):
         X_trn = X_trn.numpy()
     # ------ Create trn labels
-    ys_trn_preds = []
-    print("Computing model predictions on training data")
-    with torch.no_grad():  # Disable gradient computation to save memory
-        for i, batch in enumerate(tqdm(df_loader, desc="Computing model predictions")):
-            preds = model_handler.predict_fn(batch)
-            if isinstance(preds, torch.Tensor):
-                preds = preds.numpy()
-            ys_trn_preds.append(preds)
-            if args.debug and i == 10:
-                break
-    ys_trn_preds = np.concatenate(ys_trn_preds, axis=0)
-    proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_lgm", "pt_frame_xgb"]
+    ys_trn_preds_path = osp.join(results_path, "ys_trn_preds.npy")
+    if osp.exists(ys_trn_preds_path):
+        print(f"Loading existing training labels from {ys_trn_preds_path}")
+        ys_trn_preds = np.load(ys_trn_preds_path)
+    else:
+        ys_trn_preds = []
+        print("Computing model predictions on training data")
+        with torch.no_grad():  # Disable gradient computation to save memory
+            for i, batch in enumerate(tqdm(df_loader, desc="Computing model predictions")):
+                preds = model_handler.predict_fn(batch)
+                if isinstance(preds, torch.Tensor):
+                    preds = preds.numpy()
+                ys_trn_preds.append(preds)
+                if args.debug and i == 10:
+                    break
+        ys_trn_preds = np.concatenate(ys_trn_preds, axis=0)
+        np.save(ys_trn_preds_path, ys_trn_preds)
+        print(f"Training labels saved to {ys_trn_preds_path}")
+    proba_output = args.model_type in ["LightGBM", "XGBoost", "LightGBM", "pt_frame_xgb"]
     if not proba_output:
         if ys_trn_preds.shape[-1] == 1:
             ys_trn_sig = 1 / (1 + np.exp(-ys_trn_preds))
@@ -94,10 +101,18 @@ def main(args):
         X_tst = X_tst.numpy()
 
     #------ Create tst labels
-    with torch.no_grad():
-        y_tst_preds = model_handler.predict_fn(tst_feat)
-        if isinstance(preds, torch.Tensor):
-            y_tst_preds = y_tst_preds.numpy()
+    ys_tst_preds_path = osp.join(results_path, "ys_tst_preds.npy")
+    if osp.exists(ys_tst_preds_path):
+        print(f"Loading existing test labels from {ys_tst_preds_path}")
+        y_tst_preds = np.load(ys_tst_preds_path)
+    else:
+        print("Computing model predictions on test data")
+        with torch.no_grad():
+            y_tst_preds = model_handler.predict_fn(tst_feat)
+            if isinstance(y_tst_preds, torch.Tensor):
+                y_tst_preds = y_tst_preds.numpy()
+        np.save(ys_tst_preds_path, y_tst_preds)
+        print(f"Test labels saved to {ys_tst_preds_path}")
 
     if not proba_output:
         if y_tst_preds.shape[-1] == 1:
@@ -107,7 +122,7 @@ def main(args):
             exp_y_true = np.exp(y_tst_preds - np.max(y_tst_preds, axis=-1, keepdims=True))
             ys_true_softmaxed = exp_y_true / np.sum(exp_y_true, axis=-1, keepdims=True)
     else:
-        ys_true_softmaxed = y_tst_preds  
+        ys_true_softmaxed = y_tst_preds
          
     ys_tst_predicted_labels = np.argmax(ys_true_softmaxed, axis=-1)
     y_tst_proba_top_label = np.max(ys_true_softmaxed, axis=1)
@@ -127,9 +142,9 @@ def main(args):
     else:
         raise ValueError("You must provide either data_folder and setting or data_path.")
     experiment_setting = f"kNN_on_model_preds_{args.model_type}_{file_name_wo_file_ending}_dist_measure-{args.distance_measure}_random_seed-{args.random_seed}"
-    # if osp.exists(osp.join(results_path, experiment_setting)):
-    #     print(f"Results for the experiment setting {experiment_setting} already exist. Exiting.")
-    #     return
+    if osp.exists(osp.join(results_path, experiment_setting)):
+        print(f"Results for the experiment setting {experiment_setting} already exist. Exiting.")
+        return
     
     # train kNN on the model predictions
     for i, k_neighbors in enumerate(k_nns):
@@ -214,7 +229,7 @@ if __name__ == "__main__":
                         type=str,  help="Path to save results")#,default = "/home/grotehans/xai_locality/results/knn_model_preds/ExcelFormer/higgs/" )
     
     # Model and method configuration
-    parser.add_argument("--model_type", type=str, help="Model type: [LightGBM, tab_inception_v3, pt_frame_lgm, pt_frame_xgboost, binary_inception_v3, inception_v3, ExcelFormer, MLP, Trompt]",
+    parser.add_argument("--model_type", type=str, help="Model type: [LightGBM, tab_inception_v3, LightGBM, XGBoost, binary_inception_v3, inception_v3, ExcelFormer, MLP, Trompt]",
                         default = "LightGBM",
                         )
     
@@ -223,7 +238,7 @@ if __name__ == "__main__":
     parser.add_argument("--include_trn", action="store_true", help="Include training data")
     parser.add_argument("--include_val", action="store_true", help="Include validation data")
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--chunk_size", type=int, help="Chunk size of test set computed at once", default=10)
+    parser.add_argument("--chunk_size", type=int, help="Chunk size of test set computed at once", default=25)
     parser.add_argument("--debug", action="store_true", help="Debug")
     
     # Other parameters

@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 from sklearn.neighbors import BallTree
 import os
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
 from src.utils.misc import set_random_seeds, get_path
 from src.model.factory import ModelHandlerFactory
 from src.explanation_methods.factory import ExplanationMethodHandlerFactory
@@ -29,15 +29,23 @@ def main(args):
 
     model_handler = ModelHandlerFactory.get_handler(args)
     model = model_handler.model
-    pytorch_total_params = sum(p.numel() for p in model.parameters())
-    print(f"Total number of parameters: {pytorch_total_params}")
+    if isinstance(model, torch.nn.Module):
+        print("The model is a PyTorch module.")
+        pytorch_total_params = sum(p.numel() for p in model.parameters())
+        print(f"Total number of parameters: {pytorch_total_params}")
     trn_for_expl, tst_for_dist, df_for_dist, tst_for_expl, df_for_expl = model_handler.load_data()
     print("Length of data set for analysis", len(df_for_dist))
 
     predict_fn = model_handler.predict_fn
     
-    if args.method == "lime" and args.kernel_width is None:
-        args.kernel_width = np.round(np.sqrt(trn_for_expl.shape[1]) * .75, 2)  # Default value
+    if args.method == "lime":
+        if (args.kernel_width is None or args.kernel_width == "default"):
+            args.kernel_width = np.round(np.sqrt(trn_for_expl.shape[1]) * .75, 2)  # Default value
+        elif args.kernel_width == "double":
+            args.kernel_width = np.round(np.sqrt(trn_for_expl.shape[1]) * 1.5, 2)
+        elif args.kernel_width == "half":
+            args.kernel_width = np.round(np.sqrt(trn_for_expl.shape[1]) * 0.375, 2)
+        print("Kernel width: ", args.kernel_width)
 
     method = args.method if args.method != "gradient" else args.gradient_method
     explainer_handler = ExplanationMethodHandlerFactory.get_handler(method=method)(args)
@@ -50,9 +58,19 @@ def main(args):
                                                           tst_data=tst_for_expl)
     
     validate_distance_measure(args.distance_measure)
-    distance_measure = "pyfunc" if args.distance_measure == "cosine" else args.distance_measure
+    distance_measure = args.distance_measure
     
-    tree = BallTree(df_for_dist, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_for_dist, metric=distance_measure, func=cosine_distance)
+    # tree = BallTree(df_for_dist, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_for_dist, metric=distance_measure, func=cosine_distance)
+    if distance_measure == "seuclidean":
+        tree = BallTree(df_for_dist, metric=distance_measure, V=np.var(df_for_dist, axis=0))
+    elif distance_measure == "mahalanobis":
+        tree = BallTree(df_for_dist, metric=distance_measure, V=np.cov(df_for_dist, rowvar=False))
+    elif distance_measure == "cosine":
+        from scipy.spatial.distance import cosine
+        tree = BallTree(df_for_dist, metric=cosine)
+    else:
+        tree = BallTree(df_for_dist, metric=distance_measure)
+
     n_points_in_ball = 400
     print("Considering the closest neighbours: ", n_points_in_ball)
     
@@ -84,7 +102,7 @@ if __name__ == "__main__":
     #, default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml"
     # default="/home/grotehans/xai_locality/configs/lime/ExcelFormer/higgs/config.yaml",
     parser.add_argument("--config", type=str, 
-                        default = "/home/grotehans/xai_locality/configs/lime/TabTransformer/higgs/config.yaml" , 
+                        default = "/home/grotehans/xai_locality/configs/lime/ExcelFormer/jannis/config.yaml" , 
                         help="Path to configuration file") 
     
     # Data and model paths
@@ -97,12 +115,12 @@ if __name__ == "__main__":
     parser.add_argument("--results_path", type=str,  help="Path to save results")
     
     # Model and method configuration
-    parser.add_argument("--model_type", type=str, help="Model type: LightGBM, tab_inception_v3, pt_frame_lgm, pt_frame_xgboost, binary_inception_v3, inception_v3")
+    parser.add_argument("--model_type", type=str, help="Model type: LightGBM, tab_inception_v3, LightGBM, XGBoost, binary_inception_v3, inception_v3")
     parser.add_argument("--method", default = "lime", type=str,help="Explanation method to use (lime or gradient)")
     parser.add_argument("--gradient_method", type=str, help="Which Gradient Method to use: [IG, IG+SmoothGrad]")
     
     # Analysis parameters
-    parser.add_argument("--distance_measure", type=str, default="euclidean", help="Distance measure")
+    parser.add_argument("--distance_measure", type=str, default="manhattan", help="Distance measure")
     parser.add_argument("--max_frac", type=float, help="Until when to compute the fraction of points in the ball")
     parser.add_argument("--num_frac", type=int, help="Number of fractions to compute")
     parser.add_argument("--include_trn", action="store_true", help="Include training data")
@@ -112,7 +130,8 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true", help="Debug mode")
     
     # LIME-specific parameters
-    parser.add_argument("--kernel_width", type=float, default=None, help="Kernel size for the locality analysis")
+    parser.add_argument("--kernel_width", type=lambda x: x if x.lower() in ["default", "double", "half"] else float(x), 
+                        default=None, help="Kernel size for the locality analysis. Can be a float or one of 'default', 'double', 'half'")
     parser.add_argument("--model_regressor", type=str, default="ridge", help="Model regressor for LIME")
     parser.add_argument("--num_lime_features", type=int, default=10, help="Number of features for LIME explanation")
     
