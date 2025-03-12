@@ -6,7 +6,7 @@ analysis:
 explanation_method:
   method: lime
 model:
-  model_type: pt_frame_xgboost
+  model_type: XGBoost
 other:
   max_test_points: 200
 paths:

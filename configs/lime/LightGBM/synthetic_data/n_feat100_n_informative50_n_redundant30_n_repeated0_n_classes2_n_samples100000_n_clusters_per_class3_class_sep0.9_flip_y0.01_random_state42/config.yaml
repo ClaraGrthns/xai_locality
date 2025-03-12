@@ -6,7 +6,7 @@ analysis:
 explanation_method:
   method: lime
 model:
-  model_type: pt_frame_lgm
+  model_type: LightGBM
 other:
   max_test_points: 200
 paths:
