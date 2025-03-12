@@ -84,72 +84,36 @@ class LimeHandler(BaseExplanationMethodHandler):
     #         df_feat = np.concatenate([df_feat, val_feat], axis=0)
     #     return tst_feat, df_feat, tst_feat, df_feat
     
-    def iterate_over_data(self,
-                     tst_feat_for_expl, 
-                     tst_feat_for_dist, 
-                     df_feat_for_expl, 
-                     explanations, 
-                     n_points_in_ball, 
-                     predict_fn, 
-                     tree,
-                     results_path,
-                     experiment_setting,
-                     results):
-        chunk_size = int(np.min((self.args.chunk_size, len(tst_feat_for_expl))))
+    def process_chunk(self, batch, tst_chunk_dist, df_feat_for_expl, explanations_chunk, predict_fn, n_points_in_ball, tree, chunk_start, chunk_end):
+        """
+        Process a single chunk of data for LIME method.
+        """
+        tst_chunk = batch.numpy()  # For LIME method, convert batch to numpy
         predict_threshold = self.args.predict_threshold
-        tst_feat_for_expl_loader = DataLoader(tst_feat_for_expl, batch_size=chunk_size, shuffle=False)
-        for i, batch in enumerate(tst_feat_for_expl_loader):
-            tst_chunk = batch.numpy()#[0]
-            chunk_start = i * chunk_size
-            chunk_end = min(chunk_start + chunk_size, len(df_feat_for_expl))
-            print(f"Processing chunk {i}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
-            explanations_chunk = explanations[chunk_start:chunk_end]
-            res = get_lime_preds_for_all_kNN(tst_chunk, 
-                                             df_feat_for_expl, 
-                                             explanations_chunk, 
-                                             self.explainer, 
-                                             predict_fn, 
-                                             n_points_in_ball, 
-                                             tree, 
-                                             predict_threshold)
-            model_predicted_top_label, model_prob_of_top_label, local_preds_label, local_preds, dist = res
-            for idx in range(n_points_in_ball):
-                # 4. Compute metrics for binary and regression tasks
-                R = np.max(dist[:,:idx+1], axis=-1)
-                
 
-                aucroc, acc, precision, recall, f1 = binary_classification_metrics_per_row(model_predicted_top_label[:,:idx+1], 
-                                                                                local_preds_label[:,:idx+1],
-                                                                                local_preds[:,:idx+1]
-                                                                                )
-                mse, mae, r2 = regression_metrics_per_row(model_prob_of_top_label[:,:idx+1],
-                                                            local_preds[:,:idx+1])
-                gini, ratio = impurity_metrics_per_row(model_predicted_top_label[:,:idx+1])
-                variance_preds = np.var(model_prob_of_top_label[:,:idx+1], axis=1)
+        res = get_lime_preds_for_all_kNN(
+            tst_chunk, 
+            df_feat_for_expl, 
+            explanations_chunk, 
+            self.explainer, 
+            predict_fn, 
+            n_points_in_ball, 
+            tree, 
+            predict_threshold
+        )
+        
+        model_predicted_top_label, model_prob_of_top_label, local_preds_label, local_preds, dist = res
+        
+        # Reformat to match the expected output format of process_chunk
+        return (
+            model_prob_of_top_label,  # model_preds 
+            model_predicted_top_label,  # model_binary_preds
+            model_prob_of_top_label,  # model_probs
+            local_preds,  # local_preds
+            local_preds_label,  # local_binary_preds
+            local_preds,  # local_probs
+            dist  # dist
+        )
 
-                acc_constant_clf = np.mean(model_predicted_top_label[:, :idx+1], axis=1)
 
-                results["accuraccy_constant_clf"][idx, chunk_start:chunk_end] = acc_constant_clf
-                   
-                results["aucroc"][idx, chunk_start:chunk_end] = aucroc
-                results["accuracy"][idx, chunk_start:chunk_end] = acc
-                results["precision"][idx, chunk_start:chunk_end] = precision
-                results["recall"][idx, chunk_start:chunk_end] = recall
-                results["f1"][idx, chunk_start:chunk_end] = f1
-                
-                results["mse_proba"][idx, chunk_start:chunk_end] = mse
-                results["mae_proba"][idx, chunk_start:chunk_end] = mae
-                results["r2_proba"][idx, chunk_start:chunk_end] = r2
-
-                results["gini"][idx, chunk_start:chunk_end] = gini
-                results["ratio_all_ones"][idx, chunk_start:chunk_end] = ratio
-                results["variance_proba"][idx, chunk_start:chunk_end] = variance_preds
-
-                results["radius"][idx, chunk_start:chunk_end] = R
-
-           
-            np.savez(osp.join(results_path, experiment_setting), **results)
-            print(f"Processed chunk {i}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
-        return results
-            
 

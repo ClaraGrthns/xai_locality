@@ -238,7 +238,7 @@ if __name__ == "__main__":
     parser.add_argument("--include_trn", action="store_true", help="Include training data")
     parser.add_argument("--include_val", action="store_true", help="Include validation data")
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--chunk_size", type=int, help="Chunk size of test set computed at once", default=25)
+    parser.add_argument("--chunk_size", type=int, help="Chunk size of test set computed at once", default=50)
     parser.add_argument("--debug", action="store_true", help="Debug")
     
     # Other parameters
