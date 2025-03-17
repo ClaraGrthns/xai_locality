@@ -365,7 +365,7 @@ else:
             'num_cols': [train_tensor_frame.num_cols],
         }
         train_search_space = {
-            'batch_size': [256, 512],
+            'batch_size': [256, 512] if args.n_features <= 50 else [128, 256],
             'base_lr': [0.001],
             'gamma_rate': [0.9, 0.95, 1.],
         }
