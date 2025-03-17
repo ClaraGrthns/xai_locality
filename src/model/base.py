@@ -44,6 +44,22 @@ class BaseModelHandler:
         return tst_feat, analysis_feat, tst_y, analysis_y
     
     def load_data_for_kNN(self):
+        """
+        Loads and processes data for k-Nearest Neighbors (kNN) analysis.
+
+        This method loads data from a specified path, which can be either a PyTorch
+        tensor file (with a .pt extension) or a NumPy file. It then processes the data
+        to extract features and labels for training and testing.
+
+        Returns:
+            tuple: A tuple containing the following elements:
+                - trn_feat (numpy.ndarray): Training features.
+                - analysis_feat (numpy.ndarray): Features for analysis.
+                - tst_feat (numpy.ndarray): Testing features.
+                - y_trn (numpy.ndarray): Training labels.
+                - analysis_y (numpy.ndarray): Labels for analysis.
+                - tst_y (numpy.ndarray): Testing labels.
+        """
         if self.data_path.endswith(".pt"):
             data = torch.load(self.data_path)
             test_tensor_frame = data["test"]

@@ -2,10 +2,7 @@ import os
 import numpy as np
 
 def file_matching(file, distance_measure):
-        if distance_measure == "euclidean":
-            return file.endswith("fraction.npz") and "dist_measure" not in file
-        else:
-            return file.endswith("fraction.npz") and distance_measure in file
+        return file.endswith("fraction.npz") and distance_measure in file
         
 def get_results_files_dict(explanation_method: str, models: list[str], datasets: list[str], distance_measure:str="euclidean") -> dict:
     results_folder = f"/home/grotehans/xai_locality/results/{explanation_method}"
@@ -17,7 +14,9 @@ def get_results_files_dict(explanation_method: str, models: list[str], datasets:
             if not os.path.exists(path_to_results):
                 continue
             res = [os.path.join(path_to_results, f) for f in os.listdir(f"{results_folder}/{model}/{dataset}") if file_matching(f, distance_measure)]
-            if len(res) > 0:
+            if len(res) > 0 and explanation_method == "lime":
+                results_files_dict[model][dataset] = res
+            elif len(res) > 0:
                 results_files_dict[model][dataset] = res[0]
     
     # Rename synthetic dataset keys
@@ -32,6 +31,7 @@ def get_results_files_dict(explanation_method: str, models: list[str], datasets:
                 results_files_dict[model]["synthetic (complex)"] = results_files_dict[model].pop(key)
                 
     return results_files_dict
+
 def get_non_zero_cols(array):
     return array.shape[1] - np.sum(np.all(array == 0, axis=0))
 
@@ -46,22 +46,23 @@ def load_and_get_non_zero_cols(data_path):
     Returns:
     tuple: A tuple containing:
         - A tuple of numpy arrays for the following metrics, each truncated to non-zero columns:
-            - accuracy
-            - precision
-            - recall
-            - f1
-            - mse_proba
-            - mae_proba
-            - r2_proba
-            - mse (if available else None)
-            - mae (if available else None)
-            - r2 (if available else None)
-            - gini
-            - ratio_all_ones
-            - variance_proba
-            - variance_logit (if available else None)
-            - radius
-            - accuraccy_constant_clf
+            - accuracy (0)
+            - precision (1)
+            - recall (2)
+            - f1 (3)
+            - mse_proba (4)
+            - mae_proba (5)
+            - r2_proba (6)
+            - mse (7, if available else None)
+            - mae (8, if available else None)
+            - r2 (9, if available else None)
+            - gini (10)
+            - ratio_all_ones (11)
+            - variance_proba (12)
+            - variance_logit (13, if available else None)
+            - radius (14)
+            - accuraccy_constant_clf (15)
+            - ratio_all_ones_local (16, if available else None)
         - n_points_in_ball (numpy array): Number of points in the ball.
     """
     results = np.load(data_path, allow_pickle=True)
@@ -92,6 +93,9 @@ def load_and_get_non_zero_cols(data_path):
     r2 = results.get('r2', None)
     if r2 is not None:
         r2 = r2[:, :nr_non_zero_columns]
+    ratio_all_ones_local = results.get("ratio_all_ones_local", None)
+    if ratio_all_ones_local is not None:
+        ratio_all_ones_local = ratio_all_ones_local[:, :nr_non_zero_columns]
 
     return (accuracy, precision, recall, f1,
             mse_proba, mae_proba, r2_proba,
@@ -100,5 +104,98 @@ def load_and_get_non_zero_cols(data_path):
             variance_logit,
             radius,
             accuraccy_constant_clf,
+            ratio_all_ones_local
             ), n_points_in_ball
 
+
+
+def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidean"):
+    distance_measure = distance_measure.lower()
+    if synthetic:
+        # Get dataset name without synthetic_data/ prefix
+        dataset_name = dataset.split('/')[-1]
+        file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
+                    f"synthetic_data/{dataset_name}/kNN_on_model_preds_{model}_{dataset_name}_"
+                    f"normalized_tensor_frame_dist_measure-{distance_measure}_random_seed-42.npz")
+    else:
+        file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
+                    f"{dataset}/kNN_on_model_preds_{model}_{model}_{dataset}_normalized_data_"
+                    f"dist_measure-{distance_measure}_random_seed-42.npz")
+    
+    if not os.path.exists(file_path):
+        print(f"File not found: {file_path}")
+        return None
+    
+    try:
+        res = np.load(file_path, allow_pickle=True)
+        return res
+    except Exception as e:
+        print(f"Error loading {file_path}: {e}")
+        return None   
+
+
+def load_model_performance(model, dataset, synthetic=False):
+    """Loads model performance metrics from a .npz file.
+
+    Parameters
+    ----------
+    model : str
+        Name of the model
+    dataset : str
+        Name of the dataset
+    synthetic : bool, optional
+        Whether the dataset is synthetic, by default False
+
+    Returns
+    -------
+    numpy.lib.npyio.NpzFile
+        NPZ file containing model performance metrics with key 'classification_model',
+        where the array contains [accuracy, precision, recall, f1] scores
+    """
+    if synthetic:
+        dataset_name = dataset.split('/')[-1]
+        file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/synthetic_data/{dataset_name}/model_performance_{model}_{dataset_name}_normalized_tensor_frame_random_seed-42.npz"
+    else:
+        file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_{model}_{dataset}_normalized_data_random_seed-42.npz"
+    try:
+        res = np.load(file_path, allow_pickle=True)
+        return res
+    except Exception as e:
+        print(f"Error loading {file_path}: {e}")
+        return None
+def get_performance_metrics_model(model, dataset, metric_str, synthetic=False):
+    res = load_model_performance(model, dataset, synthetic)
+    if res is None:
+        return None
+    else:
+        metric_str_to_key_pair = {
+            "AUROC": 0,
+            "Accuracy": 1,
+            "Precision": 2,
+            "Recall": 3,
+            "F1": 4
+        }
+        return float(res['classification_model'][metric_str_to_key_pair[metric_str]])
+
+def get_best_metrics_of_knn(model, dataset, metric_sr, synthetic=False, distance_measure="euclidean"):
+    distance_measure = distance_measure.lower()
+    metric_str_to_key_pair = {
+        "Accuracy": ("classification", 0),
+        "Precision": ("classification", 1),
+        "Recall": ("classification", 2),
+        "F1": ("classification", 3),
+        "MSE prob.": ("proba_regression", 0),
+        "MAE prob.": ("proba_regression", 1),
+        "R2  prob.": ("proba_regression", 2),
+        "MSE logit": ("logit_regression", 0),
+        "MAE logit": ("logit_regression", 1),
+        "R2 logit": ("logit_regression", 2)
+    }
+    if metric_sr not in metric_str_to_key_pair:
+        return None
+    metric_key_pair = metric_str_to_key_pair[metric_sr]
+    res = load_knn_results(model, dataset, synthetic, distance_measure)
+    if res is None:
+        return None
+    else:
+        return np.max(res[metric_key_pair[0]][:, metric_key_pair[1]]), np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])   

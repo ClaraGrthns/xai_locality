@@ -84,6 +84,7 @@ class BaseExplanationMethodHandler:
             # Unpack results based on the format returned by the specific implementation
             model_preds, model_binary_preds, model_probs, local_preds, local_binary_preds, local_probs, dist = chunk_result
             
+
             # Precompute max distances for each cumulative neighborhood size
             # For each sample, calculate the maximum distance across progressively more neighbors
             max_distances = np.zeros((dist.shape[0], n_points_in_ball))
@@ -123,6 +124,7 @@ class BaseExplanationMethodHandler:
                 
                 # Constant classifier accuracy
                 acc_constant_clf = np.mean(model_binary_preds[:, current_slice], axis=1)
+                all_ones_local_binary_preds = np.mean(local_binary_preds[:, current_slice], axis=1)
                 
                 # Store results for current neighborhood size
                 self.update_results(results, idx, chunk_start, chunk_end, {
@@ -140,6 +142,7 @@ class BaseExplanationMethodHandler:
                     "r2_proba": r2_proba,
                     "gini": gini,
                     "ratio_all_ones": ratio,
+                    "ratio_all_ones_local": all_ones_local_binary_preds,
                     "variance_proba": variance_pred_proba,
                     "variance_logit": variance_preds,
                     "radius": max_distances[:, idx],  # Use precomputed max distances
@@ -218,6 +221,7 @@ class BaseExplanationMethodHandler:
             "variance_proba": np.zeros((num_fractions, self.args.max_test_points)),
             "variance_logit": np.zeros((num_fractions, self.args.max_test_points)),
             "ratio_all_ones": np.zeros((num_fractions, self.args.max_test_points)),
+            "ratio_all_ones_local": np.zeros((num_fractions, self.args.max_test_points)),
             
             "radius": np.zeros((num_fractions, self.args.max_test_points)),
             "n_points_in_ball": np.arange(n_points_in_ball),
