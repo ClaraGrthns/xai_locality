@@ -10,7 +10,7 @@
 # Copyright (c) 2023 PyG Team <team@pyg.org>
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy...
-
+from torch_frame import Metric
 
 
 import argparse
@@ -178,10 +178,9 @@ os.makedirs(args.result_folder, exist_ok=True)
 dataset_name = get_dataset_name(args.task_type, args.scale, args.idx)
 print(f"Dataset: {dataset_name}")
 
-if os.path.exists(os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt')):
-    print(f"File {args.model_type}_normalized_binary_{dataset_name}_results.pt already exists.")
-    exit()
-
+# if os.path.exists(os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt')):
+#    print(f"File {args.model_type}_normalized_binary_{dataset_name}_results.pt already exists.")
+#    exit()
 
 
 dataset = DataFrameBenchmark(root=path, task_type=TaskType(args.task_type),
@@ -204,7 +203,31 @@ print(f"Train: {len(train_tensor_frame)}, Val: {len(val_tensor_frame)}, "
 train_tensor_frame, val_tensor_frame, test_tensor_frame = normalize_tensor_frame(
     train_tensor_frame, val_tensor_frame, test_tensor_frame
 )
-    
+# train_tensor_frame_df = pd.DataFrame(train_tensor_frame.feat_dict[stype.numerical], columns=train_tensor_frame.col_names_dict[stype.numerical])
+# val_tensor_frame_df = pd.DataFrame(val_tensor_frame.feat_dict[stype.numerical], columns=val_tensor_frame.col_names_dict[stype.numerical])
+# test_tensor_frame_df = pd.DataFrame(test_tensor_frame.feat_dict[stype.numerical], columns=test_tensor_frame.col_names_dict[stype.numerical])
+# train_tensor_frame_df["target"] = train_tensor_frame.y
+# val_tensor_frame_df["target"] = val_tensor_frame.y
+# test_tensor_frame_df["target"] = test_tensor_frame.y
+
+# # Create new datasets with the normalized tensor frames but without col_stats yet
+# from torch_frame.data import Dataset
+# train_dataset = Dataset(train_tensor_frame_df, 
+#                         col_to_stype= train_dataset.col_to_stype,
+#                         target_col= train_dataset.target_col,
+#                         )
+# val_dataset = Dataset(val_tensor_frame_df, 
+#                       col_to_stype=val_dataset.col_to_stype,
+#                       target_col= val_dataset.target_col,
+#                       )
+# test_dataset = Dataset(test_tensor_frame_df, 
+#                        col_to_stype=test_dataset.col_to_stype,
+#                        target_col= test_dataset.target_col,)
+
+# # Recompute col_stats on the normalized training data
+# train_dataset.materialize()
+# val_dataset.materialize()
+# test_dataset.materialize()
 
 if args.model_type in GBDT_MODELS:
     gbdt_cls_dict = {
@@ -342,7 +365,7 @@ else:
         )
 
         categorical_transform = CatToNumTransform()
-        categorical_transform.fit(train_dataset.tensor_frame,
+        categorical_transform.fit(train_tensor_frame,
                                   train_dataset.col_stats)
         train_tensor_frame = categorical_transform(train_tensor_frame)
         val_tensor_frame = categorical_transform(val_tensor_frame)
@@ -490,14 +513,17 @@ def train_and_eval_with_cfg(
         val_metric = test(model, val_loader)
         if higher_is_better:
             if val_metric > best_val_metric:
+                best_val_metric = val_metric
                 best_test_metric = test(model, test_loader)
                 # save new best model
+                best_model_state_dict = model.state_dict()
                 norm_path = os.path.join(args.result_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         else:
             if val_metric < best_val_metric:
                 best_val_metric = val_metric
                 best_test_metric = test(model, test_loader)
+                best_model_state_dict = model.state_dict()
                 norm_path = os.path.join(args.result_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         lr_scheduler.step()
@@ -510,7 +536,7 @@ def train_and_eval_with_cfg(
 
     print(
         f'Best val: {best_val_metric:.4f}, Best test: {best_test_metric:.4f}')
-    return model, best_val_metric, best_test_metric
+    return best_model_state_dict, best_val_metric, best_test_metric
 
 
 def objective(trial: optuna.trial.Trial) -> float:
@@ -551,7 +577,7 @@ def main_deep_models():
     best_val_metrics = []
     best_test_metrics = []
     for _ in range(args.num_repeats):
-        model, best_val_metric, best_test_metric = train_and_eval_with_cfg(
+        best_model_state_dict, best_val_metric, best_test_metric = train_and_eval_with_cfg(
             best_model_cfg, best_train_cfg)
         best_val_metrics.append(best_val_metric)
         best_test_metrics.append(best_test_metric)
@@ -576,7 +602,7 @@ def main_deep_models():
     # Save results
     
     os.makedirs(args.result_folder, exist_ok=True)
-    torch.save({'model_state_dict': model.state_dict(), **result_dict},
+    torch.save({'model_state_dict': best_model_state_dict, **result_dict},
                 os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
 
 
@@ -586,8 +612,7 @@ def main_gbdt():
         num_classes = dataset.num_classes
     else:
         num_classes = None
-    model = model_cls(task_type=dataset.task_type, num_classes=num_classes)
-
+    model = model_cls(task_type=dataset.task_type, num_classes=num_classes, metric=Metric.ACCURACY)
     import time
     start_time = time.time()
     model.tune(tf_train=train_dataset.tensor_frame,

@@ -65,6 +65,20 @@ def set_random_seeds(seed=42):
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
+def normalize_features(train_features, val_features, test_features):
+    """Normalize numerical features using StandardScaler."""
+    # Fit scaler on training data only
+    scaler = StandardScaler()
+    scaler.fit(train_features)
+    
+    # Transform all datasets
+    train_features_norm = scaler.transform(train_features)
+    val_features_norm = scaler.transform(val_features)
+    test_features_norm = scaler.transform(test_features)
+    
+    # Save scaler for later use
+    return train_features_norm, val_features_norm, test_features_norm, scaler
+
 # After the dataset splits and before model setup, add:
 def normalize_tensor_frame(train_tf, val_tf, test_tf):
     """Normalize numerical features and return normalized TensorFrames."""
@@ -144,9 +158,9 @@ path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data')
 if args.data_path:
     data_path_wo_file_ending = Path(args.data_path).stem
 
-    if os.path.exists(os.path.join(args.result_folder, f'{args.model_type}_{data_path_wo_file_ending}_results.pt')):
-        print(f"Results file for {args.model_type} on {data_path_wo_file_ending} already exists.")
-        exit()
+    # if os.path.exists(os.path.join(args.result_folder, f'{args.model_type}_{data_path_wo_file_ending}_results.pt')):
+    #     print(f"Results file for {args.model_type} on {data_path_wo_file_ending} already exists.")
+    #     exit()
 
 
     data_folder = os.path.dirname(args.data_path)
@@ -169,12 +183,13 @@ else:
                                                                                     test_size=args.test_size,
                                                                                     val_size=args.val_size)
     data_folder = args.data_folder
+trn_feat_norm, val_feat_norm, tst_feat_norm, scaler = normalize_features(trn_feat, val_feat, tst_feat)
 
-df_trn = pd.DataFrame(trn_feat)
+df_trn = pd.DataFrame(trn_feat_norm)
 df_trn['y'] = y_train
-df_val = pd.DataFrame(val_feat)
+df_val = pd.DataFrame(val_feat_norm)
 df_val['y'] = y_val
-df_tst = pd.DataFrame(tst_feat)
+df_tst = pd.DataFrame(tst_feat_norm)
 df_tst['y'] = y_test
 col_to_stype = {col: torch_frame.numerical for col in df_trn.columns}
 col_to_stype['y'] = torch_frame.categorical
@@ -200,9 +215,9 @@ test_tensor_frame = test_dataset.tensor_frame
 print(f"Train: {len(train_tensor_frame)}, Val: {len(val_tensor_frame)}, "
       f"Test: {len(test_tensor_frame)}")
 # Apply normalization
-train_tensor_frame, val_tensor_frame, test_tensor_frame = normalize_tensor_frame(
-    train_tensor_frame, val_tensor_frame, test_tensor_frame
-)
+# train_tensor_frame, val_tensor_frame, test_tensor_frame = normalize_tensor_frame(
+#     train_tensor_frame, val_tensor_frame, test_tensor_frame
+# )
    
 if args.model_type in GBDT_MODELS:
     gbdt_cls_dict = {
@@ -338,10 +353,9 @@ else:
             CatToNumTransform,
             MutualInformationSort,
         )
-
         categorical_transform = CatToNumTransform()
         categorical_transform.fit(train_dataset.tensor_frame,
-                                  train_dataset.col_stats)
+                                  dataset.col_stats)
         train_tensor_frame = categorical_transform(train_tensor_frame)
         val_tensor_frame = categorical_transform(val_tensor_frame)
         test_tensor_frame = categorical_transform(test_tensor_frame)
@@ -365,28 +379,35 @@ else:
             'num_cols': [train_tensor_frame.num_cols],
         }
         train_search_space = {
-            'batch_size': [256, 512] if args.n_features <= 50 else [128, 256],
+            'batch_size': [256, 512] if train_tensor_frame.num_cols < 100 else [128, 256],
             'base_lr': [0.001],
             'gamma_rate': [0.9, 0.95, 1.],
         }
         model_cls = ExcelFormer
-        print("ExcelFormer is being optimized for the current dataset.")
 
     assert model_cls is not None
     assert col_stats is not None
     assert set(train_search_space.keys()) == set(TRAIN_CONFIG_KEYS)
     col_names_dict = train_tensor_frame.col_names_dict
-    torch.save(col_names_dict, os.path.join(data_folder, data_path_wo_file_ending + "_normalized_tensor_frame_col_names_dict.pt"))
-    torch.save(col_stats, os.path.join(data_folder, data_path_wo_file_ending + "_normalized_tensor_frame_col_stats.pt"))
+    if args.model_type != 'ExcelFormer':
+        data_path_wo_file_ending_col = data_path_wo_file_ending
+    else:
+        data_path_wo_file_ending_col = f'ExcelFormer_{data_path_wo_file_ending}'
+    print("saving col names and stats to", os.path.join(data_folder, data_path_wo_file_ending_col + "_normalized_tensor_frame_col_names_dict.pt"))
+    torch.save(col_names_dict, os.path.join(data_folder, data_path_wo_file_ending_col + "_normalized_tensor_frame_col_names_dict.pt"))
+    torch.save(col_stats, os.path.join(data_folder, data_path_wo_file_ending_col + "_normalized_tensor_frame_col_stats.pt"))
 
-if args.data_path:
-    normalized_data = {
-        'train': train_tensor_frame,
-        'val': val_tensor_frame,
-        'test': test_tensor_frame
-    }
-    tensorframe_file_name = os.path.join(data_folder, data_path_wo_file_ending + "_normalized_tensor_frame.pt")
-    torch.save(normalized_data, tensorframe_file_name)
+normalized_data = {
+    'train': train_tensor_frame,
+    'val': val_tensor_frame,
+    'test': test_tensor_frame
+}
+if args.model_type != 'ExcelFormer':
+    data_path_wo_file_ending_data = data_path_wo_file_ending
+else:
+    data_path_wo_file_ending_data = f'ExcelFormer_{data_path_wo_file_ending}'
+tensorframe_file_name = os.path.join(data_folder, data_path_wo_file_ending_data + "_normalized_tensor_frame.pt")
+torch.save(normalized_data, tensorframe_file_name)
 
 
 def train(
