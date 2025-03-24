@@ -163,10 +163,11 @@ def load_model_performance(model, dataset, synthetic=False):
     except Exception as e:
         print(f"Error loading {file_path}: {e}")
         return None
+    
 def get_performance_metrics_model(model, dataset, metric_str, synthetic=False):
     res = load_model_performance(model, dataset, synthetic)
     if res is None:
-        return None
+        return np.nan
     else:
         metric_str_to_key_pair = {
             "AUROC": 0,
@@ -180,7 +181,7 @@ def get_performance_metrics_model(model, dataset, metric_str, synthetic=False):
 def get_best_metrics_of_knn(model, dataset, metric_sr, synthetic=False, distance_measure="euclidean"):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
-        "Accuracy": ("classification", 0),
+        "Accuracy $g_x$": ("classification", 0),
         "Precision": ("classification", 1),
         "Recall": ("classification", 2),
         "F1": ("classification", 3),

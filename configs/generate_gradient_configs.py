@@ -4,6 +4,7 @@ import yaml
 # Models that support gradient explanations
 DEEP_MODELS = ['TabNet', 'FTTransformer', 'ResNet', 'MLP', 'TabTransformer',
                'Trompt', 'ExcelFormer', 'FTTransformerBucket']
+ML_MODELS = ['LogisticRegression']
 
 # Datasets
 DATASETS = {
@@ -16,13 +17,23 @@ DATASETS = {
 }
 
 def create_config(model, dataset, is_synthetic=False):
-    if is_synthetic:
-        model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/synthetic_data/{model}_{dataset}_results.pt'
-        data_path =  f'/home/grotehans/xai_locality/data/synthetic_data/{dataset}_normalized_tensor_frame.pt'
+    is_ExcelFormer_str = "ExcelFormer_" if model == 'ExcelFormer' else ""
+
+    if model in ML_MODELS:
+        if is_synthetic:
+            model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/synthetic_data/{dataset}/model.pt'
+            data_path = f'/home/grotehans/xai_locality/data/synthetic_data/{dataset}_normalized_tensor_frame.pt'
+        else:
+            model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/{dataset}/model.pt'
+            data_path = f'/home/grotehans/xai_locality/data/LightGBM_{dataset}_normalized_data.pt'
     else:
-        model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/{dataset}/{model}_normalized_binary_{dataset}_results.pt'
-        data_path =  f'/home/grotehans/xai_locality/data/{model}_{dataset}_normalized_data.pt'
-    
+        if is_synthetic:
+            model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/synthetic_data/{model}_{dataset}_results.pt'
+            data_path = f'/home/grotehans/xai_locality/data/synthetic_data/{is_ExcelFormer_str}{dataset}_normalized_tensor_frame.pt'
+        else:
+            model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/{dataset}/{model}_normalized_binary_{dataset}_results.pt'
+            data_path =  f'/home/grotehans/xai_locality/data/{model}_{dataset}_normalized_data.pt'
+        
     
     config = {
         'explanation_method': {
@@ -52,7 +63,7 @@ def create_config(model, dataset, is_synthetic=False):
 
 def main():
     base_path = '/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradient'
-    for model in DEEP_MODELS:
+    for model in DEEP_MODELS + ML_MODELS:
         # Standard datasets
         for dataset in DATASETS['standard']:
             path = f'{base_path}/{model}/{dataset}'
