@@ -71,7 +71,7 @@ def main(args):
     else:
         tree = BallTree(df_for_dist, metric=distance_measure)
 
-    n_points_in_ball = 400
+    n_points_in_ball = 200
     print("Considering the closest neighbours: ", n_points_in_ball)
     
     max_fraction = n_points_in_ball/len(df_for_expl)        
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     #, default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml"
     # default="/home/grotehans/xai_locality/configs/lime/ExcelFormer/higgs/config.yaml",
     parser.add_argument("--config", type=str, 
-                        default = "/home/grotehans/xai_locality/configs/lime/ExcelFormer/jannis/config.yaml" , 
+                        default = "/home/grotehans/xai_locality/configs/lime/LogisticRegression/jannis/config.yaml",  
                         help="Path to configuration file") 
     
     # Data and model paths
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     parser.add_argument("--gradient_method", type=str, help="Which Gradient Method to use: [IG, IG+SmoothGrad]")
     
     # Analysis parameters
-    parser.add_argument("--distance_measure", type=str, default="manhattan", help="Distance measure")
+    parser.add_argument("--distance_measure", type=str, default="euclidean", help="Distance measure")
     parser.add_argument("--max_frac", type=float, help="Until when to compute the fraction of points in the ball")
     parser.add_argument("--num_frac", type=int, help="Number of fractions to compute")
     parser.add_argument("--include_trn", action="store_true", help="Include training data")

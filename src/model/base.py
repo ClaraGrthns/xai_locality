@@ -5,9 +5,11 @@ from src.dataset.tab_data import TabularDataset
 from src.utils.misc import get_path
 import torch
 from src.utils.pytorch_frame_utils import (
-   tensor_to_tensorframe,
-    tensorframe_to_tensor
-) 
+    tensorframe_to_tensor,
+    load_dataframes, 
+    ) 
+
+
 class BaseModelHandler:
     def __init__(self, args):
         self.args = args
@@ -105,8 +107,15 @@ class BaseModelHandler:
         return None
 
     def load_data(self):
-        """Load dataset"""
-        raise NotImplementedError
+        '''
+        Load data from path
+        to be overwritten, if does not work for the model
+        '''
+        trn_feat, val_feat, whole_tst_feat = load_dataframes(self.data_path)
+        tst_feat, analysis_feat, tst_dataset, analysis_dataset = self._split_data_in_tst_analysis(
+            whole_tst_feat, val_feat, trn_feat
+        )
+        return trn_feat, tst_feat, analysis_feat, tst_dataset, analysis_dataset
 
     def predict_fn(self, X):
         """Run predictions"""

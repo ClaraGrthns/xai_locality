@@ -53,11 +53,11 @@ To be extended to all datasets integrated into **pytorch frame**, see descriptio
 Using sklearns method: ```sklearn.datasets.make_classification```
 [Link to dataset](https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_classification.html#sklearn.datasets.make_classification)
 
-| Complexity | Features | Informative Features | Clusters per Class | Description |
-|------------|----------|---------------------|-------------|-------------|
-| Simple     | 50 | 2 | 2       |Low complexity |
-| Medium     | 50 | 10 | 3      |Medium complexity |
-| Complex    | 100 | 50 |3     | High complexity |
+| Complexity | Features | Informative Features | Clusters per Class | 
+|------------|----------|---------------------|-------------|
+| Simple     | 50 | 2 | 2       
+| Medium     | 50 | 10 | 3     
+| Complex    | 100 | 50 |3    
 
 ### Models
 
@@ -69,6 +69,9 @@ Using sklearns method: ```sklearn.datasets.make_classification```
 - [TabNet (Arik Sercan O., 2021)](https://github.com/dreamquark-ai/tabnet)
 - [TabTransformer (Huang et al., 2020)](https://github.com/lucidrains/tab-transformer-pytorch)
 - Simple MLP
+
+#### Statistical ML Models (PyTorch)
+- LogisticRegression, implemented with pytorch for differentiability
 
 #### Gradient Boosting Models
 - XGBoost

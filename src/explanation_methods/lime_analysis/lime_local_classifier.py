@@ -90,15 +90,15 @@ def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features, dis
 
     if type(tst_feat) == torch.Tensor:
         tst_feat = tst_feat.numpy()
-    
-    if not sequential_computation:
-        explanations = Parallel(n_jobs=-1)(
-        delayed(explainer.explain_instance)(instance, predict_fn, top_labels=1, num_features=num_lime_features, distance_metric=distance_metric)
-        for instance in tst_feat
-    )
-    else:
-        explanations = [explainer.explain_instance(instance, predict_fn, top_labels=1, num_features=num_lime_features, distance_metric=distance_metric) for instance in tqdm(tst_feat)]
-    
+    with torch.no_grad():
+        if not sequential_computation:
+            explanations = Parallel(n_jobs=-1)(
+            delayed(explainer.explain_instance)(instance, predict_fn, top_labels=1, num_features=num_lime_features, distance_metric=distance_metric)
+            for instance in tst_feat
+        )
+        else:
+            explanations = [explainer.explain_instance(instance, predict_fn, top_labels=1, num_features=num_lime_features, distance_metric=distance_metric) for instance in tqdm(tst_feat)]
+        
     return explanations
 
 def compute_lime_fidelity_per_kNN(tst_set, dataset, explanations, explainer, predict_fn, n_closest, tree, pred_threshold=None):
