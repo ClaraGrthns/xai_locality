@@ -6,6 +6,7 @@ from src.model.pytorch_frame_lgm import PTFrame_LightGBMHandler
 from src.model.pytorch_frame_xgboost import PTFrame_XGBoostHandler
 from src.model.inception_v3 import BinaryInceptionV3_Handler, InceptionV3_Handler
 from src.model.pytorch_frame_handler import TorchFrameHandler
+from src.model.pytorch_models_handler import PytorchHandler, LogisticRegression
 
 class ModelHandlerFactory:
     MODEL_HANDLERS = {
@@ -28,12 +29,17 @@ class ModelHandlerFactory:
         "FTTransformer": FTTransformer,
         "ResNet": ResNet
     }
-
+    TORCH_MODLES = {
+        "LogisticRegression": LogisticRegression, 
+    }
     @staticmethod
     def get_handler(args):
         model_type = args.model_type
         if model_type in ModelHandlerFactory.MODEL_HANDLERS:
             return ModelHandlerFactory.MODEL_HANDLERS[model_type](args)
+        if model_type in ModelHandlerFactory.TORCH_MODLES:
+            model_class = ModelHandlerFactory.TORCH_MODLES[model_type]
+            return PytorchHandler(args, model_class)
         
         if model_type in ModelHandlerFactory.TORCH_FRAME_MODELS:
             model_class = ModelHandlerFactory.TORCH_FRAME_MODELS[model_type]

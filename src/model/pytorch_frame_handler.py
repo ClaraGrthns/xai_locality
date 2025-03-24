@@ -24,7 +24,7 @@ class TorchFrameHandler(BaseModelHandler):
         data_path = self.data_path
         file_name_wo_file_ending = Path(data_path).stem
         data_folder = os.path.dirname(data_path)
-        
+        print("loading col names and stats from", os.path.join(data_folder, file_name_wo_file_ending + "_col_names_dict.pt"))
         checkpoint = torch.load(self.model_path, map_location=torch.device('cpu'))
         self.col_names_dict = torch.load(
             os.path.join(data_folder, file_name_wo_file_ending + "_col_names_dict.pt"), 
@@ -61,8 +61,9 @@ class TorchFrameHandler(BaseModelHandler):
             X = torch.Tensor(X)
         if X.dtype == torch.double:
             X = X.float()
-        pred = self.model(X)
         if self.args.method == "lime":
+            with torch.no_grad():
+                pred = self.model(X)
             pred = transform_logit_to_class_proba(pred)
-            pred = pred.detach().numpy()
-        return pred
+            return pred.detach().numpy()
+        return self.model(X)
