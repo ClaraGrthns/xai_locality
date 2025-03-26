@@ -111,7 +111,7 @@ def compute_gradmethod_fidelity_per_kNN(tst_feat,
 
 
 def compute_gradmethod_preds_for_all_kNN(tst_feat, 
-                                        imgs,
+                                        tst_chunk,
                                         predictions,
                                         predictions_baseline, 
                                         analysis_data, 
@@ -137,14 +137,32 @@ def compute_gradmethod_preds_for_all_kNN(tst_feat,
     # 2. Predict labels of the kNN samples with the model
     num_classes = model_preds.shape[-1]
     model_preds = model_preds.reshape(samples_in_ball.shape[0], samples_in_ball.shape[1], num_classes) #num test samples x num closest points x num classes
-    if not proba_output:
-        if model_preds.shape[-1] == 1:
+    # if not proba_output:
+    #     if model_preds.shape[-1] == 1:
+    #         model_preds_sig = torch.sigmoid(model_preds)
+    #         model_preds_softmaxed = torch.cat([1 - model_preds_sig, model_preds_sig], dim=-1)
+    #         # model_preds_top_label = (model_preds * (top_labels*2-1)).squeeze(-1)
+    #     else: 
+    #         model_preds_softmaxed = torch.softmax(model_preds, dim=-1)
+    #         # model_preds_top_label = model_preds[torch.arange(len(model_preds)), :, top_labels].squeeze(-1)
+    # else:
+    #     if model_preds.shape[-1] == 1:
+    #         model_preds_softmaxed = torch.cat([1 - model_preds_sig, model_preds_sig], dim=-1)
+
+    if model_preds.shape[-1] == 1:
+        if not proba_output:
             model_preds_sig = torch.sigmoid(model_preds)
             model_preds_softmaxed = torch.cat([1 - model_preds_sig, model_preds_sig], dim=-1)
-            model_preds_top_label = model_preds.squeeze(-1)
-        else: 
+            model_preds_top_label = (model_preds * (torch.tensor(top_labels)[:, None, None]*2-1)).squeeze(-1) # model act for top labels: -f(x) if top label was 0, f(x) if label was 1
+        else:
+            model_preds_softmaxed = torch.cat([1 - model_preds, model_preds], dim=-1)
+            model_preds_top_label = model_preds_softmaxed[np.arange(len(model_preds)), :, top_labels].squeeze(-1)
+    else:
+        if not proba_output:
             model_preds_softmaxed = torch.softmax(model_preds, dim=-1)
-            model_preds_top_label = model_preds[torch.arange(len(model_preds)), :, top_labels].squeeze(-1)
+        else:
+            model_preds_softmaxed = model_preds
+        model_preds_top_label = model_preds[torch.arange(len(model_preds)), :, top_labels].squeeze(-1)
 
     ## i) Get probability for the top label
     model_probs_top_label = model_preds_softmaxed[torch.arange(len(model_preds_softmaxed)), :, top_labels] # (num test samples,)
@@ -154,18 +172,34 @@ def compute_gradmethod_preds_for_all_kNN(tst_feat,
     
     # 3. Predict labels of the kNN samples with the LIME explanation
     ## i)+ii) Get probability for top label, if prob > threshold, predict as top label
-    local_preds = linear_classifier(samples_in_ball, saliency_map) 
+    local_preds = linear_classifier(samples_in_ball, saliency_map) # ∇fi(x)*x, i = argmax(f(x0)) if dim(f(x))>1 else: ∇f(x)*x
+
     if predictions_baseline.shape[-1] == 1:
-        local_preds += predictions_baseline
+        local_preds += predictions_baseline # ∇f(x)*x + f(0) OR: ∇sig(f(x))*x + sig(f(0))
+        if not proba_output:
+            local_preds *= (torch.tensor(top_labels)*2-1)[:, None] # -f(x) if argmax(f(x0)) was 0, f(x) if argmax(f(x0)) was 1
+            local_probs_top_label = torch.sigmoid(local_preds)
+            local_preds_top_label = local_preds
+        else:
+            local_probs_top_label = torch.stack([1-local_preds, local_preds], dim=-1)[torch.arange(len(top_labels)), :, top_labels] # f(x) for argmax(f(x0)), f(0) for argmax(f(0))
+            local_preds_top_label = local_probs_top_label
     else:
-        local_preds += predictions_baseline[torch.arange(len(top_labels)), top_labels]
-    local_probs_top_label = torch.sigmoid(local_preds)
+        local_preds += predictions_baseline[torch.arange(len(top_labels)), top_labels] # # ∇fi(x)*x + fi(0) OR: ∇sig(fi(x))*x + sig(fi(0)), i = argmax(f(x)
+        if not proba_output:
+            local_probs_top_label = torch.sigmoid(local_preds)
+            local_preds_top_label = local_preds
+        else:
+            local_probs_top_label = local_preds
+            local_preds_top_label = local_probs_top_label
+
+    local_probs_top_label = local_probs_top_label.squeeze(-1)
+    
     if pred_threshold is None:
         pred_threshold = 0.5
     local_binary_pred_top_labels = (local_probs_top_label >= pred_threshold).cpu().numpy().astype(int)
 
     return (model_preds_top_label.cpu().numpy(), model_binary_pred_top_label.cpu().numpy(), model_probs_top_label.cpu().numpy(),  \
-            local_preds.cpu().numpy(), local_binary_pred_top_labels, local_probs_top_label.cpu().numpy(), \
+            local_preds_top_label.cpu().numpy(), local_binary_pred_top_labels, local_probs_top_label.cpu().numpy(), \
             dist)
     
 
@@ -175,7 +209,7 @@ def compute_saliency_maps(explainer, predict_fn, data_loader_tst, transform = No
     for i, batch in enumerate(data_loader_tst):
         Xs = batch#[0]
         preds = predict_fn(Xs)
-        if preds.ndim == 2:
+        if preds.ndim == 2 and preds.shape[1] == 1:
             saliency = explainer.attribute(Xs).float()
         else:
             top_labels = torch.argmax(predict_fn(Xs), dim=1).tolist()
