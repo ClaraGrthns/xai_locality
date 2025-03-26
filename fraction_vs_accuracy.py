@@ -34,8 +34,10 @@ def main(args):
         pytorch_total_params = sum(p.numel() for p in model.parameters())
         print(f"Total number of parameters: {pytorch_total_params}")
     trn_for_expl, tst_for_dist, df_for_dist, tst_for_expl, df_for_expl = model_handler.load_data()
-    print("Length of data set for analysis", len(df_for_dist))
 
+    print("Length of data set for analysis", len(df_for_dist))
+    args.num_lime_features = np.min([args.num_lime_features, df_for_dist.shape[1]])
+    print("Number of LIME features: ", args.num_lime_features)
     predict_fn = model_handler.predict_fn
     
     if args.method == "lime":
@@ -51,7 +53,7 @@ def main(args):
     explainer_handler = ExplanationMethodHandlerFactory.get_handler(method=method)(args)
     explainer_handler.set_explainer(dataset=trn_for_expl,
                                     class_names=model_handler.get_class_names(),
-                                    model=model)
+                                    model=predict_fn)
     
     explanations = explainer_handler.compute_explanations(results_path=results_path, 
                                                           predict_fn=predict_fn, 
@@ -102,7 +104,7 @@ if __name__ == "__main__":
     #, default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml"
     # default="/home/grotehans/xai_locality/configs/lime/ExcelFormer/higgs/config.yaml",
     parser.add_argument("--config", type=str, 
-                        default = "/home/grotehans/xai_locality/configs/lime/LogisticRegression/jannis/config.yaml",  
+                        default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradient/TabNet/jannis/config.yaml",  
                         help="Path to configuration file") 
     
     # Data and model paths

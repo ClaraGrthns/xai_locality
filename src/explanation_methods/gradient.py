@@ -42,7 +42,8 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         return saliency_maps
     
     def get_experiment_setting(self, fractions):
-        return f"fractions-0-{np.round(fractions, 2)}_grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"      
+        setting = f"fractions-0-{np.round(fractions, 2)}_grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"      
+        return setting
     
     # def prepare_data_for_analysis(self, dataset, df_feat):
     #     args = self.args
@@ -60,31 +61,38 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         Process a single chunk of data for gradient-based methods.
         """
         tst_chunk = batch  # For gradient methods, batch is already in the right format
+        proba_output = self.args.model_type in ["LightGBM", "XGBoost", "LightGBM", "pt_frame_xgb", "LogisticRegression"]
         
         with torch.no_grad():
             predictions = predict_fn(tst_chunk)
             predictions_baseline = predict_fn(torch.zeros_like(tst_chunk))
+        
+        if not proba_output:
             if predictions.shape[-1] == 1:
                 predictions_sm = torch.sigmoid(predictions)
                 predictions_sm = torch.cat([1 - predictions_sm, predictions_sm], dim=-1)
             else:
                 predictions_sm = torch.softmax(predictions, dim=-1)
-            top_labels = torch.argmax(predictions_sm, dim=1).tolist()
+        else:
+            if predictions.shape[-1] == 1:
+                predictions_sm = torch.cat([1 - predictions, predictions], dim=-1)
+            else:
+                predictions_sm = predictions
+        top_labels = torch.argmax(predictions_sm, dim=1).tolist()
 
-        proba_output = self.args.model_type in ["LightGBM", "XGBoost", "LightGBM", "pt_frame_xgb"]
         
         return compute_gradmethod_preds_for_all_kNN(
-            tst_chunk_dist,
-            tst_chunk,
-            predictions,
-            predictions_baseline,
-            df_feat_for_expl, 
-            explanations_chunk, 
-            predict_fn, 
-            n_points_in_ball, 
-            tree,
-            top_labels,
-            proba_output
+            tst_feat = tst_chunk_dist,
+            tst_chunk = tst_chunk,
+            predictions = predictions,
+            predictions_baseline = predictions_baseline,
+            analysis_data = df_feat_for_expl, 
+            saliency_map = explanations_chunk, 
+            predict_fn = predict_fn, 
+            n_closest = n_points_in_ball, 
+            tree = tree,
+            top_labels = top_labels,
+            proba_output=proba_output
         )
         
 class SmoothGradHandler(IntegratedGradientsHandler):

@@ -32,11 +32,9 @@ class LimeHandler(BaseExplanationMethodHandler):
     def compute_explanations(self, results_path, predict_fn, tst_data):
         args = self.args
         # Construct the explanation file name and path
-        if args.distance_measure in ["euclidean", "minowski", "l2"]:
-            explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}"
-        else:
-            explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}_distance_measure-{args.distance_measure}"
-
+        explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}_distance_measure-{args.distance_measure}"
+        if args.num_lime_features > 10:
+            explanation_file_name += f"_num_features-{args.num_lime_features}"
         # if args.num_lime_features > 10:
         #     explanation_file_name += f"_num_features-{args.num_lime_features}"
         # if args.num_test_splits > 1:
@@ -71,6 +69,8 @@ class LimeHandler(BaseExplanationMethodHandler):
         #     experiment_setting = f"num_features-{args.num_lime_features}_{experiment_setting}"
         # if args.num_test_splits > 1:
         #     experiment_setting = f"split-{args.split_idx}_{experiment_setting}"
+        if self.args.num_lime_features > 10:
+            experiment_setting += f"_num_features-{self.args.num_lime_features}"
         return experiment_setting
     
     # def prepare_data_for_analysis(self, dataset, df_feat):

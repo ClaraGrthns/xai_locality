@@ -22,3 +22,4 @@ src/data/
 submit_all_jobs_smpl.sh
 submit_all_jobs_knn.sh
 notebooks/graphics
+submit_all_jobs_benchmarking.sh
