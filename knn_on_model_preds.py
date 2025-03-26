@@ -84,7 +84,7 @@ def main(args):
         print(f"Training labels saved to {ys_trn_preds_path}")
     
     # Process the model predictions
-    proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_xgb"]
+    proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_xgb", "LogisticRegression"]
     if not proba_output:
         if ys_trn_preds.shape[-1] == 1:
             ys_trn_sig = 1 / (1 + np.exp(-ys_trn_preds))
@@ -111,7 +111,7 @@ def main(args):
         print(f"Test labels saved to {ys_tst_preds_path}")
 
     # Process test predictions
-    proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_xgb"]
+    proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_xgb", "LogisticRegression"]
     if not proba_output:
         if y_tst_preds.shape[-1] == 1:
             ys_true_sig = 1 / (1 + np.exp(-y_tst_preds))
@@ -120,7 +120,10 @@ def main(args):
             exp_y_true = np.exp(y_tst_preds - np.max(y_tst_preds, axis=-1, keepdims=True))
             ys_true_softmaxed = exp_y_true / np.sum(exp_y_true, axis=-1, keepdims=True)
     else:
-        ys_true_softmaxed = y_tst_preds
+        if y_tst_preds.shape[-1] == 1:
+            ys_true_softmaxed = np.concatenate([1 - y_tst_preds, y_tst_preds], axis=-1)
+        else:
+            ys_true_softmaxed = y_tst_preds
          
     ys_tst_predicted_labels = np.argmax(ys_true_softmaxed, axis=-1)
     
@@ -158,78 +161,78 @@ def main(args):
     # Results storage for true label analysis
     res_classification_true_labels = np.zeros((len(k_nns), 4))
     
-    # Process each distance measure
-    for distance_measure in distance_measures:
-        print(f"\nProcessing with distance measure: {distance_measure}")
+    # # Process each distance measure
+    # for distance_measure in distance_measures:
+    #     print(f"\nProcessing with distance measure: {distance_measure}")
         
-        # Define result filename
-        experiment_setting = f"kNN_on_model_preds_{args.model_type}_{file_name_wo_file_ending}_dist_measure-{distance_measure}_random_seed-{args.random_seed}"
+    #     # Define result filename
+    #     experiment_setting = f"kNN_on_model_preds_{args.model_type}_{file_name_wo_file_ending}_dist_measure-{distance_measure}_random_seed-{args.random_seed}"
         
-        # # Skip if results already exist and not forcing overwrite
-        # if osp.exists(osp.join(results_path, experiment_setting + ".npz")) and not args.force_overwrite:
-        #     print(f"Results for the experiment setting {experiment_setting} already exist. Skipping.")
-        #     continue
+    #     # # Skip if results already exist and not forcing overwrite
+    #     # if osp.exists(osp.join(results_path, experiment_setting + ".npz")) and not args.force_overwrite:
+    #     #     print(f"Results for the experiment setting {experiment_setting} already exist. Skipping.")
+    #     #     continue
         
-        # Process each k value
-        for i, k_neighbors in enumerate(k_nns):
-            print(f"Computing kNN with k={k_neighbors} and distance measure={distance_measure}")
+    #     # Process each k value
+    #     for i, k_neighbors in enumerate(k_nns):
+    #         print(f"Computing kNN with k={k_neighbors} and distance measure={distance_measure}")
             
-            # If analyzing model predictions
-            classifier = KNeighborsClassifier(n_neighbors=k_neighbors, metric=distance_measure)
-            classifier.fit(X_trn, ys_trn_predicted_labels)
-            classifier_preds = classifier.predict(X_tst)
-            _, accuracy, precision, recall, f1 = binary_classification_metrics(ys_tst_predicted_labels, classifier_preds, None)
-            res_classification[i] = [accuracy, precision, recall, f1]
+    #         # If analyzing model predictions
+    #         classifier = KNeighborsClassifier(n_neighbors=k_neighbors, metric=distance_measure)
+    #         classifier.fit(X_trn, ys_trn_predicted_labels)
+    #         classifier_preds = classifier.predict(X_tst)
+    #         _, accuracy, precision, recall, f1 = binary_classification_metrics(ys_tst_predicted_labels, classifier_preds, None)
+    #         res_classification[i] = [accuracy, precision, recall, f1]
             
-            # Regression on probabilities
-            regressors, regressor_preds = train_knn_regressors(
-                                            X_trn, 
-                                            ys_trn_softmaxed,
-                                            X_tst, 
-                                            k_neighbors,
-                                            distance_measure
-                                        )
-            if regressor_preds.ndim > 1:
-                regressor_preds_top_label = regressor_preds[np.arange(len(ys_tst_predicted_labels)), ys_tst_predicted_labels]
-            else:
-                regressor_preds_top_label = regressor_preds
+    #         # Regression on probabilities
+    #         regressors, regressor_preds = train_knn_regressors(
+    #                                         X_trn, 
+    #                                         ys_trn_softmaxed,
+    #                                         X_tst, 
+    #                                         k_neighbors,
+    #                                         distance_measure
+    #                                     )
+    #         if regressor_preds.ndim > 1:
+    #             regressor_preds_top_label = regressor_preds[np.arange(len(ys_tst_predicted_labels)), ys_tst_predicted_labels]
+    #         else:
+    #             regressor_preds_top_label = regressor_preds
                 
-            mse, mae, r2 = regression_metrics(y_tst_proba_top_label, regressor_preds_top_label)   
-            res_proba_regression[i] = [mse, mae, r2]
+    #         mse, mae, r2 = regression_metrics(y_tst_proba_top_label, regressor_preds_top_label)   
+    #         res_proba_regression[i] = [mse, mae, r2]
             
-            # Regression on logits (if not using probability output)
-            if not proba_output:
-                regressors, regressor_logit = train_knn_regressors(
-                                                X_trn, 
-                                                ys_trn_preds,
-                                                X_tst, 
-                                                k_neighbors,
-                                                distance_measure
-                                            )
-                if regressor_logit.ndim == 1:
-                    regressor_logit_top_label = regressor_logit
-                else:
-                    regressor_logit_top_label = regressor_logit[np.arange(len(ys_tst_predicted_labels)), ys_tst_predicted_labels]
-                mse, mae, r2 = regression_metrics(y_tst_logit_top_label, regressor_logit_top_label)   
-                res_logit_regression[i] = [mse, mae, r2]
+    #         # Regression on logits (if not using probability output)
+    #         if not proba_output:
+    #             regressors, regressor_logit = train_knn_regressors(
+    #                                             X_trn, 
+    #                                             ys_trn_preds,
+    #                                             X_tst, 
+    #                                             k_neighbors,
+    #                                             distance_measure
+    #                                         )
+    #             if regressor_logit.ndim == 1:
+    #                 regressor_logit_top_label = regressor_logit
+    #             else:
+    #                 regressor_logit_top_label = regressor_logit[np.arange(len(ys_tst_predicted_labels)), ys_tst_predicted_labels]
+    #             mse, mae, r2 = regression_metrics(y_tst_logit_top_label, regressor_logit_top_label)   
+    #             res_logit_regression[i] = [mse, mae, r2]
         
-            # Classification on true labels (always done)
-            classifier = KNeighborsClassifier(n_neighbors=k_neighbors, metric=distance_measure)
-            classifier.fit(X_trn, y_trn)
-            classifier_preds = classifier.predict(X_tst)
-            _, accuracy, precision, recall, f1 = binary_classification_metrics(y_tst, classifier_preds, None)
-            res_classification_true_labels[i] = [accuracy, precision, recall, f1]
+    #         # Classification on true labels (always done)
+    #         classifier = KNeighborsClassifier(n_neighbors=k_neighbors, metric=distance_measure)
+    #         classifier.fit(X_trn, y_trn)
+    #         classifier_preds = classifier.predict(X_tst)
+    #         _, accuracy, precision, recall, f1 = binary_classification_metrics(y_tst, classifier_preds, None)
+    #         res_classification_true_labels[i] = [accuracy, precision, recall, f1]
     
-        # Save results for this distance measure
-        res_dict = {
-            "k_nns": k_nns,
-            "classification": res_classification,
-            "proba_regression": res_proba_regression,
-            "logit_regression": res_logit_regression,
-            "classification_true_labels": res_classification_true_labels
-        }
-        np.savez(osp.join(results_path, experiment_setting), **res_dict)
-        print(f"Results saved to {osp.join(results_path, experiment_setting)}")
+    #     # Save results for this distance measure
+    #     res_dict = {
+    #         "k_nns": k_nns,
+    #         "classification": res_classification,
+    #         "proba_regression": res_proba_regression,
+    #         "logit_regression": res_logit_regression,
+    #         "classification_true_labels": res_classification_true_labels
+    #     }
+    #     np.savez(osp.join(results_path, experiment_setting), **res_dict)
+    #     print(f"Results saved to {osp.join(results_path, experiment_setting)}")
 
     # Save model performance metrics (only needs to be done once)
     print("Computing metrics for the actual model")

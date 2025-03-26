@@ -1,10 +1,18 @@
 import os
 import numpy as np
 
-def file_matching(file, distance_measure):
-        return file.endswith("fraction.npz") and distance_measure in file
+DATASET_TO_NUM_FEATURES = {"higgs": 24,
+                           "jannis": 54,
+                           "synthetic_data/n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42": 50, 
+            "synthetic_data/n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42": 50,
+            "synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42": 100,
+}
+
+
+def file_matching(file, distance_measure, condition=lambda x: True):
+        return condition(file) and distance_measure in file
         
-def get_results_files_dict(explanation_method: str, models: list[str], datasets: list[str], distance_measure:str="euclidean") -> dict:
+def get_results_files_dict(explanation_method: str, models: list[str], datasets: list[str], distance_measure:str="euclidean", lime_features = 10) -> dict:
     results_folder = f"/home/grotehans/xai_locality/results/{explanation_method}"
     results_files_dict = {}
     for model in models:
@@ -13,7 +21,14 @@ def get_results_files_dict(explanation_method: str, models: list[str], datasets:
             path_to_results = os.path.join(results_folder, model, dataset)
             if not os.path.exists(path_to_results):
                 continue
-            res = [os.path.join(path_to_results, f) for f in os.listdir(f"{results_folder}/{model}/{dataset}") if file_matching(f, distance_measure)]
+            if isinstance(lime_features, int) and lime_features != 10:
+                condition = lambda x: f"num_features-{lime_features}.npz" in x
+            elif lime_features == "all":
+                num_feat = DATASET_TO_NUM_FEATURES[dataset]
+                condition = lambda x: f"num_features-{num_feat}.npz" in x
+            else:
+                condition = lambda x: x.endswith("fraction.npz")
+            res = [os.path.join(path_to_results, f) for f in os.listdir(f"{results_folder}/{model}/{dataset}") if file_matching(f, distance_measure, condition=condition)]
             if len(res) > 0 and explanation_method == "lime":
                 results_files_dict[model][dataset] = res
             elif len(res) > 0:
@@ -24,11 +39,11 @@ def get_results_files_dict(explanation_method: str, models: list[str], datasets:
         keys = list(results_files_dict[model].keys())
         for key in keys:
             if "synthetic_data/n_feat50_n_informative2" in key:
-                results_files_dict[model]["synthetic (simple)"] = results_files_dict[model].pop(key)
+                results_files_dict[model]["synthetic (d:50, inf feat.: 2)"] = results_files_dict[model].pop(key)
             elif "synthetic_data/n_feat50_n_informative10" in key:
-                results_files_dict[model]["synthetic (medium)"] = results_files_dict[model].pop(key)
+                results_files_dict[model]["synthetic (d:50, inf feat.: 10)"] = results_files_dict[model].pop(key)
             elif "synthetic_data/n_feat100" in key:
-                results_files_dict[model]["synthetic (complex)"] = results_files_dict[model].pop(key)
+                results_files_dict[model]["synthetic (d:100, inf feat.: 50)"] = results_files_dict[model].pop(key)
                 
     return results_files_dict
 
@@ -118,10 +133,14 @@ def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidea
                     f"synthetic_data/{dataset_name}/kNN_on_model_preds_{model}_{dataset_name}_"
                     f"normalized_tensor_frame_dist_measure-{distance_measure}_random_seed-42.npz")
     else:
-        file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
+        if model == "LogisticRegression":
+            file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
+                    f"{dataset}/kNN_on_model_preds_{model}_LightGBM_{dataset}_normalized_data_"
+                    f"dist_measure-{distance_measure}_random_seed-42.npz")
+        else: 
+            file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
                     f"{dataset}/kNN_on_model_preds_{model}_{model}_{dataset}_normalized_data_"
                     f"dist_measure-{distance_measure}_random_seed-42.npz")
-    
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
         return None
@@ -132,7 +151,6 @@ def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidea
     except Exception as e:
         print(f"Error loading {file_path}: {e}")
         return None   
-
 
 def load_model_performance(model, dataset, synthetic=False):
     """Loads model performance metrics from a .npz file.
@@ -156,7 +174,10 @@ def load_model_performance(model, dataset, synthetic=False):
         dataset_name = dataset.split('/')[-1]
         file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/synthetic_data/{dataset_name}/model_performance_{model}_{dataset_name}_normalized_tensor_frame_random_seed-42.npz"
     else:
-        file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_{model}_{dataset}_normalized_data_random_seed-42.npz"
+        if model == "LogisticRegression":
+            file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_LightGBM_{dataset}_normalized_data_random_seed-42.npz"
+        else:
+            file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_{model}_{dataset}_normalized_data_random_seed-42.npz"
     try:
         res = np.load(file_path, allow_pickle=True)
         return res

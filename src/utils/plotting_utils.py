@@ -12,9 +12,9 @@ light_red = "#ffa5b3"
 light_blue = "#9cdbfb"
 light_grey = "#61cff2"
 SYNTHETIC_DATASET_MAPPING = {
-   "synthetic (simple)": "n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42",
-    "synthetic (medium)":"n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42",
-     "synthetic (complex)":"n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42"
+   "synthetic (d:50, inf feat.: 2)": "n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42",
+    "synthetic (d:50, inf feat.: 10)":"n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42",
+     "synthetic (d:100, inf feat.: 50)":"n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42"
 }
 
 def plot_weighted_average_metrics_vs_fractions(metric: list[np.array],
@@ -79,9 +79,9 @@ def plot_metrics_per_sample(metric, neighbourhood_size, metric_str, ax = None, x
     return ax
 
 SYNTHETIC_DATASET_MAPPING = {
-    "synthetic (simple)": "n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42",
-    "synthetic (medium)":"n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42",
-    "synthetic (complex)":"n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42"
+    "synthetic (d:50, inf feat.: 2)": "n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42",
+    "synthetic (d:50, inf feat.: 10)":"n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42",
+    "synthetic (d:100, inf feat.: 50)":"n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42"
 }
 
 def plot_mean_metrics_per_model_and_dataset(results_files_dict, 
