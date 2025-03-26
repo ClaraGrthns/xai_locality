@@ -21,11 +21,14 @@ def get_results_files_dict(explanation_method: str, models: list[str], datasets:
             path_to_results = os.path.join(results_folder, model, dataset)
             if not os.path.exists(path_to_results):
                 continue
-            if isinstance(lime_features, int) and lime_features != 10:
-                condition = lambda x: f"num_features-{lime_features}.npz" in x
-            elif lime_features == "all":
-                num_feat = DATASET_TO_NUM_FEATURES[dataset]
-                condition = lambda x: f"num_features-{num_feat}.npz" in x
+            if explanation_method == "lime":
+                if isinstance(lime_features, int) and lime_features != 10:
+                    condition = lambda x: f"num_features-{lime_features}.npz" in x
+                elif lime_features == "all":
+                    num_feat = DATASET_TO_NUM_FEATURES[dataset]
+                    condition = lambda x: f"num_features-{num_feat}.npz" in x
+                else:
+                    condition = lambda x: x.endswith("fraction.npz")
             else:
                 condition = lambda x: x.endswith("fraction.npz")
             res = [os.path.join(path_to_results, f) for f in os.listdir(f"{results_folder}/{model}/{dataset}") if file_matching(f, distance_measure, condition=condition)]
@@ -199,7 +202,8 @@ def get_performance_metrics_model(model, dataset, metric_str, synthetic=False):
         }
         return float(res['classification_model'][metric_str_to_key_pair[metric_str]])
 
-def get_best_metrics_of_knn(model, dataset, metric_sr, synthetic=False, distance_measure="euclidean"):
+
+def get_best_metrics_of_knn(model, dataset, metric_sr_ls, synthetic=False, distance_measure="euclidean"):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
         "Accuracy $g_x$": ("classification", 0),
@@ -211,13 +215,25 @@ def get_best_metrics_of_knn(model, dataset, metric_sr, synthetic=False, distance
         "R2  prob.": ("proba_regression", 2),
         "MSE logit": ("logit_regression", 0),
         "MAE logit": ("logit_regression", 1),
-        "R2 logit": ("logit_regression", 2)
+        "R2 logit": ("logit_regression", 2),
+        "Accuracy true labels": ("classification_true_labels", 0),
+        "Precision true labels": ("classification_true_labels", 1),
+        "Recall true labels": ("classification_true_labels", 2),
+        "F1 true labels": ("classification_true_labels", 3),
     }
-    if metric_sr not in metric_str_to_key_pair:
-        return None
-    metric_key_pair = metric_str_to_key_pair[metric_sr]
+    if type(metric_sr_ls) == str:
+        metric_sr_ls = [metric_sr_ls]
+
     res = load_knn_results(model, dataset, synthetic, distance_measure)
     if res is None:
         return None
-    else:
-        return np.max(res[metric_key_pair[0]][:, metric_key_pair[1]]), np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])   
+    metrics_res = []
+    for metric_sr in metric_sr_ls:
+        if metric_sr not in metric_str_to_key_pair:
+            metrics_res.append((np.nan, np.nan))
+            continue
+        metric_key_pair = metric_str_to_key_pair[metric_sr]
+        best_metric = np.max(res[metric_key_pair[0]][:, metric_key_pair[1]])
+        best_idx = np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
+        metrics_res.append((best_metric, best_idx))
+    return metrics_res if len(metrics_res) > 1 else metrics_res[0]
