@@ -6,9 +6,8 @@ import pathlib
 DEEP_MODELS = ['TabNet', 'FTTransformer', 'ResNet', 'MLP', 'TabTransformer',
                'Trompt', 'ExcelFormer', 'FTTransformerBucket']
 ML_MODELS = ['LogisticRegression']
-folder_dir = str(pathlib.Path(__file__).parent.parent.absolute())
-
-# Datasets
+folder_dir = str(pathlib.Path(__file__).parent.parent.absolute()) # Datasets#
+print(folder_dir)
 DATASETS = {
     'standard': ['higgs', 'jannis', 'MiniBooNE'],
     'synthetic': [

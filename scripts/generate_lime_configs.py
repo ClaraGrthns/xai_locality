@@ -3,6 +3,7 @@ import yaml
 import pathlib
 
 folder_dir = str(pathlib.Path(__file__).parent.parent.absolute())
+print(folder_dir)
 
 DATASETS = {
     'standard': ['higgs', 'jannis', 'MiniBooNE'],
