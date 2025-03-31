@@ -1,10 +1,12 @@
 import os
 import yaml
+import pathlib
 
 # Models that support gradient explanations
 DEEP_MODELS = ['TabNet', 'FTTransformer', 'ResNet', 'MLP', 'TabTransformer',
                'Trompt', 'ExcelFormer', 'FTTransformerBucket']
 ML_MODELS = ['LogisticRegression']
+folder_dir = str(pathlib.Path(__file__).parent.parent.absolute())
 
 # Datasets
 DATASETS = {
@@ -17,22 +19,16 @@ DATASETS = {
 }
 
 def create_config(model, dataset, is_synthetic=False):
-    is_ExcelFormer_str = "ExcelFormer_" if model == 'ExcelFormer' else ""
-
-    if model in ML_MODELS:
-        if is_synthetic:
-            model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/synthetic_data/{dataset}/model.pt'
-            data_path = f'/home/grotehans/xai_locality/data/synthetic_data/{dataset}_normalized_tensor_frame.pt'
-        else:
-            model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/{dataset}/model.pt'
-            data_path = f'/home/grotehans/xai_locality/data/LightGBM_{dataset}_normalized_data.pt'
+    is_ExcelFormer_str = "ExcelFormer_" if model == 'ExcelFormer' else ""    
+    if is_synthetic:
+        model_path = f'{folder_dir}/pretrained_models/{model}/synthetic_data/{model}_{dataset}_results.pt'
+        data_path = f'{folder_dir}/data/synthetic_data/{is_ExcelFormer_str}{dataset}_normalized_tensor_frame.pt'
     else:
-        if is_synthetic:
-            model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/synthetic_data/{model}_{dataset}_results.pt'
-            data_path = f'/home/grotehans/xai_locality/data/synthetic_data/{is_ExcelFormer_str}{dataset}_normalized_tensor_frame.pt'
+        if model in ML_MODELS:        
+            data_path = f'{folder_dir}/data/LightGBM_{dataset}_normalized_data.pt'
         else:
-            model_path = f'/home/grotehans/xai_locality/pretrained_models/{model}/{dataset}/{model}_normalized_binary_{dataset}_results.pt'
-            data_path =  f'/home/grotehans/xai_locality/data/{model}_{dataset}_normalized_data.pt'
+            data_path =  f'{folder_dir}/data/{model}_{dataset}_normalized_data.pt'
+        model_path = f'{folder_dir}/pretrained_models/{model}/{dataset}/{model}_normalized_binary_{dataset}_results.pt'
         
     
     config = {
@@ -40,7 +36,7 @@ def create_config(model, dataset, is_synthetic=False):
             'method': 'gradient'
         },
         'paths': {
-            'results_path': f'/home/grotehans/xai_locality/results/gradient_methods/integrated_gradient/{model}/{"synthetic_data/" if is_synthetic else ""}{dataset}',
+            'results_path': f'{folder_dir}/results/gradient_methods/integrated_gradient/{model}/{"synthetic_data/" if is_synthetic else ""}{dataset}',
             'data_path': data_path,
             'model_path': model_path,
         },
@@ -62,7 +58,7 @@ def create_config(model, dataset, is_synthetic=False):
     return config
 
 def main():
-    base_path = '/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradient'
+    base_path = f'{folder_dir}/configs/gradient_methods/integrated_gradient'
     for model in DEEP_MODELS + ML_MODELS:
         # Standard datasets
         for dataset in DATASETS['standard']:
