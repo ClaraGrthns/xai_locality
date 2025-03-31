@@ -25,4 +25,5 @@ notebooks/graphics
 submit_all_jobs_benchmarking.sh
 *DS_Store
 
-configs/**/*.yaml
+configs/lime/**/*.yaml
+configs/gradient_methods/**/*.yaml
