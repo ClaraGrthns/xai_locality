@@ -1,36 +1,26 @@
-# Jupyter notebooks
 *.ipynb
-
-# Python
-*.pyc
-__pycache__/
-*.py[cod]
-
-# External packages
-lime_pkg/
-
-# Data files
-data/
-*.csv
-*.zip
-
-# Results and output
-results/
-src/train/runs/
-
-# Environment and editor
-.vscode/
-*DS_Store
-
-# Configuration files
-configs/
-
-
-# Scripts
-*.sh
+lime_pkg
+lime_pkg/*
+data/*
+results/*
 sbatch
+*.pyc
+__pycache__/*
+.vscode
+pretrained_models/*
+src/train/runs/*
 run_analysis.py
-
-# Other
-pretrained_models/
-notebooks/graphics/
+rename_folders.sh
+rename_files.sh
+submit_all_jobs.sh
+src/data/Diabetes130US.csv
+src/data/higgs_small.zip
+src/data/jannis.csv
+src/data/MiniBooNE.csv
+src/data/Higgs.csv
+src/data/
+submit_all_jobs_smpl.sh
+submit_all_jobs_knn.sh
+notebooks/graphics
+submit_all_jobs_benchmarking.sh
+*DS_Store
