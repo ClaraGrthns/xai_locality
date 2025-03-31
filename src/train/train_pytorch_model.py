@@ -104,8 +104,8 @@ def main():
         data_path = f'/home/grotehans/xai_locality/data/{args.dataset}_normalized_tensor_frame.pt'
     else:
         data_path = f'/home/grotehans/xai_locality/data/LightGBM_{args.dataset}_normalized_data.pt'
-
-    model_path = osp.join("/home/grotehans/xai_locality/pretrained_models", "LogisticRegression", args.dataset,  f"model.pt")
+    setting = args.dataset.split("/")[-1]
+    model_path = osp.join("/home/grotehans/xai_locality/pretrained_models", "LogisticRegression", f"{"synthetic_data" if "synthetic" in args.dataset else ""}" ,f"LogisticRegression_{setting}_results.pt") # f"{args.model_type}_{data_path_wo_file_ending}_results"
     if not osp.exists(os.path.dirname(model_path)):
         os.makedirs(os.path.dirname(model_path))
 
