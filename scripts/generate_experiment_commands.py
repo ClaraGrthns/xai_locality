@@ -76,8 +76,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
                              f" --class_sep {class_sep}"
                              f" --flip_y {flip_y}"
                              f" --random_seed {random_seed}"
-                             f" --num_trials 15"
-                             f" --num_repeats 5")
+                             )
             
             # Add hypercube flag ONLY if it's True
             if hypercube:
@@ -122,13 +121,13 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
                              f" --class_sep {params.get('class_sep', 0.9)}"
                              f" --flip_y {params.get('flip_y', 0.1)}"
                              f" --random_seed {params.get('random_seed', 42)}"
-                             f" --num_trials 15"
-                             f" --num_repeats 5")
+                             )
             
             if params.get('hypercube', "False").lower() == "true":
                 synthetic_args += " --hypercube"
             
             base_args += synthetic_args
+            base_args += "--num_trials 15 --num_repeats 5 --epochs 10"
     else:
         # For benchmark datasets
         if setting == "jannis":
