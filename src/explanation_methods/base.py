@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, Subset
 from src.utils.metrics import regression_metrics_per_row
 from src.utils.metrics import impurity_metrics_per_row
 from src.utils.metrics import binary_classification_metrics_per_row
+import time 
 
 class BaseExplanationMethodHandler:
     def __init__(self,args):
@@ -60,15 +61,14 @@ class BaseExplanationMethodHandler:
         """
         chunk_size = int(np.min((self.args.chunk_size, len(tst_feat_for_expl))))
         tst_feat_for_expl_loader = DataLoader(tst_feat_for_expl, batch_size=chunk_size, shuffle=False)
-        
         for i, batch in enumerate(tst_feat_for_expl_loader):
+            start = time.time()
             chunk_start = i * chunk_size
             chunk_end = min(chunk_start + chunk_size, len(tst_feat_for_dist))
             print(f"Processing chunk {i}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
             
             explanations_chunk = explanations[chunk_start:chunk_end]
             
-            # Process the chunk according to the specific model requirements
             chunk_result = self.process_chunk(
                 batch, 
                 tst_feat_for_dist[chunk_start:chunk_end],
@@ -80,77 +80,61 @@ class BaseExplanationMethodHandler:
                 chunk_start,
                 chunk_end
             )
-            
-            # Unpack results based on the format returned by the specific implementation
             model_preds, model_binary_preds, model_probs, local_preds, local_binary_preds, local_probs, dist = chunk_result
-            
 
-            # Precompute max distances for each cumulative neighborhood size
             # For each sample, calculate the maximum distance across progressively more neighbors
             max_distances = np.zeros((dist.shape[0], n_points_in_ball))
             for idx in range(n_points_in_ball):
                 max_distances[:, idx] = np.max(dist[:, :idx+1], axis=1)
             
-            # Compute metrics for each neighborhood size
-            for idx in range(n_points_in_ball):
-                # Get current neighborhood slice
-                current_slice = slice(0, idx + 1)
-                
-                # Binary classification metrics
-                aucroc, acc, precision, recall, f1 = self.binary_classification_metrics(
-                    model_binary_preds[:, current_slice],
-                    local_binary_preds[:, current_slice],
-                    local_probs[:, current_slice]
-                )
-                
-                # Regression metrics
-                mse, mae, r2 = self.regression_metrics(
-                    model_preds[:, current_slice],
-                    local_preds[:, current_slice]
-                )
-                
-                # Probability regression metrics
-                mse_proba, mae_proba, r2_proba = self.regression_metrics(
-                    model_probs[:, current_slice],
-                    local_probs[:, current_slice]
-                )
-                
-                # Impurity metrics
-                gini, ratio = self.impurity_metrics(model_binary_preds[:, current_slice])
-                
-                # Variance metrics
-                variance_preds = np.var(model_preds[:, current_slice], axis=1)
-                variance_pred_proba = np.var(model_probs[:, current_slice], axis=1)
-                
-                # Constant classifier accuracy
-                acc_constant_clf = np.mean(model_binary_preds[:, current_slice], axis=1)
-                all_ones_local_binary_preds = np.mean(local_binary_preds[:, current_slice], axis=1)
-                
-                # Store results for current neighborhood size
-                self.update_results(results, idx, chunk_start, chunk_end, {
-                    "accuraccy_constant_clf": acc_constant_clf,
-                    "aucroc": aucroc,
-                    "accuracy": acc,
-                    "precision": precision,
-                    "recall": recall,
-                    "f1": f1,
-                    "mse": mse,
-                    "mae": mae,
-                    "r2": r2,
-                    "mse_proba": mse_proba,
-                    "mae_proba": mae_proba,
-                    "r2_proba": r2_proba,
-                    "gini": gini,
-                    "ratio_all_ones": ratio,
-                    "ratio_all_ones_local": all_ones_local_binary_preds,
-                    "variance_proba": variance_pred_proba,
-                    "variance_logit": variance_preds,
-                    "radius": max_distances[:, idx],  # Use precomputed max distances
-                })
+            kNNs = (np.arange(1, n_points_in_ball + 1))
+            mean_model_preds = np.cumsum(model_preds, axis=1)/kNNs
+            mean_model_preds_probs = np.cumsum(model_probs, axis=1) / kNNs
             
+            acc = np.cumsum((model_binary_preds == local_binary_preds), axis=1) / kNNs
+            precision = np.cumsum(model_binary_preds * local_binary_preds, axis=1) / (np.cumsum(local_binary_preds, axis=1) + 1e-10)
+            recall = np.cumsum(model_binary_preds * local_binary_preds, axis=1) / (np.cumsum(model_binary_preds, axis=1) + 1e-10)
+            f1 = 2 * (precision * recall) / (precision + recall + 1e-10)
+
+            mse = np.cumsum(np.square(model_preds - local_preds), axis=1) / kNNs
+            mae = np.cumsum(np.abs(model_preds - local_preds), axis=1) / kNNs
+
+            mse_proba = np.cumsum(np.square(model_probs - local_probs), axis=1) / kNNs
+            mae_proba = np.cumsum(np.abs(model_probs - local_probs), axis=1) / kNNs
+
+            var_model_preds = np.cumsum(np.square(model_preds - mean_model_preds), axis=1) / kNNs
+            var_model_preds_probs = np.cumsum(np.square(model_probs - mean_model_preds_probs), axis=1) / kNNs
+            r2 = 1 - (mse / var_model_preds)
+            r2_proba = 1 - (mse_proba / var_model_preds_probs)
+
+            ratio_of_ones = np.cumsum(model_binary_preds, axis=1)/kNNs
+            all_ones_local_binary_preds = np.cumsum(local_binary_preds, axis=1) / kNNs
+
+            gini_impurity = 1 - (np.square(ratio_of_ones)+ np.square(1 - ratio_of_ones))
+
+            results["accuraccy_constant_clf"][:, chunk_start:chunk_end] = ratio_of_ones.T
+            results["accuracy"][:,chunk_start:chunk_end] = acc.T
+            results["precision"][:,chunk_start:chunk_end] = precision.T
+            results["recall"][:,chunk_start:chunk_end] = recall.T
+            results["f1"][:,chunk_start:chunk_end] = f1.T
+            results["mse"][:,chunk_start:chunk_end] = mse.T
+            results["mae"][:,chunk_start:chunk_end] = mae.T
+            results["r2"][:,chunk_start:chunk_end] = r2.T
+            results["mse_proba"][:,chunk_start:chunk_end] = mse_proba.T
+            results["mae_proba"][:,chunk_start:chunk_end] = mae_proba.T
+            results["r2_proba"][:,chunk_start:chunk_end] = r2_proba.T
+            results["variance_proba"][:,chunk_start:chunk_end] = var_model_preds_probs.T
+            results["variance_logit"][:,chunk_start:chunk_end] = var_model_preds.T
+            results["radius"][:,chunk_start:chunk_end] = max_distances.T
+            results["ratio_all_ones"][:,chunk_start:chunk_end] = ratio_of_ones.T
+            results["ratio_all_ones_local"][:,chunk_start:chunk_end] = all_ones_local_binary_preds.T
+            results["gini"][:,chunk_start:chunk_end] = gini_impurity.T
+
             # Save results after processing each chunk
             np.savez(os.path.join(results_path, experiment_setting), **results)
             print(f"Processed chunk {i}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
+            print(f"Finished processing chunk {i} in {time.time() - start:.2f} seconds")
+
             
         return results
     
