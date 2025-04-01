@@ -22,14 +22,15 @@ from src.utils.pytorch_frame_utils import tensorframe_to_tensor
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a logistic regression model')
-    parser.add_argument('--dataset', type=str,default = "higgs")# default='synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42', help="Can be 'higgs', 'jannis, 'synthetic_1', 'synthetic_2', 'synthetic_3'")# default='synthetic_data/n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42', help="Can be 'higgs', 'jannis, 'synthetic_1', 'synthetic_2', 'synthetic_3'")
+    parser.add_argument('--dataset', type=str,default = "higgs")# default='synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42', help="Can be 'higgs', 'jannis,")# default='synthetic_data/n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42', help="Can be 'higgs', 'jannis, 'synthetic_1', 'synthetic_2', 'synthetic_3'")
     parser.add_argument('--epochs', type=int, default=200, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
-    parser.add_argument('--input_size', type=int, default=2, help='Input feature size')
     parser.add_argument('--verbose', action='store_true', help='Print progress during training')
     parser.add_argument('--optimize', action='store_true', help='Use Optuna for hyperparameter optimization')
     parser.add_argument('--n_trials', type=int, default=20, help='Number of Optuna optimization trials')
+    parser.add_argument('--data_path', type=str, default='/home/grotehans/xai_locality/data/LightGBM_higgs_normalized_data.pt', help='Path to the dataset')
+    parser.add_argument('--model_path', type=str, default='/home/grotehans/xai_locality/pretrained_models/LogisticRegression/higgs/LogisticRegression_higgs_results.pt', help='Path to save the trained model')
     return parser.parse_args()
 
 
@@ -90,25 +91,19 @@ def objective(trial, X, y, X_val, y_val, input_size, epochs, verbose):
     return val_loss
 
 
-def main():
-    args = parse_args()
+def main(args=None):
+    if args is None:
+        args = parse_args()
     print(args)
     
     # Create TensorBoard logger
     log_dir = f"runs/logistic_regression_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
     writer = SummaryWriter(log_dir)
     print(f"TensorBoard logs will be saved to: {log_dir}")
-    
-    # Load data
-    if "synthetic" in args.dataset:
-        data_path = f'/home/grotehans/xai_locality/data/{args.dataset}_normalized_tensor_frame.pt'
-    else:
-        data_path = f'/home/grotehans/xai_locality/data/LightGBM_{args.dataset}_normalized_data.pt'
-    setting = args.dataset.split("/")[-1]
-    model_path = osp.join("/home/grotehans/xai_locality/pretrained_models", "LogisticRegression", f"{"synthetic_data" if "synthetic" in args.dataset else ""}" ,f"LogisticRegression_{setting}_results.pt") # f"{args.model_type}_{data_path_wo_file_ending}_results"
+    data_path = args.data_path
+    model_path = args.model_path
     if not osp.exists(os.path.dirname(model_path)):
         os.makedirs(os.path.dirname(model_path))
-
     data = torch.load(data_path)
     train_tensor_frame, val_tensor_frame, test_tensor_frame = data["train"], data["val"], data["test"]
     X = tensorframe_to_tensor(train_tensor_frame)  # All training features

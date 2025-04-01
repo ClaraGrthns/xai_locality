@@ -282,8 +282,6 @@ if __name__ == "__main__":
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed")
     parser.add_argument("--chunk_size", type=int, default=200, help="Chunk size of test set computed at once")
     parser.add_argument("--debug", action="store_true", help="Debug")
-    parser.add_argument("--use_true_labels", action="store_true", help="Use true labels for kNN")
-    parser.add_argument("--max_test_points", type=int, default=200)
     parser.add_argument("--min_k", type=int, default=1)
     parser.add_argument("--max_k", type=int, default=25)
     parser.add_argument("--k_step", type=int, default=1)

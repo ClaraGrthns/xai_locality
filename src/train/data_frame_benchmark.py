@@ -47,6 +47,11 @@ from torch_frame.nn.models import (
 )
 from torch_frame.typing import TaskType
 import random 
+
+# Constants and configuration
+TRAIN_CONFIG_KEYS = ["batch_size", "gamma_rate", "base_lr"]
+GBDT_MODELS = ["XGBoost", "CatBoost", "LightGBM"]
+
 # Lookup table for datasets
 dataset_lookup = {
     "binary_classification": {
@@ -95,10 +100,56 @@ dataset_lookup = {
     },
 }
 
+# Reverse lookup for datasets
+def get_dataset_specs(dataset_name):
+    """
+    Get the task type, scale, and index for a given dataset name.
+    
+    Args:
+        dataset_name (str): The name of the dataset
+        
+    Returns:
+        tuple: (task_type, scale, index) or None if not found
+    """
+    for task_type, scales in dataset_lookup.items():
+        for scale, indices in scales.items():
+            for idx, name in indices.items():
+                if name == dataset_name:
+                    return (task_type, scale, idx)
+    return None
+
+# Create argument parser
+def create_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--task_type', type=str, choices=[
+            'binary_classification',
+            'multiclass_classification',
+            'regression',
+        ], default='binary_classification')
+    parser.add_argument('--scale', type=str, choices=['small', 'medium', 'large'],
+                        default='small')
+    parser.add_argument('--idx', type=int, default=0,
+                        help='The index of the dataset within DataFrameBenchmark')
+    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--num_trials', type=int, default=20,
+                        help='Number of Optuna-based hyper-parameter tuning.')
+    parser.add_argument(
+        '--num_repeats', type=int, default=5,
+        help='Number of repeated training and eval on the best config.')
+    parser.add_argument(
+        '--model_type', type=str, default='TabNet', choices=[
+            'TabNet', 'FTTransformer', 'ResNet', 'MLP', 'TabTransformer', 'Trompt',
+            'ExcelFormer', 'FTTransformerBucket', 'XGBoost', 'CatBoost', 'LightGBM'
+        ])
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--results_folder', type=str, default='')
+    parser.add_argument('--data_folder', type=str, default='')
+    return parser
+
 # Function to get dataset name
 def get_dataset_name(classification_type, scale, index):
     return dataset_lookup.get(classification_type, {}).get(scale, {}).get(index, "Dataset not found")
-
 
 def set_random_seeds(seed=42):
     random.seed(seed)
@@ -135,291 +186,270 @@ def normalize_tensor_frame(train_tf, val_tf, test_tf):
     
     return train_tf, val_tf, test_tf
 
+def prepare_data_and_models(args):
+    """Prepare data and initialize model configurations based on provided arguments."""
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    torch.manual_seed(args.seed)
+    set_random_seeds(args.seed)
+    
+    # Prepare datasets
+    path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data')
+    os.makedirs(args.results_folder, exist_ok=True)
+    dataset_name = get_dataset_name(args.task_type, args.scale, args.idx)
+    print(f"Dataset: {dataset_name}")
 
+    dataset = DataFrameBenchmark(root=path, task_type=TaskType(args.task_type),
+                                scale=args.scale, 
+                                idx=args.idx,
+                                )
+    dataset.materialize()
+    dataset = dataset.shuffle()
+    train_dataset, val_dataset, test_dataset = dataset.split()
 
-TRAIN_CONFIG_KEYS = ["batch_size", "gamma_rate", "base_lr"]
-GBDT_MODELS = ["XGBoost", "CatBoost", "LightGBM"]
+    train_tensor_frame = train_dataset.tensor_frame
+    val_tensor_frame = val_dataset.tensor_frame
+    test_tensor_frame = test_dataset.tensor_frame
+    labels_tst = test_tensor_frame.y.to(device)
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    '--task_type', type=str, choices=[
-        'binary_classification',
-        'multiclass_classification',
-        'regression',
-    ], default='binary_classification')
-parser.add_argument('--scale', type=str, choices=['small', 'medium', 'large'],
-                    default='small')
-parser.add_argument('--idx', type=int, default=0,
-                    help='The index of the dataset within DataFrameBenchmark')
-parser.add_argument('--epochs', type=int, default=10)
-parser.add_argument('--num_trials', type=int, default=20,
-                    help='Number of Optuna-based hyper-parameter tuning.')
-parser.add_argument(
-    '--num_repeats', type=int, default=5,
-    help='Number of repeated training and eval on the best config.')
-parser.add_argument(
-    '--model_type', type=str, default='TabNet', choices=[
-        'TabNet', 'FTTransformer', 'ResNet', 'MLP', 'TabTransformer', 'Trompt',
-        'ExcelFormer', 'FTTransformerBucket', 'XGBoost', 'CatBoost', 'LightGBM'
-    ])
-parser.add_argument('--seed', type=int, default=42)
-# parser.add_argument('--result_path', type=str, default='')
-parser.add_argument('--result_folder', type=str, default='')
-parser.add_argument('--data_folder', type=str, default='')
+    print(f"Train: {len(train_tensor_frame)}, Val: {len(val_tensor_frame)}, "
+          f"Test: {len(test_tensor_frame)}")
+    # Apply normalization
+    train_tensor_frame, val_tensor_frame, test_tensor_frame = normalize_tensor_frame(
+        train_tensor_frame, val_tensor_frame, test_tensor_frame
+    )
 
-args = parser.parse_args()
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-torch.manual_seed(args.seed)
-set_random_seeds(args.seed)
-# Prepare datasets
-path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data')
-os.makedirs(args.result_folder, exist_ok=True)
-dataset_name = get_dataset_name(args.task_type, args.scale, args.idx)
-print(f"Dataset: {dataset_name}")
-
-# if os.path.exists(os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt')):
-#    print(f"File {args.model_type}_normalized_binary_{dataset_name}_results.pt already exists.")
-#    exit()
-
-
-dataset = DataFrameBenchmark(root=path, task_type=TaskType(args.task_type),
-                             scale=args.scale, 
-                             idx=args.idx,
-                             )
-dataset.materialize()
-dataset = dataset.shuffle()
-train_dataset, val_dataset, test_dataset = dataset.split()
-
-train_tensor_frame = train_dataset.tensor_frame
-val_tensor_frame = val_dataset.tensor_frame
-test_tensor_frame = test_dataset.tensor_frame
-labels_tst = test_tensor_frame.y.to(device)
-
-
-print(f"Train: {len(train_tensor_frame)}, Val: {len(val_tensor_frame)}, "
-      f"Test: {len(test_tensor_frame)}")
-# Apply normalization
-train_tensor_frame, val_tensor_frame, test_tensor_frame = normalize_tensor_frame(
-    train_tensor_frame, val_tensor_frame, test_tensor_frame
-)
-# train_tensor_frame_df = pd.DataFrame(train_tensor_frame.feat_dict[stype.numerical], columns=train_tensor_frame.col_names_dict[stype.numerical])
-# val_tensor_frame_df = pd.DataFrame(val_tensor_frame.feat_dict[stype.numerical], columns=val_tensor_frame.col_names_dict[stype.numerical])
-# test_tensor_frame_df = pd.DataFrame(test_tensor_frame.feat_dict[stype.numerical], columns=test_tensor_frame.col_names_dict[stype.numerical])
-# train_tensor_frame_df["target"] = train_tensor_frame.y
-# val_tensor_frame_df["target"] = val_tensor_frame.y
-# test_tensor_frame_df["target"] = test_tensor_frame.y
-
-# # Create new datasets with the normalized tensor frames but without col_stats yet
-# from torch_frame.data import Dataset
-# train_dataset = Dataset(train_tensor_frame_df, 
-#                         col_to_stype= train_dataset.col_to_stype,
-#                         target_col= train_dataset.target_col,
-#                         )
-# val_dataset = Dataset(val_tensor_frame_df, 
-#                       col_to_stype=val_dataset.col_to_stype,
-#                       target_col= val_dataset.target_col,
-#                       )
-# test_dataset = Dataset(test_tensor_frame_df, 
-#                        col_to_stype=test_dataset.col_to_stype,
-#                        target_col= test_dataset.target_col,)
-
-# # Recompute col_stats on the normalized training data
-# train_dataset.materialize()
-# val_dataset.materialize()
-# test_dataset.materialize()
-
-if args.model_type in GBDT_MODELS:
-    gbdt_cls_dict = {
-        'XGBoost': XGBoost,
-        'CatBoost': CatBoost,
-        'LightGBM': LightGBM
-    }
-    model_cls = gbdt_cls_dict[args.model_type]
-else:
-    if dataset.task_type == TaskType.BINARY_CLASSIFICATION:
-        out_channels = 1
-        loss_fun = BCEWithLogitsLoss()
-        metric_computer = AUROC(task='binary').to(device)
-        higher_is_better = True
-    elif dataset.task_type == TaskType.MULTICLASS_CLASSIFICATION:
-        out_channels = dataset.num_classes
-        loss_fun = CrossEntropyLoss()
-        metric_computer = Accuracy(task='multiclass',
-                                   num_classes=dataset.num_classes).to(device)
-        higher_is_better = True
-    elif dataset.task_type == TaskType.REGRESSION:
-        out_channels = 1
-        loss_fun = MSELoss()
-        metric_computer = MeanSquaredError(squared=False).to(device)
-        higher_is_better = False
-
-    # To be set for each model
-    model_cls = None
-    col_stats = None
-
-    # Set up model specific search space
-    if args.model_type == 'TabNet':
-        model_search_space = {
-            'split_attn_channels': [64, 128, 256],
-            'split_feat_channels': [64, 128, 256],
-            'gamma': [1., 1.2, 1.5],
-            'num_layers': [4, 6, 8],
+    # Initialize model classes based on model type
+    if args.model_type in GBDT_MODELS:
+        gbdt_cls_dict = {
+            'XGBoost': XGBoost,
+            'CatBoost': CatBoost,
+            'LightGBM': LightGBM
         }
-        train_search_space = {
-            'batch_size': [2048, 4096],
-            'base_lr': [0.001, 0.01],
-            'gamma_rate': [0.9, 0.95, 1.],
+        model_cls = gbdt_cls_dict[args.model_type]
+        return {
+            'model_cls': model_cls,
+            'train_dataset': train_dataset,
+            'val_dataset': val_dataset,
+            'test_dataset': test_dataset,
+            'dataset_name': dataset_name,
+            'device': device,
+            'train_tensor_frame': train_tensor_frame,
+            'val_tensor_frame': val_tensor_frame, 
+            'test_tensor_frame': test_tensor_frame,
+            'dataset': dataset,
+            'labels_tst': labels_tst
         }
-        model_cls = TabNet
-        col_stats = dataset.col_stats
-    elif args.model_type == 'FTTransformer':
-        model_search_space = {
-            'channels': [64, 128, 256],
-            'num_layers': [4, 6, 8],
-        }
-        train_search_space = {
-            'batch_size': [256, 512],
-            'base_lr': [0.0001, 0.001],
-            'gamma_rate': [0.9, 0.95, 1.],
-        }
-        model_cls = FTTransformer
-        col_stats = dataset.col_stats
-    elif args.model_type == 'FTTransformerBucket':
-        model_search_space = {
-            'channels': [64, 128, 256],
-            'num_layers': [4, 6, 8],
-        }
-        train_search_space = {
-            'batch_size': [256, 512],
-            'base_lr': [0.0001, 0.001],
-            'gamma_rate': [0.9, 0.95, 1.],
-        }
-        model_cls = FTTransformer
+    else:
+        # Initialize for deep learning models
+        if dataset.task_type == TaskType.BINARY_CLASSIFICATION:
+            out_channels = 1
+            loss_fun = BCEWithLogitsLoss()
+            metric_computer = AUROC(task='binary').to(device)
+            higher_is_better = True
+        elif dataset.task_type == TaskType.MULTICLASS_CLASSIFICATION:
+            out_channels = dataset.num_classes
+            loss_fun = CrossEntropyLoss()
+            metric_computer = Accuracy(task='multiclass',
+                                    num_classes=dataset.num_classes).to(device)
+            higher_is_better = True
+        elif dataset.task_type == TaskType.REGRESSION:
+            out_channels = 1
+            loss_fun = MSELoss()
+            metric_computer = MeanSquaredError(squared=False).to(device)
+            higher_is_better = False
+            
+        # Initialize model-specific configurations
+        model_cls = None
+        col_stats = None
+        model_search_space = {}
+        train_search_space = {}
 
-        col_stats = dataset.col_stats
-    elif args.model_type == 'ResNet':
-        model_search_space = {
-            'channels': [64, 128, 256],
-            'num_layers': [4, 6, 8],
-        }
-        train_search_space = {
-            'batch_size': [256, 512],
-            'base_lr': [0.0001, 0.001],
-            'gamma_rate': [0.9, 0.95, 1.],
-        }
-        model_cls = ResNet
-        col_stats = dataset.col_stats
-    elif args.model_type == 'MLP':
-        model_search_space = {
-            'channels': [64, 128, 256],
-            'num_layers': [1, 2, 4],
-        }
-        train_search_space = {
-            'batch_size': [256, 512],
-            'base_lr': [0.0001, 0.001],
-            'gamma_rate': [0.9, 0.95, 1.],
-        }
-        model_cls = MLP
-        col_stats = dataset.col_stats
-    elif args.model_type == 'TabTransformer':
-        model_search_space = {
-            'channels': [16, 32, 64, 128],
-            'num_layers': [4, 6, 8],
-            'num_heads': [4, 8],
-            'encoder_pad_size': [2, 4],
-            'attn_dropout': [0, 0.2],
-            'ffn_dropout': [0, 0.2],
-        }
-        train_search_space = {
-            'batch_size': [128, 256],
-            'base_lr': [0.0001, 0.001],
-            'gamma_rate': [0.9, 0.95, 1.],
-        }
-        model_cls = TabTransformer
-        col_stats = dataset.col_stats
-    elif args.model_type == 'Trompt':
-        model_search_space = {
-            'channels': [64, 128, 192],
-            'num_layers': [4, 6, 8],
-            'num_prompts': [64, 128, 192],
-        }
-        train_search_space = {
-            'batch_size': [128],
-            'base_lr': [0.01, 0.001],
-            'gamma_rate': [0.9, 0.95, 1.],
-        }
-        if train_tensor_frame.num_cols > 20:
-            # Reducing the model size to avoid GPU OOM
-            model_search_space['channels'] = [64, 128]
-            model_search_space['num_prompts'] = [64, 128]
-        elif train_tensor_frame.num_cols > 50:
-            model_search_space['channels'] = [64]
-            model_search_space['num_prompts'] = [64]
-        model_cls = Trompt
-        col_stats = dataset.col_stats
-    elif args.model_type == 'ExcelFormer':
-        from torch_frame.transforms import (
-            CatToNumTransform,
-            MutualInformationSort,
-        )
+        # Set up model specific search space
+        if args.model_type == 'TabNet':
+            model_search_space = {
+                'split_attn_channels': [64, 128, 256],
+                'split_feat_channels': [64, 128, 256],
+                'gamma': [1., 1.2, 1.5],
+                'num_layers': [4, 6, 8],
+            }
+            train_search_space = {
+                'batch_size': [2048, 4096],
+                'base_lr': [0.001, 0.01],
+                'gamma_rate': [0.9, 0.95, 1.],
+            }
+            model_cls = TabNet
+            col_stats = dataset.col_stats
+        elif args.model_type == 'FTTransformer':
+            model_search_space = {
+                'channels': [64, 128, 256],
+                'num_layers': [4, 6, 8],
+            }
+            train_search_space = {
+                'batch_size': [256, 512],
+                'base_lr': [0.0001, 0.001],
+                'gamma_rate': [0.9, 0.95, 1.],
+            }
+            model_cls = FTTransformer
+            col_stats = dataset.col_stats
+        elif args.model_type == 'FTTransformerBucket':
+            model_search_space = {
+                'channels': [64, 128, 256],
+                'num_layers': [4, 6, 8],
+            }
+            train_search_space = {
+                'batch_size': [256, 512],
+                'base_lr': [0.0001, 0.001],
+                'gamma_rate': [0.9, 0.95, 1.],
+            }
+            model_cls = FTTransformer
+            col_stats = dataset.col_stats
+        elif args.model_type == 'ResNet':
+            model_search_space = {
+                'channels': [64, 128, 256],
+                'num_layers': [4, 6, 8],
+            }
+            train_search_space = {
+                'batch_size': [256, 512],
+                'base_lr': [0.0001, 0.001],
+                'gamma_rate': [0.9, 0.95, 1.],
+            }
+            model_cls = ResNet
+            col_stats = dataset.col_stats
+        elif args.model_type == 'MLP':
+            model_search_space = {
+                'channels': [64, 128, 256],
+                'num_layers': [1, 2, 4],
+            }
+            train_search_space = {
+                'batch_size': [256, 512],
+                'base_lr': [0.0001, 0.001],
+                'gamma_rate': [0.9, 0.95, 1.],
+            }
+            model_cls = MLP
+            col_stats = dataset.col_stats
+        elif args.model_type == 'TabTransformer':
+            model_search_space = {
+                'channels': [16, 32, 64, 128],
+                'num_layers': [4, 6, 8],
+                'num_heads': [4, 8],
+                'encoder_pad_size': [2, 4],
+                'attn_dropout': [0, 0.2],
+                'ffn_dropout': [0, 0.2],
+            }
+            train_search_space = {
+                'batch_size': [128, 256],
+                'base_lr': [0.0001, 0.001],
+                'gamma_rate': [0.9, 0.95, 1.],
+            }
+            model_cls = TabTransformer
+            col_stats = dataset.col_stats
+        elif args.model_type == 'Trompt':
+            model_search_space = {
+                'channels': [64, 128, 192],
+                'num_layers': [4, 6, 8],
+                'num_prompts': [64, 128, 192],
+            }
+            train_search_space = {
+                'batch_size': [128],
+                'base_lr': [0.01, 0.001],
+                'gamma_rate': [0.9, 0.95, 1.],
+            }
+            if train_tensor_frame.num_cols > 20:
+                # Reducing the model size to avoid GPU OOM
+                model_search_space['channels'] = [64, 128]
+                model_search_space['num_prompts'] = [64, 128]
+            elif train_tensor_frame.num_cols > 50:
+                model_search_space['channels'] = [64]
+                model_search_space['num_prompts'] = [64]
+            model_cls = Trompt
+            col_stats = dataset.col_stats
+        elif args.model_type == 'ExcelFormer':
+            from torch_frame.transforms import (
+                CatToNumTransform,
+                MutualInformationSort,
+            )
 
-        categorical_transform = CatToNumTransform()
-        categorical_transform.fit(train_tensor_frame,
-                                  train_dataset.col_stats)
-        train_tensor_frame = categorical_transform(train_tensor_frame)
-        val_tensor_frame = categorical_transform(val_tensor_frame)
-        test_tensor_frame = categorical_transform(test_tensor_frame)
-        col_stats = categorical_transform.transformed_stats
+            categorical_transform = CatToNumTransform()
+            categorical_transform.fit(train_tensor_frame,
+                                    train_dataset.col_stats)
+            train_tensor_frame = categorical_transform(train_tensor_frame)
+            val_tensor_frame = categorical_transform(val_tensor_frame)
+            test_tensor_frame = categorical_transform(test_tensor_frame)
+            col_stats = categorical_transform.transformed_stats
 
-        mutual_info_sort = MutualInformationSort(task_type=dataset.task_type)
-        mutual_info_sort.fit(train_tensor_frame, col_stats)
-        train_tensor_frame = mutual_info_sort(train_tensor_frame)
-        val_tensor_frame = mutual_info_sort(val_tensor_frame)
-        test_tensor_frame = mutual_info_sort(test_tensor_frame)
+            mutual_info_sort = MutualInformationSort(task_type=dataset.task_type)
+            mutual_info_sort.fit(train_tensor_frame, col_stats)
+            train_tensor_frame = mutual_info_sort(train_tensor_frame)
+            val_tensor_frame = mutual_info_sort(val_tensor_frame)
+            test_tensor_frame = mutual_info_sort(test_tensor_frame)
 
-        model_search_space = {
-            'in_channels': [128, 256],
-            'num_heads': [8, 16, 32],
-            'num_layers': [4, 6, 8],
-            'diam_dropout': [0, 0.2],
-            'residual_dropout': [0, 0.2],
-            'aium_dropout': [0, 0.2],
-            'mixup': [None, 'feature', 'hidden'],
-            'beta': [0.5],
-            'num_cols': [train_tensor_frame.num_cols],
+            model_search_space = {
+                'in_channels': [128, 256],
+                'num_heads': [8, 16, 32],
+                'num_layers': [4, 6, 8],
+                'diam_dropout': [0, 0.2],
+                'residual_dropout': [0, 0.2],
+                'aium_dropout': [0, 0.2],
+                'mixup': [None, 'feature', 'hidden'],
+                'beta': [0.5],
+                'num_cols': [train_tensor_frame.num_cols],
+            }
+            train_search_space = {
+                'batch_size': [256, 512],
+                'base_lr': [0.001],
+                'gamma_rate': [0.9, 0.95, 1.],
+            }
+            model_cls = ExcelFormer
+            print("ExcelFormer is being optimized for the current dataset.")
+
+        assert model_cls is not None
+        assert col_stats is not None
+        assert set(train_search_space.keys()) == set(TRAIN_CONFIG_KEYS)
+        col_names_dict = train_tensor_frame.col_names_dict
+        print(f"save data under: {os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt')}")
+        torch.save(col_names_dict, 
+                os.path.join(args.data_folder, f"{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt"))
+        torch.save(col_stats, 
+                os.path.join(args.data_folder,f"{args.model_type}_{dataset_name}_normalized_data_col_stats.pt"))
+        
+        normalized_data = {
+            'train': train_tensor_frame,
+            'val': val_tensor_frame,
+            'test': test_tensor_frame
         }
-        train_search_space = {
-            'batch_size': [256, 512],
-            'base_lr': [0.001],
-            'gamma_rate': [0.9, 0.95, 1.],
+        norm_path = os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data.pt')
+        torch.save(normalized_data, norm_path)
+        
+        return {
+            'model_cls': model_cls,
+            'model_search_space': model_search_space,
+            'train_search_space': train_search_space,
+            'col_stats': col_stats,
+            'col_names_dict': col_names_dict,
+            'out_channels': out_channels,
+            'loss_fun': loss_fun,
+            'metric_computer': metric_computer,
+            'higher_is_better': higher_is_better,
+            'train_dataset': train_dataset,
+            'val_dataset': val_dataset,
+            'test_dataset': test_dataset,
+            'dataset_name': dataset_name,
+            'device': device,
+            'train_tensor_frame': train_tensor_frame,
+            'val_tensor_frame': val_tensor_frame,
+            'test_tensor_frame': test_tensor_frame,
+            'dataset': dataset
         }
-        model_cls = ExcelFormer
-        print("ExcelFormer is being optimized for the current dataset.")
-
-    assert model_cls is not None
-    assert col_stats is not None
-    assert set(train_search_space.keys()) == set(TRAIN_CONFIG_KEYS)
-    col_names_dict = train_tensor_frame.col_names_dict
-    print(f"save data under: {os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt')}")
-    torch.save(col_names_dict, 
-               os.path.join(args.data_folder, f"{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt"))
-    torch.save(col_stats, 
-               os.path.join(args.data_folder,f"{args.model_type}_{dataset_name}_normalized_data_col_stats.pt"))
-normalized_data = {
-    'train': train_tensor_frame,
-    'val': val_tensor_frame,
-    'test': test_tensor_frame
-}
-norm_path = os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data.pt')
-torch.save(normalized_data, norm_path)
-
 
 def train(
     model: Module,
     loader: DataLoader,
     optimizer: torch.optim.Optimizer,
     epoch: int,
+    device: torch.device,
+    dataset: Any,
+    out_channels: int,
+    loss_fun: Module,
 ) -> float:
     model.train()
     loss_accum = total_count = 0
@@ -458,6 +488,9 @@ def train(
 def test(
     model: Module,
     loader: DataLoader,
+    device: torch.device,
+    dataset: Any,
+    metric_computer: Module,
 ) -> float:
     model.eval()
     metric_computer.reset()
@@ -476,7 +509,32 @@ def train_and_eval_with_cfg(
     model_cfg: dict[str, Any],
     train_cfg: dict[str, Any],
     trial: Optional[optuna.trial.Trial] = None,
-) -> tuple[float, float]:
+    config: Optional[dict] = None,
+) -> tuple[torch.nn.Module, float, float]:
+    """Train and evaluate a model with the given configuration."""
+    if config is None:
+        # If called directly without config, parse args and prepare data
+        args = create_parser().parse_args()
+        config = prepare_data_and_models(args)
+    
+    # Extract needed variables from config
+    model_cls = config['model_cls']
+    col_stats = config['col_stats']
+    col_names_dict = config['col_names_dict']
+    out_channels = config['out_channels'] 
+    dataset = config['dataset']
+    loss_fun = config['loss_fun']
+    metric_computer = config['metric_computer']
+    higher_is_better = config['higher_is_better']
+    train_tensor_frame = config['train_tensor_frame']
+    val_tensor_frame = config['val_tensor_frame']
+    test_tensor_frame = config['test_tensor_frame']
+    device = config['device']
+    dataset_name = config['dataset_name']
+    
+    # Get parser args for some settings
+    args = create_parser().parse_args()
+    
     # Use model_cfg to set up training procedure
     if args.model_type == 'FTTransformerBucket':
         # Use LinearBucketEncoder instead
@@ -509,22 +567,22 @@ def train_and_eval_with_cfg(
         best_val_metric = math.inf
 
     for epoch in range(1, args.epochs + 1):
-        train_loss = train(model, train_loader, optimizer, epoch)
-        val_metric = test(model, val_loader)
+        train_loss = train(model, train_loader, optimizer, epoch, device, dataset, out_channels, loss_fun)
+        val_metric = test(model, val_loader, device, dataset, metric_computer)
         if higher_is_better:
             if val_metric > best_val_metric:
                 best_val_metric = val_metric
-                best_test_metric = test(model, test_loader)
+                best_test_metric = test(model, test_loader, device, dataset, metric_computer)
                 # save new best model
                 best_model_state_dict = model.state_dict()
-                norm_path = os.path.join(args.result_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
+                norm_path = os.path.join(args.results_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         else:
             if val_metric < best_val_metric:
                 best_val_metric = val_metric
-                best_test_metric = test(model, test_loader)
+                best_test_metric = test(model, test_loader, device, dataset, metric_computer)
                 best_model_state_dict = model.state_dict()
-                norm_path = os.path.join(args.result_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
+                norm_path = os.path.join(args.results_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         lr_scheduler.step()
         print(f'Train Loss: {train_loss:.4f}, Val: {val_metric:.4f}')
@@ -539,21 +597,20 @@ def train_and_eval_with_cfg(
     return best_model_state_dict, best_val_metric, best_test_metric
 
 
-def objective(trial: optuna.trial.Trial) -> float:
-    model_cfg = {}
-    for name, search_list in model_search_space.items():
-        model_cfg[name] = trial.suggest_categorical(name, search_list)
-    train_cfg = {}
-    for name, search_list in train_search_space.items():
-        train_cfg[name] = trial.suggest_categorical(name, search_list)
-
-    model, best_val_metric, _ = train_and_eval_with_cfg(model_cfg=model_cfg,
-                                                 train_cfg=train_cfg,
-                                                 trial=trial)
-    return best_val_metric
-
-
-def main_deep_models():
+def main_deep_models(args=None):
+    """Execute deep learning model training and evaluation."""
+    if args is None:
+        args = create_parser().parse_args()
+        
+    # Get prepared data and model configurations
+    config = prepare_data_and_models(args)
+    
+    # Extract needed variables from config
+    model_search_space = config['model_search_space']
+    train_search_space = config['train_search_space']
+    higher_is_better = config['higher_is_better']
+    dataset_name = config['dataset_name']
+    
     # Hyper-parameter optimization with Optuna
     print("Hyper-parameter search via Optuna")
     start_time = time.time()
@@ -561,7 +618,26 @@ def main_deep_models():
         pruner=optuna.pruners.MedianPruner(),
         direction="maximize" if higher_is_better else "minimize",
     )
-    study.optimize(objective, n_trials=args.num_trials)
+    
+    # Create a wrapper for the objective function
+    def objective_wrapper(trial):
+        model_cfg = {}
+        for name, search_list in model_search_space.items():
+            model_cfg[name] = trial.suggest_categorical(name, search_list)
+        train_cfg = {}
+        for name, search_list in train_search_space.items():
+            train_cfg[name] = trial.suggest_categorical(name, search_list)
+
+        best_model_state_dict, best_val_metric, _ = train_and_eval_with_cfg(
+            model_cfg=model_cfg,
+            train_cfg=train_cfg,
+            trial=trial,
+            config=config
+        )
+        return best_val_metric
+    
+    # Optimize with the wrapped objective function
+    study.optimize(objective_wrapper, n_trials=args.num_trials)
     end_time = time.time()
     search_time = end_time - start_time
     print("Hyper-parameter search done. Found the best config.")
@@ -578,7 +654,7 @@ def main_deep_models():
     best_test_metrics = []
     for _ in range(args.num_repeats):
         best_model_state_dict, best_val_metric, best_test_metric = train_and_eval_with_cfg(
-            best_model_cfg, best_train_cfg)
+            best_model_cfg, best_train_cfg, config=config)
         best_val_metrics.append(best_val_metric)
         best_test_metrics.append(best_test_metric)
     end_time = time.time()
@@ -601,18 +677,33 @@ def main_deep_models():
     print(result_dict)
     # Save results
     
-    os.makedirs(args.result_folder, exist_ok=True)
+    os.makedirs(args.results_folder, exist_ok=True)
     torch.save({'model_state_dict': best_model_state_dict, **result_dict},
-                os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
+                os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
 
 
-
-def main_gbdt():
+def main_gbdt(args=None):
+    """Execute GBDT model training and evaluation."""
+    if args is None:
+        args = create_parser().parse_args()
+    
+    # Get prepared data and model configurations
+    config = prepare_data_and_models(args)
+    
+    # Extract needed variables from config
+    model_cls = config['model_cls']
+    train_dataset = config['train_dataset']
+    val_dataset = config['val_dataset']
+    test_dataset = config['test_dataset']
+    dataset = config['dataset']
+    dataset_name = config['dataset_name']
+    
     if dataset.task_type.is_classification:
         num_classes = dataset.num_classes
     else:
         num_classes = None
     model = model_cls(task_type=dataset.task_type, num_classes=num_classes, metric=Metric.ACCURACY)
+    
     import time
     start_time = time.time()
     model.tune(tf_train=train_dataset.tensor_frame,
@@ -631,14 +722,22 @@ def main_gbdt():
     }
     print(result_dict)
     # Save results
-    os.makedirs(args.result_folder, exist_ok=True)
-    torch.save(result_dict, os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
-    model.save(os.path.join(args.result_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
+    os.makedirs(args.results_folder, exist_ok=True)
+    torch.save(result_dict, os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
+    model.save(os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
+
+
+def main():
+    """Main function to execute the script."""
+    parser = create_parser()
+    args = parser.parse_args()
+    print(args)
+    
+    if args.model_type in GBDT_MODELS:
+        main_gbdt(args)
+    else:
+        main_deep_models(args)
 
 
 if __name__ == '__main__':
-    print(args)
-    if args.model_type in ["XGBoost", "CatBoost", "LightGBM"]:
-        main_gbdt()
-    else:
-        main_deep_models()
+    main()
