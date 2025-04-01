@@ -329,10 +329,10 @@ def main():
             setting += f"_hypercube{config['hypercube']}"
         synthetic_settings.append((setting, config))
     
-    models = ["LightGBM", "MLP", "TabNet", "FTTransformer", "ResNet", "LogisticRegression", "TabTransformer"]
-    standard_settings = ["higgs", "jannis", "MiniBooNE"]
+    models = ["LightGBM", "MLP", "LogisticRegression",  "TabNet", "FTTransformer", "ResNet"]
+    standard_settings = ["higgs", "jannis"]
     methods = ["lime", "gradient_methods"]
-    distance_measures = ["euclidean", "manhattan", "cosine"]
+    distance_measures = ["euclidean"]
     
     # Generate all command files
     created_files = []
@@ -342,6 +342,8 @@ def main():
         for setting in standard_settings:
             for method in methods:
                 if method == "gradient_methods":
+                    if model =="LightGBM":
+                        continue
                     gradient_method = "IG"  # Integrated Gradient
                     
                     for distance_measure in distance_measures:
