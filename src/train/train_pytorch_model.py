@@ -95,6 +95,8 @@ def main(args=None):
     if args is None:
         args = parse_args()
     print(args)
+
+    args.optimize = True
     
     # Create TensorBoard logger
     log_dir = f"runs/logistic_regression_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
@@ -116,11 +118,12 @@ def main(args=None):
     input_size = X.shape[1]
     
     if args.optimize:
+        args.epochs = 100
         print("Starting hyperparameter optimization with Optuna...")
         study = optuna.create_study(direction="minimize")
         study.optimize(
-            lambda trial: objective(trial, X, y, X_val, y_val, input_size, args.epochs, args.verbose), 
-            n_trials=args.n_trials
+            lambda trial: objective(trial, X, y, X_val, y_val, input_size, args.epochs, verbose=True), 
+            n_trials=args.num_trials
         )
         # Get the best parameters
         best_params = study.best_params
@@ -138,7 +141,7 @@ def main(args=None):
         
         # Training with TensorBoard logging and validation
         best_val_loss = float('inf')
-        for epoch in range(args.epochs):
+        for epoch in range(args.epochs*2):
             # Training step
             model.train()
             optimizer.zero_grad()
@@ -166,9 +169,11 @@ def main(args=None):
                     best_val_loss = val_loss
                     torch.save(model.state_dict(), model_path)
             
-            if args.verbose and (epoch + 1) % 10 == 0:
+            if (epoch + 1) % 10 == 0:
                 print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}, Val AUROC: {val_auroc:.4f}')
     else:
+        args.epochs = 150
+
         # Use default parameters
         model = LogisticRegression(input_size=input_size, output_size=1)
         criterion = nn.BCELoss()

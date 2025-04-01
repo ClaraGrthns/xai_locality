@@ -135,9 +135,11 @@ def main(args):
     k_nns = np.arange(args.min_k, args.max_k + 1, args.k_step)
     
     # Get file name for saving results
-    if args.data_folder and args.setting:
-        file_name_wo_file_ending = args.setting
-    elif args.data_path:
+    # if args.data_folder and args.setting:
+    #     file_name_wo_file_ending = args.setting
+    # el
+    if args.data_path:
+        print("knn datapath", args.data_path)
         file_name_wo_file_ending = Path(args.data_path).stem
     else:
         raise ValueError("You must provide either data_folder and setting or data_path.")

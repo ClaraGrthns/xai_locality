@@ -61,7 +61,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
             n_samples = synthetic_params.get('n_samples', 100000)
             n_clusters_per_class = synthetic_params.get('n_clusters_per_class', 3)
             class_sep = synthetic_params.get('class_sep', 0.9)
-            flip_y = synthetic_params.get('flip_y', 0.1)
+            flip_y = synthetic_params.get('flip_y', 0.05)
             random_seed = synthetic_params.get('random_seed', 42)
             hypercube = synthetic_params.get('hypercube', False)
             
@@ -81,8 +81,6 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
             # Add hypercube flag ONLY if it's True
             if hypercube:
                 synthetic_args += " --hypercube"
-                
-            base_args += synthetic_args
         else:
             # If no synthetic_params provided, parse from the setting name
             params = {}
@@ -119,15 +117,15 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
                              f" --n_samples {params.get('n_samples', 100000)}"
                              f" --n_clusters_per_class {params.get('n_clusters_per_class', 3)}"
                              f" --class_sep {params.get('class_sep', 0.9)}"
-                             f" --flip_y {params.get('flip_y', 0.1)}"
+                             f" --flip_y {params.get('flip_y', 0.05)}"
                              f" --random_seed {params.get('random_seed', 42)}"
                              )
             
             if params.get('hypercube', "False").lower() == "true":
                 synthetic_args += " --hypercube"
             
-            base_args += synthetic_args
-            base_args += "--num_trials 15 --num_repeats 5 --epochs 10"
+        base_args += synthetic_args
+        base_args += " --num_trials 15 --num_repeats 5 --epochs 10 --optimize"
     else:
         # For benchmark datasets
         if setting == "jannis":
@@ -201,7 +199,7 @@ def main():
             'n_samples': 100000, 
             'n_clusters_per_class': 2, 
             'class_sep': 0.9, 
-            'flip_y': 0.1, 
+            'flip_y': 0.01, 
             'random_seed': 42,
             'hypercube': True
         },
@@ -214,7 +212,7 @@ def main():
             'n_samples': 100000, 
             'n_clusters_per_class': 3, 
             'class_sep': 0.9, 
-            'flip_y': 0.1, 
+            'flip_y': 0.01, 
             'random_seed': 42,
             'hypercube': True
         },
@@ -227,7 +225,7 @@ def main():
             'n_samples': 100000, 
             'n_clusters_per_class': 3, 
             'class_sep': 0.9, 
-            'flip_y': 0.1, 
+            'flip_y': 0.01, 
             'random_seed': 42,
             'hypercube': True
         },
@@ -240,7 +238,7 @@ def main():
             'n_samples': 100000, 
             'n_clusters_per_class': 10, 
             'class_sep': 0.5, 
-            'flip_y': 0.1, 
+            'flip_y': 0.05, 
             'random_seed': 42,
             'hypercube': False
         },
@@ -253,7 +251,7 @@ def main():
             'n_samples': 100000, 
             'n_clusters_per_class': 10, 
             'class_sep': 0.5, 
-            'flip_y': 0.1, 
+            'flip_y': 0.05, 
             'random_seed': 42,
             'hypercube': True
         },
@@ -267,7 +265,7 @@ def main():
             'n_samples': 100000, 
             'n_clusters_per_class': 10, 
             'class_sep': 0.7, 
-            'flip_y': 0.1, 
+            'flip_y': 0.05, 
             'random_seed': 42,
             'hypercube': False
         },
@@ -280,7 +278,7 @@ def main():
             'n_samples': 100000, 
             'n_clusters_per_class': 10, 
             'class_sep': 0.7, 
-            'flip_y': 0.1, 
+            'flip_y': 0.05, 
             'random_seed': 42,
             'hypercube': True
         },
@@ -293,7 +291,7 @@ def main():
             'n_samples': 100000, 
             'n_clusters_per_class': 5, 
             'class_sep': 0.5, 
-            'flip_y': 0.1, 
+            'flip_y': 0.05, 
             'random_seed': 42,
             'hypercube': False
         },
@@ -306,7 +304,7 @@ def main():
             'n_samples': 100000, 
             'n_clusters_per_class': 5, 
             'class_sep': 0.7, 
-            'flip_y': 0.1, 
+            'flip_y': 0.05, 
             'random_seed': 42,
             'hypercube': False
         }
