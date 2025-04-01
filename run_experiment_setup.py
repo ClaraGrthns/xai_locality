@@ -100,6 +100,8 @@ def parse_args():
     parser.add_argument("--num_lime_features", type=int, default=10, 
                         help="Number of features to use in LIME explanation")
     parser.add_argument("--predict_threshold", type=float,)
+    parser.add_argument("--include_trn", action="store_true", help="Include training data in LIME")
+    parser.add_argument("--include_val", action="store_true", help="Include validation data in LIME")
     
     # Process steps control
     parser.add_argument("--skip_knn", action="store_true", help="Skip KNN analysis")
@@ -114,15 +116,12 @@ def check_model_exists(args):
         if args.setting is None:
             from src.train.data_frame_benchmark import get_dataset_name
             dataset_name = get_dataset_name(args.task_type, args.scale, args.idx)
-            model_path = osp.join(args.model_folder, args.model_type,
-                                f"{args.model_type}_normalized_binary_{dataset_name}_results.pt")
             args.setting = dataset_name  # Use dataset name as setting
         else:
             from src.train.data_frame_benchmark import get_dataset_specs
             if not all([args.task_type, args.scale, args.idx]):
                 args.task_type, args.scale, args.idx = get_dataset_specs(args.setting)
-            model_path = osp.join(args.model_folder, args.model_type,
-                                f"{args.model_type}_{args.setting}_results.pt")
+        model_path = get_results_path(args, "train")
     else:
         setting_name = (f"n_feat{args.n_features}_n_informative{args.n_informative}_"
                         f"n_redundant{args.n_redundant}_n_repeated{args.n_repeated}_"
@@ -132,8 +131,7 @@ def check_model_exists(args):
                         f"random_state{args.random_seed}")
         if not args.hypercube:
             setting_name += f'_hypercube{args.hypercube}'
-        model_path = osp.join(args.model_folder, args.model_type, "synthetic_data", 
-                             f"{args.model_type}_{setting_name}_results.pt")
+        model_path = get_results_path(args, "train")
         args.setting = setting_name
     
     return osp.exists(model_path), model_path
@@ -156,8 +154,11 @@ def get_results_path(args, step):
         return osp.join(args.results_folder, "knn_model_preds", args.model_type, 
                       base_path, args.setting)
     elif step == "train":
-        return osp.join(args.model_folder, "pretrained_models", args.model_type, "synthetic_data" if not args.use_benchmark else "",
-                          f"{args.model_type}_{args.setting}_results.pt")
+        return osp.join(args.model_folder, "pretrained_models", 
+                        args.model_type, 
+                        "synthetic_data" if not args.use_benchmark else "",
+                        args.setting,
+                        f"{args.model_type}_normalized_binary_{args.setting}_results.pt")
     elif step == "fraction":
         # For fraction analysis, the path depends on the explanation method
         method_subdir = args.gradient_method if args.method == "gradient_methods" else ""
