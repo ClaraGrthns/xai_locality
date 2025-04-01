@@ -196,7 +196,7 @@ def train_model(args):
             benchmark_deep_models(train_args)
     else:
         train_args.data_folder = osp.join(train_args.data_folder, "synthetic_data")
-        train_args.results_folder = osp.join(train_args.results_folder, "syntetic_data")
+        train_args.results_folder = osp.join(train_args.results_folder, "synthetic_data")
         # For synthetic data
         if args.model_type in GBT_MODELS:
             main_gbdt(train_args)

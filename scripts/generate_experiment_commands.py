@@ -76,7 +76,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
                              f" --class_sep {class_sep}"
                              f" --flip_y {flip_y}"
                              f" --random_seed {random_seed}"
-                             f" --num_trials 25"
+                             f" --num_trials 15"
                              f" --num_repeats 5")
             
             # Add hypercube flag ONLY if it's True
@@ -122,7 +122,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
                              f" --class_sep {params.get('class_sep', 0.9)}"
                              f" --flip_y {params.get('flip_y', 0.1)}"
                              f" --random_seed {params.get('random_seed', 42)}"
-                             f" --num_trials 25"
+                             f" --num_trials 15"
                              f" --num_repeats 5")
             
             if params.get('hypercube', "False").lower() == "true":
@@ -244,6 +244,46 @@ def main():
             'flip_y': 0.1, 
             'random_seed': 42,
             'hypercube': False
+        },
+        {
+            'n_features': 55, 
+            'n_informative': 30, 
+            'n_redundant': 5, 
+            'n_repeated': 5, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 10, 
+            'class_sep': 0.5, 
+            'flip_y': 0.1, 
+            'random_seed': 42,
+            'hypercube': True
+        },
+
+        {
+            'n_features': 40, 
+            'n_informative': 20, 
+            'n_redundant': 5, 
+            'n_repeated': 5, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 10, 
+            'class_sep': 0.7, 
+            'flip_y': 0.1, 
+            'random_seed': 42,
+            'hypercube': False
+        },
+        {
+            'n_features': 40, 
+            'n_informative': 20, 
+            'n_redundant': 5, 
+            'n_repeated': 5, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 10, 
+            'class_sep': 0.7, 
+            'flip_y': 0.1, 
+            'random_seed': 42,
+            'hypercube': True
         },
         {
             'n_features': 55, 
