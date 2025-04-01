@@ -163,8 +163,12 @@ def prepare_data_and_models(args):
     if args.data_path and os.path.exists(args.data_path):
         data_path_wo_file_ending = Path(args.data_path).stem
         data_folder = os.path.dirname(args.data_path)
-
-        data = np.load(args.data_path)
+        data_path = osp.join(data_folder, args.setting + ".npz")
+        data_path_wo_file_ending = Path(data_path).stem
+        print(data_path)
+        data = np.load(data_path)
+        print(args.data_path)
+        print(data.files)
         tst_feat, val_feat, trn_feat = data['X_test'], data['X_val'], data['X_train'] 
         y_test, y_val, y_train = data['y_test'], data['y_val'], data['y_train']
     else: 
@@ -509,7 +513,8 @@ def main_deep_models(args=None):
             model_cfg=model_cfg,
             train_cfg=train_cfg,
             trial=trial,
-            config=config
+            config=config,
+            args = args
         )
         return best_val_metric
     
@@ -531,7 +536,7 @@ def main_deep_models(args=None):
     best_test_metrics = []
     for _ in range(args.num_repeats):
         best_model_state_dict, best_val_metric, best_test_metric = train_and_eval_with_cfg(
-            best_model_cfg, best_train_cfg, config=config)
+            best_model_cfg, best_train_cfg, config=config, args=args)
         best_val_metrics.append(best_val_metric)
         best_test_metrics.append(best_test_metric)
     end_time = time.time()
@@ -625,6 +630,7 @@ def test(
 def train_and_eval_with_cfg(
     model_cfg: dict[str, Any],
     train_cfg: dict[str, Any],
+    args,
     trial: Optional[optuna.trial.Trial] = None,
     config: Optional[dict] = None,
 ) -> tuple[float, float]:
@@ -681,8 +687,21 @@ def train_and_eval_with_cfg(
         best_val_metric = math.inf
 
     for epoch in range(1, args.epochs + 1):
-        train_loss = train(model, train_loader, optimizer, epoch)
-        val_metric = test(model, val_loader)
+        train_loss = train(model=model,
+                           loader=train_loader,
+                           optimizer=optimizer,
+                            epoch=epoch,
+                            loss_fun=loss_fun,
+                            dataset=dataset,
+                            metric_computer=metric_computer,
+                            device=device,
+                            out_channels=out_channels)
+
+        val_metric = test(model=model,
+                          loader=val_loader,
+                          dataset=dataset,
+                          metric_computer=metric_computer,
+                          device=device)
         if higher_is_better:
             if val_metric > best_val_metric:
                 best_val_metric = val_metric
