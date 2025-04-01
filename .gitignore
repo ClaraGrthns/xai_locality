@@ -30,3 +30,4 @@ configs/gradient_methods/**/*.yaml
 sh_commands
 experiment_commands
 lime/
+runs/
