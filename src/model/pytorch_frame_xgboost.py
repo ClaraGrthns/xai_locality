@@ -1,7 +1,7 @@
 # model/xgboost_handler.py
 import numpy as np
 import torch
-import xgboost
+# import xgboost
 from torch_frame.typing import TaskType
 from torch_frame.gbdt import XGBoost
 from torch.utils.data import DataLoader

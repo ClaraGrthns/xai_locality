@@ -10,6 +10,10 @@ from src.explanation_methods.factory import ExplanationMethodHandlerFactory
 from src.config.handler import ConfigHandler
 import torch
 
+from pathlib import Path
+
+BASEDIR = str(Path(__file__).resolve().parent.parent)
+
 def cosine_distance(x, y):
     cosine_sim = cosine_similarity(x.reshape(1, -1), y.reshape(1, -1))[0, 0]
     return 1 - cosine_sim
@@ -104,7 +108,7 @@ if __name__ == "__main__":
     #, default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradients/ExcelFormer/higgs/config.yaml"
     # default="/home/grotehans/xai_locality/configs/lime/ExcelFormer/higgs/config.yaml",
     parser.add_argument("--config", type=str, 
-                        default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradient/TabNet/jannis/config.yaml",  
+                        # default = "/home/grotehans/xai_locality/configs/gradient_methods/integrated_gradient/TabNet/jannis/config.yaml",  
                         help="Path to configuration file") 
     
     # Data and model paths
@@ -118,11 +122,11 @@ if __name__ == "__main__":
     
     # Model and method configuration
     parser.add_argument("--model_type", type=str, help="Model type: LightGBM, tab_inception_v3, LightGBM, XGBoost, binary_inception_v3, inception_v3")
-    parser.add_argument("--method", default = "lime", type=str,help="Explanation method to use (lime or gradient)")
+    parser.add_argument("--method", type=str,help="Explanation method to use (lime or gradient)")
     parser.add_argument("--gradient_method", type=str, help="Which Gradient Method to use: [IG, IG+SmoothGrad]")
     
     # Analysis parameters
-    parser.add_argument("--distance_measure", type=str, default="euclidean", help="Distance measure")
+    parser.add_argument("--distance_measure", type=str, help="Distance measure")
     parser.add_argument("--max_frac", type=float, help="Until when to compute the fraction of points in the ball")
     parser.add_argument("--num_frac", type=int, help="Number of fractions to compute")
     parser.add_argument("--include_trn", action="store_true", help="Include training data")

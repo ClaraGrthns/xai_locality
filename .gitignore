@@ -27,3 +27,6 @@ submit_all_jobs_benchmarking.sh
 
 configs/lime/**/*.yaml
 configs/gradient_methods/**/*.yaml
+sh_commands
+experiment_commands
+lime/

@@ -27,8 +27,6 @@ class BaseModelHandler:
     
     def get_data_path(self):
         data_path = get_path(self.args.data_folder, self.args.data_path, self.args.setting)
-        if self.args.setting is not None:
-            data_path += ".npz"
         return data_path
     
     def _get_split_indices(self, whole_tst_feat):

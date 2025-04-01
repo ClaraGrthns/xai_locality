@@ -1,21 +1,21 @@
 from torch_frame.nn import Trompt, ExcelFormer, MLP, TabNet, TabTransformer, FTTransformer, ResNet
 
 from src.model.lightgbm import LightGBMHandler
-from src.model.tab_inception_v3 import TabInceptionV3Handler, TabBinaryInceptionV3Handler 
+# from src.model.tab_inception_v3 import TabInceptionV3Handler, TabBinaryInceptionV3Handler 
 from src.model.pytorch_frame_lgm import PTFrame_LightGBMHandler
 from src.model.pytorch_frame_xgboost import PTFrame_XGBoostHandler
-from src.model.inception_v3 import BinaryInceptionV3_Handler, InceptionV3_Handler
+# from src.model.inception_v3 import BinaryInceptionV3_Handler, InceptionV3_Handler
 from src.model.pytorch_frame_handler import TorchFrameHandler
 from src.model.pytorch_models_handler import PytorchHandler, LogisticRegression
 
 class ModelHandlerFactory:
     MODEL_HANDLERS = {
-        "tab_inception_v3": TabInceptionV3Handler,
-        "tab_binary_inception_v3": TabBinaryInceptionV3Handler,
+        # "tab_inception_v3": TabInceptionV3Handler,
+        # "tab_binary_inception_v3": TabBinaryInceptionV3Handler,
         "LightGBM": PTFrame_LightGBMHandler,
         "XGBoost": PTFrame_XGBoostHandler,
-        "binary_inception_v3": BinaryInceptionV3_Handler,
-        "inception_v3": InceptionV3_Handler,
+        # "binary_inception_v3": BinaryInceptionV3_Handler,
+        # "inception_v3": InceptionV3_Handler,
 
     }
 
