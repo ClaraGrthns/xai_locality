@@ -7,7 +7,7 @@ import copy
 import time
 
 from src.train.custom_data_frame_benchmark import main_deep_models, main_gbdt
-from fraction_vs_accuracy import main as main_fraction_vs_accuracy
+from knn_vs_accuracy import main as main_fraction_vs_accuracy
 from knn_on_model_preds import main as main_knn_on_model_preds
 from src.utils.misc import set_random_seeds
 
