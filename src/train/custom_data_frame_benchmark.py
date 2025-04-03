@@ -155,6 +155,7 @@ def prepare_data_and_models(args):
     set_random_seeds(args.seed)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
     torch.manual_seed(args.seed)
     
     # Prepare datasets

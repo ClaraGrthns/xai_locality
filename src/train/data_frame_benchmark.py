@@ -189,6 +189,7 @@ def normalize_tensor_frame(train_tf, val_tf, test_tf):
 def prepare_data_and_models(args):
     """Prepare data and initialize model configurations based on provided arguments."""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
     torch.manual_seed(args.seed)
     set_random_seeds(args.seed)
     

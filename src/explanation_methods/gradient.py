@@ -61,7 +61,7 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         Process a single chunk of data for gradient-based methods.
         """
         tst_chunk = batch  # For gradient methods, batch is already in the right format
-        proba_output = self.args.model_type in ["LightGBM", "XGBoost", "LightGBM", "pt_frame_xgb", "LogisticRegression"]
+        proba_output = self.args.model_type in ["LightGBM", "XGBoost", "LightGBM", "pt_frame_xgb", "LogReg"]
         
         with torch.no_grad():
             predictions = predict_fn(tst_chunk)

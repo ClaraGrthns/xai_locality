@@ -6,7 +6,7 @@ from src.model.pytorch_frame_lgm import PTFrame_LightGBMHandler
 from src.model.pytorch_frame_xgboost import PTFrame_XGBoostHandler
 # from src.model.inception_v3 import BinaryInceptionV3_Handler, InceptionV3_Handler
 from src.model.pytorch_frame_handler import TorchFrameHandler
-from src.model.pytorch_models_handler import PytorchHandler, LogisticRegression
+from src.model.pytorch_models_handler import PytorchHandler, LogReg
 
 class ModelHandlerFactory:
     MODEL_HANDLERS = {
@@ -30,7 +30,7 @@ class ModelHandlerFactory:
         "ResNet": ResNet
     }
     TORCH_MODLES = {
-        "LogisticRegression": LogisticRegression, 
+        "LogReg": LogReg, 
     }
     @staticmethod
     def get_handler(args):

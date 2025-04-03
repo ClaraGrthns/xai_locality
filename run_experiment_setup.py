@@ -11,7 +11,7 @@ from fraction_vs_accuracy import main as main_fraction_vs_accuracy
 from knn_on_model_preds import main as main_knn_on_model_preds
 from src.utils.misc import set_random_seeds
 
-CUSTOM_MODELS = ["LogisticRegression"]
+CUSTOM_MODELS = ["LogReg"]
 GBT_MODELS = ["LightGBM", "XGBoost", "CatBoost"]
 BASEDIR = str(Path(__file__).resolve().parent)
 print(f"Base directory: {BASEDIR}")
@@ -35,7 +35,7 @@ def parse_args():
     
     # Model configuration
     parser.add_argument("--model_type", type=str, 
-                        choices=["LightGBM", "XGBoost", "ExcelFormer", "MLP", "TabNet", "Trompt", "FTTransformer", "ResNet", "LogisticRegression"],
+                        choices=["LightGBM", "XGBoost", "ExcelFormer", "MLP", "TabNet", "Trompt", "FTTransformer", "ResNet", "LogReg", "TabTransformer"],
                         help="Type of model to train/use")
     parser.add_argument("--skip_training", action="store_true", 
                         help="Skip model training if the model already exists")
@@ -121,7 +121,6 @@ def check_model_exists(args):
             from src.train.data_frame_benchmark import get_dataset_specs
             if not all([args.task_type, args.scale, args.idx]):
                 args.task_type, args.scale, args.idx = get_dataset_specs(args.setting)
-        model_path = get_results_path(args, "train")
     else:
         setting_name = (f"n_feat{args.n_features}_n_informative{args.n_informative}_"
                         f"n_redundant{args.n_redundant}_n_repeated{args.n_repeated}_"
@@ -131,8 +130,8 @@ def check_model_exists(args):
                         f"random_state{args.random_seed}")
         if not args.hypercube:
             setting_name += f'_hypercube{args.hypercube}'
-        model_path = get_results_path(args, "train")
         args.setting = setting_name
+    model_path = get_results_path(args, "train")
     
     return osp.exists(model_path), model_path
 
@@ -153,15 +152,24 @@ def get_results_path(args, step):
     if step == "knn":
         return osp.join(args.results_folder, "knn_model_preds", args.model_type, 
                       base_path, args.setting)
-    elif step == "train":
-        return osp.join(args.model_folder, "pretrained_models", 
+    elif step == "train" and args.use_benchmark:
+        return osp.join(args.model_folder,
                         args.model_type, 
-                        "synthetic_data" if not args.use_benchmark else "",
                         args.setting,
                         f"{args.model_type}_normalized_binary_{args.setting}_results.pt")
+    elif step == "train":
+        return osp.join(args.model_folder,
+                        args.model_type, 
+                        "synthetic_data",
+                        f"{args.model_type}_{args.setting}_results.pt")
     elif step == "fraction":
         # For fraction analysis, the path depends on the explanation method
         method_subdir = args.gradient_method if args.method == "gradient_methods" else ""
+        if args.method == "gradient_methods":
+            if args.gradient_method == "IG":
+                method_subdir = "integrated_gradient"
+            elif args.gradient_method == "IG+SmoothGrad":
+                method_subdir = "smooth_grad"
         return osp.join(args.results_folder, args.method, 
                       method_subdir, args.model_type, base_path, args.setting)
     return None
@@ -189,6 +197,7 @@ def train_model(args):
         from src.train.data_frame_benchmark import main_deep_models as benchmark_deep_models
         from src.train.data_frame_benchmark import main_gbdt as benchmark_gbdt
         from src.train.train_pytorch_model import main as benchmark_custom_models
+        train_args.results_folder = osp.join(args.model_folder, args.model_type, args.setting)
         if args.model_type in GBT_MODELS:
             benchmark_gbdt(train_args)
         elif args.model_type in CUSTOM_MODELS:
@@ -213,7 +222,8 @@ def run_knn_analysis(args):
     knn_args = copy.deepcopy(args)
     knn_args.results_path = get_results_path(args, "knn")
     knn_args.data_folder = osp.join(args.data_folder, "synthetic_data") if not args.use_benchmark else args.data_folder
-
+    print(knn_args.model_path)
+    print(knn_args.model_folder)
     main_knn_on_model_preds(knn_args)
 
 def run_fraction_analysis(args):
@@ -237,26 +247,6 @@ def main():
     if args.results_folder is None:
         args.results_folder = os.path.join(BASEDIR, "results")
     
-    # args.model_type = "LightGBM"
-    # args.setting = "n_feat55_n_informative30_n_redundant5_n_repeated5_n_classes2_n_samples100000_n_clusters_per_class10_class_sep0.5_flip_y0.1_random_state42_hypercubeFalse"
-    # args.method = "lime"
-    # args.distance_measure = "euclidean"
-    # args.n_features = 55
-    # args.n_informative = 30
-    # args.n_redundant = 5
-    # args.n_repeated = 5
-    # args.n_classes = 2
-    # args.n_samples = 100000
-    # args.n_clusters_per_class = 10
-    # args.class_sep = 0.5
-    # args.flip_y = 0.1
-    # args.random_seed = 42
-    # args.kernel_width = "default"
-    # args.num_lime_features = 10
-    # args.num_trials = 25
-    # args.num_repeats = 5
-    # args.force = True
-    # args.chunk_size = 200
 
     model_exists, model_path = check_model_exists(args)
     args.model_path = model_path

@@ -84,7 +84,7 @@ def main(args):
         print(f"Training labels saved to {ys_trn_preds_path}")
     
     # Process the model predictions
-    proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_xgb", "LogisticRegression"]
+    proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_xgb", "LogReg"]
     if not proba_output:
         if ys_trn_preds.shape[-1] == 1:
             ys_trn_sig = 1 / (1 + np.exp(-ys_trn_preds))
@@ -111,7 +111,7 @@ def main(args):
         print(f"Test labels saved to {ys_tst_preds_path}")
 
     # Process test predictions
-    proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_xgb", "LogisticRegression"]
+    proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_xgb", "LogReg"]
     if not proba_output:
         if y_tst_preds.shape[-1] == 1:
             ys_true_sig = 1 / (1 + np.exp(-y_tst_preds))

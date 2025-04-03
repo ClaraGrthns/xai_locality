@@ -53,7 +53,7 @@ def main(args):
             args.kernel_width = np.round(np.sqrt(trn_for_expl.shape[1]) * 0.375, 2)
         print("Kernel width: ", args.kernel_width)
 
-    method = args.method if args.method != "gradient" else args.gradient_method
+    method = args.method if args.method != "gradient_methods" else args.gradient_method
     explainer_handler = ExplanationMethodHandlerFactory.get_handler(method=method)(args)
     explainer_handler.set_explainer(dataset=trn_for_expl,
                                     class_names=model_handler.get_class_names(),
@@ -86,7 +86,8 @@ def main(args):
     if os.path.exists(experiment_path) and not args.force:
         print(f"Experiment with setting {experiment_setting} already exists.")
         exit(-1)
-    
+    else:
+        print(f"Experiment with setting {experiment_setting} does not exist yet. Starting analysis.")    
     results_g_x = explainer_handler.run_analysis(
                      tst_feat_for_expl = tst_for_expl, 
                      tst_feat_for_dist = tst_for_dist, 

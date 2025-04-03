@@ -13,9 +13,9 @@ from src.utils.pytorch_frame_utils import (
 )
 import numpy as np
 
-class LogisticRegression(nn.Module):
+class LogReg(nn.Module):
     def __init__(self, input_size, output_size):
-        super(LogisticRegression, self).__init__()
+        super(LogReg, self).__init__()
         self.linear = nn.Linear(input_size, output_size)  # One output neuron
         self.sigmoid = nn.Sigmoid()
     

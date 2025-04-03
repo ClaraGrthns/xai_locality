@@ -17,7 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 import datetime
 
 
-from src.model.pytorch_models_handler import LogisticRegression
+from src.model.pytorch_models_handler import LogReg
 from src.utils.pytorch_frame_utils import tensorframe_to_tensor
 
 def parse_args():
@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument('--optimize', action='store_true', help='Use Optuna for hyperparameter optimization')
     parser.add_argument('--n_trials', type=int, default=20, help='Number of Optuna optimization trials')
     parser.add_argument('--data_path', type=str, default='/home/grotehans/xai_locality/data/LightGBM_higgs_normalized_data.pt', help='Path to the dataset')
-    parser.add_argument('--model_path', type=str, default='/home/grotehans/xai_locality/pretrained_models/LogisticRegression/higgs/LogisticRegression_higgs_results.pt', help='Path to save the trained model')
+    parser.add_argument('--model_path', type=str, default='/home/grotehans/xai_locality/pretrained_models/LogReg/higgs/LogReg_higgs_results.pt', help='Path to save the trained model')
     return parser.parse_args()
 
 
@@ -76,7 +76,7 @@ def objective(trial, X, y, X_val, y_val, input_size, epochs, verbose):
     weight_decay = trial.suggest_float("weight_decay", 1e-8, 1e-1, log=True)
     
     # Initialize model
-    model = LogisticRegression(input_size=input_size, output_size=1)
+    model = LogReg(input_size=input_size, output_size=1)
     criterion = nn.BCELoss()
     
     # Set up optimizer
@@ -131,7 +131,7 @@ def main(args=None):
         writer.add_hparams(best_params, {'hparam/best_loss': study.best_value})
         
         # Train model with the best parameters
-        model = LogisticRegression(input_size=input_size, output_size=1)
+        model = LogReg(input_size=input_size, output_size=1)
         criterion = nn.BCELoss()
         
         if best_params["optimizer"] == "SGD":
@@ -175,7 +175,7 @@ def main(args=None):
         args.epochs = 150
 
         # Use default parameters
-        model = LogisticRegression(input_size=input_size, output_size=1)
+        model = LogReg(input_size=input_size, output_size=1)
         criterion = nn.BCELoss()
         optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
         
@@ -212,7 +212,7 @@ def main(args=None):
             print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {loss.item():.4f}, Train Accuracy: {accuracy:.4f} Val Loss: {val_loss:.4f}, Val AUROC: {val_auroc:.4f}')
     
     # Load the best model for testing
-    best_model = LogisticRegression(input_size=input_size, output_size=1)
+    best_model = LogReg(input_size=input_size, output_size=1)
     best_model.load_state_dict(torch.load(model_path))
     best_model.eval()
     
