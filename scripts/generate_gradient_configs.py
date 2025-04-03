@@ -5,7 +5,7 @@ import pathlib
 # Models that support gradient explanations
 DEEP_MODELS = ['TabNet', 'FTTransformer', 'ResNet', 'MLP', 'TabTransformer',
                'Trompt', 'ExcelFormer', 'FTTransformerBucket']
-ML_MODELS = ['LogisticRegression']
+ML_MODELS = ['LogReg']
 folder_dir = str(pathlib.Path(__file__).parent.parent.absolute()) # Datasets#
 print(folder_dir)
 DATASETS = {

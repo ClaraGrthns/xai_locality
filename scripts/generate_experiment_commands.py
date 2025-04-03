@@ -141,8 +141,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
         base_args += f" --kernel_width {kernel_width} --num_lime_features {num_lime_features}"
     elif method == "gradient_methods" and gradient_method:
         # For IG, make sure to use the correct command line name
-        cmd_gradient_method = "integrated_gradient" if gradient_method == "IG" else gradient_method
-        base_args += f" --gradient_method {cmd_gradient_method}"
+        base_args += f" --gradient_method {gradient_method}"
     
     # Add optional flags
     if skip_training:
@@ -155,7 +154,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
         base_args += " --skip_fraction"
     
     # Create the full command
-    command = f"python run_experiment_setup.py {base_args}"
+    command = f"/home/grotehans/miniconda3/envs/tab_models/bin/python run_experiment_setup.py {base_args}"
     
     # Define filename - include distance measure to distinguish files
     distance_suffix = f"_{distance_measure}"
@@ -230,6 +229,32 @@ def main():
             'hypercube': True
         },
         {
+            'n_features': 25, 
+            'n_informative': 5, 
+            'n_redundant': 15, 
+            'n_repeated': 2, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 4, 
+            'class_sep': 0.8, 
+            'flip_y': 0.05, 
+            'random_seed': 42,
+            'hypercube': False
+        },
+        {
+            'n_features': 25, 
+            'n_informative': 10, 
+            'n_redundant': 5, 
+            'n_repeated': 2, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 4, 
+            'class_sep': 0.8, 
+            'flip_y': 0.05, 
+            'random_seed': 42,
+            'hypercube': True
+        },
+        {
             'n_features': 55, 
             'n_informative': 30, 
             'n_redundant': 5, 
@@ -237,7 +262,7 @@ def main():
             'n_classes': 2, 
             'n_samples': 100000, 
             'n_clusters_per_class': 10, 
-            'class_sep': 0.5, 
+            'class_sep': 0.6, 
             'flip_y': 0.05, 
             'random_seed': 42,
             'hypercube': False
@@ -250,64 +275,149 @@ def main():
             'n_classes': 2, 
             'n_samples': 100000, 
             'n_clusters_per_class': 10, 
-            'class_sep': 0.5, 
+            'class_sep': 0.7, 
             'flip_y': 0.05, 
             'random_seed': 42,
             'hypercube': True
+        },
+        {
+            'n_features': 55, 
+            'n_informative': 30, 
+            'n_redundant': 5, 
+            'n_repeated': 5, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 5, 
+            'class_sep': 0.8, 
+            'flip_y': 0.05, 
+            'random_seed': 42,
+            'hypercube': False
+        },
+        {
+            'n_features': 40, 
+            'n_informative': 20, 
+            'n_redundant': 5, 
+            'n_repeated': 5, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 10, 
+            'class_sep': 0.7, 
+            'flip_y': 0.05, 
+            'random_seed': 42,
+            'hypercube': False
+        },
+        {
+            'n_features': 40, 
+            'n_informative': 20, 
+            'n_redundant': 5, 
+            'n_repeated': 5, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 10, 
+            'class_sep': 0.7, 
+            'flip_y': 0.05, 
+            'random_seed': 42,
+            'hypercube': True
+        },
+        {
+            'n_features': 55, 
+            'n_informative': 20, 
+            'n_redundant': 5, 
+            'n_repeated': 5, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 20, 
+            'class_sep': 0.3, 
+            'flip_y': 0.05, 
+            'random_seed': 42,
+            'hypercube': False
+        },
+        {
+            'n_features': 100, 
+            'n_informative': 60, 
+            'n_redundant': 5, 
+            'n_repeated': 5, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 50, 
+            'class_sep': 0.3, 
+            'flip_y': 0.1, 
+            'random_seed': 42,
+            'hypercube': False
+        },
+         {
+            'n_features': 100, 
+            'n_informative': 10, 
+            'n_redundant': 50, 
+            'n_repeated': 5, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 50, 
+            'class_sep': 0.8, 
+            'flip_y': 0.1, 
+            'random_seed': 42,
+            'hypercube': False
+        },
+        {
+            'n_features': 200, 
+            'n_informative': 20, 
+            'n_redundant': 50, 
+            'n_repeated': 0, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 50, 
+            'class_sep': 0.5, 
+            'flip_y': 0.1, 
+            'random_seed': 42,
+            'hypercube': False
+        },
+
+         {
+            'n_features': 100, 
+            'n_informative': 60, 
+            'n_redundant': 5, 
+            'n_repeated': 5, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 20, 
+            'class_sep': 0.2, 
+            'flip_y': 0.1, 
+            'random_seed': 42,
+            'hypercube': False
         },
 
         {
-            'n_features': 40, 
-            'n_informative': 20, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
+            'n_features': 50, 
+            'n_informative':10, 
+            'n_redundant': 10, 
+            'n_repeated': 0, 
+            'n_classes': 2, 
+            'n_samples': 100000, 
+            'n_clusters_per_class': 40, 
+            'class_sep': 0.2, 
+            'flip_y': 0.01, 
+            'random_seed': 42,
+            'hypercube': False
+        },
+        {
+            'n_features': 50, 
+            'n_informative':10, 
+            'n_redundant': 10, 
+            'n_repeated': 0, 
             'n_classes': 2, 
             'n_samples': 100000, 
             'n_clusters_per_class': 10, 
-            'class_sep': 0.7, 
-            'flip_y': 0.05, 
+            'class_sep': 0.2, 
+            'flip_y': 0.1, 
             'random_seed': 42,
             'hypercube': False
         },
-        {
-            'n_features': 40, 
-            'n_informative': 20, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 10, 
-            'class_sep': 0.7, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': True
-        },
-        {
-            'n_features': 55, 
-            'n_informative': 30, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 5, 
-            'class_sep': 0.5, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-        {
-            'n_features': 55, 
-            'n_informative': 30, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 5, 
-            'class_sep': 0.7, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': False
-        }
+
+
+
+
+
+
     ]
     
     # Generate setting names from configurations
@@ -327,7 +437,7 @@ def main():
             setting += f"_hypercube{config['hypercube']}"
         synthetic_settings.append((setting, config))
     
-    models = ["LightGBM", "MLP", "LogisticRegression",  "TabNet", "FTTransformer", "ResNet"]
+    models = ["LightGBM", "MLP", "LogReg",  "TabNet", "FTTransformer", "ResNet", "TabTransformer"]
     standard_settings = ["higgs", "jannis"]
     methods = ["lime", "gradient_methods"]
     distance_measures = ["euclidean"]

@@ -18,7 +18,7 @@ MODELS = {
     'gbt': ['XGBoost', 'CatBoost', 'LightGBM'],
     'deep': ['TabNet', 'FTTransformer', 'ResNet', 'MLP', 'TabTransformer',
              'Trompt', 'ExcelFormer', 'FTTransformerBucket'],
-    'ml' : ['LogisticRegression']
+    'ml' : ['LogReg']
 }
 
 
