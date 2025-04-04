@@ -20,6 +20,27 @@ def weighted_avg_and_var(values, weights, axis=None):
     variance = np.average((values-average[:, None])**2, weights=weights, axis=axis)
     return (average, variance)
 def regression_metrics(y_true, y_pred):
+    """
+    Compute regression evaluation metrics between true and predicted values.
+    
+    Parameters
+    ----------
+    y_true : array-like
+        Ground truth (correct) target values.
+    y_pred : array-like
+        Estimated target values.
+        
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - mean_squared_error: float
+            Mean squared error regression loss.
+        - mean_absolute_error: float
+            Mean absolute error regression loss.
+        - r2_score: float
+            R^2 (coefficient of determination) regression score.
+    """
     return mean_squared_error(y_true, y_pred), mean_absolute_error(y_true, y_pred), r2_score(y_true, y_pred)
 
 def regression_metrics_per_row(y_true, y_pred):

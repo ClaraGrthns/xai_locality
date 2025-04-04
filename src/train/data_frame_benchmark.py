@@ -98,6 +98,16 @@ dataset_lookup = {
             2: "covtype",
         },
     },
+    "regression": {
+        "large": {
+            0: "airlines_DepDelay_1M",
+            1: "delays_zurich_transport",
+            2: "nyc-taxi-green-dec-2016",
+            3: "microsoft",
+            4: "yahoo",
+            5: "year",
+        },
+    },
 }
 
 # Reverse lookup for datasets
@@ -146,6 +156,8 @@ def create_parser():
     parser.add_argument('--results_folder', type=str, default='')
     parser.add_argument('--data_folder', type=str, default='')
     return parser
+
+parser = create_parser()
 
 # Function to get dataset name
 def get_dataset_name(classification_type, scale, index):
@@ -218,6 +230,14 @@ def prepare_data_and_models(args):
     train_tensor_frame, val_tensor_frame, test_tensor_frame = normalize_tensor_frame(
         train_tensor_frame, val_tensor_frame, test_tensor_frame
     )
+    normalized_data = {
+            'train': train_tensor_frame,
+            'val': val_tensor_frame,
+            'test': test_tensor_frame
+        }
+    norm_path = os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data.pt')
+    torch.save(normalized_data, norm_path)
+    
 
     # Initialize model classes based on model type
     if args.model_type in GBDT_MODELS:
@@ -509,13 +529,14 @@ def test(
 def train_and_eval_with_cfg(
     model_cfg: dict[str, Any],
     train_cfg: dict[str, Any],
+    args,
     trial: Optional[optuna.trial.Trial] = None,
     config: Optional[dict] = None,
 ) -> tuple[torch.nn.Module, float, float]:
     """Train and evaluate a model with the given configuration."""
     if config is None:
         # If called directly without config, parse args and prepare data
-        args = create_parser().parse_args()
+        args = parser().parse_args()
         config = prepare_data_and_models(args)
     
     # Extract needed variables from config
@@ -533,8 +554,6 @@ def train_and_eval_with_cfg(
     device = config['device']
     dataset_name = config['dataset_name']
     
-    # Get parser args for some settings
-    args = create_parser().parse_args()
     
     # Use model_cfg to set up training procedure
     if args.model_type == 'FTTransformerBucket':
@@ -601,7 +620,7 @@ def train_and_eval_with_cfg(
 def main_deep_models(args=None):
     """Execute deep learning model training and evaluation."""
     if args is None:
-        args = create_parser().parse_args()
+        args = parser.parse_args()
         
     # Get prepared data and model configurations
     config = prepare_data_and_models(args)
@@ -633,6 +652,7 @@ def main_deep_models(args=None):
             model_cfg=model_cfg,
             train_cfg=train_cfg,
             trial=trial,
+            args=args,
             config=config
         )
         return best_val_metric
@@ -655,7 +675,7 @@ def main_deep_models(args=None):
     best_test_metrics = []
     for _ in range(args.num_repeats):
         best_model_state_dict, best_val_metric, best_test_metric = train_and_eval_with_cfg(
-            best_model_cfg, best_train_cfg, config=config)
+            best_model_cfg, best_train_cfg, args=args,config=config)
         best_val_metrics.append(best_val_metric)
         best_test_metrics.append(best_test_metric)
     end_time = time.time()
@@ -679,14 +699,18 @@ def main_deep_models(args=None):
     # Save results
     
     os.makedirs(args.results_folder, exist_ok=True)
-    torch.save({'model_state_dict': best_model_state_dict, **result_dict},
-                os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
+    if args.regression:
+        torch.save({'model_state_dict': best_model_state_dict, **result_dict},
+                    os.path.join(args.results_folder, f'{args.model_type}_normalized_regression_{dataset_name}_results.pt'))
+    else:
+        torch.save({'model_state_dict': best_model_state_dict, **result_dict},
+                    os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
 
 
 def main_gbdt(args=None):
     """Execute GBDT model training and evaluation."""
     if args is None:
-        args = create_parser().parse_args()
+        args = parser.parse_args()
     
     # Get prepared data and model configurations
     config = prepare_data_and_models(args)
@@ -703,7 +727,9 @@ def main_gbdt(args=None):
         num_classes = dataset.num_classes
     else:
         num_classes = None
-    model = model_cls(task_type=dataset.task_type, num_classes=num_classes, metric=Metric.ACCURACY)
+
+    metric_task = Metric.ACCURACY if dataset.task_type.is_classification else Metric.MAE
+    model = model_cls(task_type=dataset.task_type, num_classes=num_classes, metric=metric_task)
     
     import time
     start_time = time.time()
@@ -724,8 +750,13 @@ def main_gbdt(args=None):
     print(result_dict)
     # Save results
     os.makedirs(args.results_folder, exist_ok=True)
-    torch.save(result_dict, os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
-    model.save(os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
+    if args.regression:
+        torch.save(result_dict, os.path.join(args.results_folder, f'{args.model_type}_normalized_regression_{dataset_name}_results.pt'))
+        model.save(os.path.join(args.results_folder, f'{args.model_type}_normalized_regression_{dataset_name}_results.pt'))
+    else:
+        torch.save(result_dict, os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
+    
+        model.save(os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
 
 
 def main():

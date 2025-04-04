@@ -11,7 +11,9 @@ class PTFrame_LightGBMHandler(BaseModelHandler):
         train_tensor_frame = torch.load(self.data_path)["train"]
         y = train_tensor_frame.y.numpy()
         num_classes = len(np.unique(y))
-        if num_classes == 2:
+        if self.args.regression:
+            task_type = TaskType.REGRESSION
+        elif num_classes == 2:
             task_type = TaskType.BINARY_CLASSIFICATION
         else:
             task_type = TaskType.MULTICLASS_CLASSIFICATION
@@ -35,6 +37,8 @@ class PTFrame_LightGBMHandler(BaseModelHandler):
   
     def predict_fn(self, X):
         pred = self.model.model.predict(X)
+        if self.args.regression:
+            return pred
         if self.model.task_type == TaskType.BINARY_CLASSIFICATION:
             pred = np.column_stack((1 - pred, pred))
         return pred

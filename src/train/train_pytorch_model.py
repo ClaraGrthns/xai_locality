@@ -1,28 +1,26 @@
 import sys
-
 import os
 import os.path as osp
 sys.path.append(osp.join(os.getcwd(), '..'))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 print(sys.path)
 
-
 import torch
 import argparse
 import torch.nn as nn
 import torch.optim as optim
 import optuna
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, mean_squared_error, r2_score
 from torch.utils.tensorboard import SummaryWriter
 import datetime
+import numpy as np
 
-
-from src.model.pytorch_models_handler import LogReg
+from src.model.pytorch_models_handler import LogReg, LinReg
 from src.utils.pytorch_frame_utils import tensorframe_to_tensor
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Train a logistic regression model')
-    parser.add_argument('--dataset', type=str,default = "higgs")# default='synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42', help="Can be 'higgs', 'jannis,")# default='synthetic_data/n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42', help="Can be 'higgs', 'jannis, 'synthetic_1', 'synthetic_2', 'synthetic_3'")
+    parser = argparse.ArgumentParser(description='Train a PyTorch model')
+    parser.add_argument('--dataset', type=str, default="higgs")
     parser.add_argument('--epochs', type=int, default=200, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
@@ -31,8 +29,9 @@ def parse_args():
     parser.add_argument('--n_trials', type=int, default=20, help='Number of Optuna optimization trials')
     parser.add_argument('--data_path', type=str, default='/home/grotehans/xai_locality/data/LightGBM_higgs_normalized_data.pt', help='Path to the dataset')
     parser.add_argument('--model_path', type=str, default='/home/grotehans/xai_locality/pretrained_models/LogReg/higgs/LogReg_higgs_results.pt', help='Path to save the trained model')
+    parser.add_argument('--regression', action='store_true', help='Train a regression model instead of classification')
+    parser.add_argument('--num_trials', type=int, default=20, help='Number of Optuna optimization trials')
     return parser.parse_args()
-
 
 def train_model(X, y, X_val, y_val, model, optimizer, criterion, epochs, weight_decay=0.0, verbose=False):
     # Training loop with validation
@@ -69,25 +68,36 @@ def train_model(X, y, X_val, y_val, model, optimizer, criterion, epochs, weight_
     # Return best validation loss
     return model, best_val_loss
 
-def objective(trial, X, y, X_val, y_val, input_size, epochs, verbose):
-    # Define the hyperparameters to optimize
+
+def objective_classification(trial, X, y, X_val, y_val, input_size, epochs, verbose):
     lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
     optimizer_name = trial.suggest_categorical("optimizer", ["SGD", "Adam"])
     weight_decay = trial.suggest_float("weight_decay", 1e-8, 1e-1, log=True)
     
-    # Initialize model
     model = LogReg(input_size=input_size, output_size=1)
     criterion = nn.BCELoss()
     
-    # Set up optimizer
     if optimizer_name == "SGD":
         optimizer = optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
     elif optimizer_name == "Adam":
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     
-    # Train the model and get validation loss
     _, val_loss = train_model(X, y, X_val, y_val, model, optimizer, criterion, epochs, verbose=verbose)
     
+    return val_loss
+
+
+def objective_regression(trial, X, y, X_val, y_val, input_size, epochs, verbose):
+    lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
+    optimizer_name = trial.suggest_categorical("optimizer", ["SGD", "Adam"])
+    weight_decay = trial.suggest_float("weight_decay", 1e-8, 1e-1, log=True)
+    model = LinReg(input_size=input_size, output_size=1)
+    criterion = nn.MSELoss()
+    if optimizer_name == "SGD":
+        optimizer = optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
+    elif optimizer_name == "Adam":
+        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    _, val_loss = train_model(X, y, X_val, y_val, model, optimizer, criterion, epochs, verbose=verbose)
     return val_loss
 
 
@@ -96,16 +106,19 @@ def main(args=None):
         args = parse_args()
     print(args)
 
-    args.optimize = True
+    is_regression = args.regression
     
     # Create TensorBoard logger
-    log_dir = f"runs/logistic_regression_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    model_type = "regression" if is_regression else "classification"
+    log_dir = f"runs/{model_type}_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
     writer = SummaryWriter(log_dir)
     print(f"TensorBoard logs will be saved to: {log_dir}")
+    
     data_path = args.data_path
     model_path = args.model_path
     if not osp.exists(os.path.dirname(model_path)):
         os.makedirs(os.path.dirname(model_path))
+    
     data = torch.load(data_path)
     train_tensor_frame, val_tensor_frame, test_tensor_frame = data["train"], data["val"], data["test"]
     X = tensorframe_to_tensor(train_tensor_frame)  # All training features
@@ -121,21 +134,31 @@ def main(args=None):
         args.epochs = 100
         print("Starting hyperparameter optimization with Optuna...")
         study = optuna.create_study(direction="minimize")
-        study.optimize(
-            lambda trial: objective(trial, X, y, X_val, y_val, input_size, args.epochs, verbose=True), 
-            n_trials=args.num_trials
-        )
-        # Get the best parameters
+        
+        if is_regression:
+            study.optimize(
+                lambda trial: objective_regression(trial, X, y, X_val, y_val, input_size, args.epochs, verbose=True), 
+                n_trials=args.num_trials
+            )
+        else:
+            study.optimize(
+                lambda trial: objective_classification(trial, X, y, X_val, y_val, input_size, args.epochs, verbose=True), 
+                n_trials=args.num_trials
+            )
         best_params = study.best_params
         print(f"Best hyperparameters: {best_params}")
         writer.add_hparams(best_params, {'hparam/best_loss': study.best_value})
         
-        # Train model with the best parameters
-        model = LogReg(input_size=input_size, output_size=1)
-        criterion = nn.BCELoss()
+        if is_regression:
+            model = LinReg(input_size=input_size, output_size=1)
+            criterion = nn.MSELoss()
+        else:
+            model = LogReg(input_size=input_size, output_size=1)
+            criterion = nn.BCELoss()
         
+        # Set up optimizer with best parameters
         if best_params["optimizer"] == "SGD":
-            optimizer = optim.SGD(model.parameters(), lr=best_params["lr"])
+            optimizer = optim.SGD(model.parameters(), lr=best_params["lr"], weight_decay=best_params["weight_decay"])
         else:
             optimizer = optim.Adam(model.parameters(), lr=best_params["lr"], weight_decay=best_params["weight_decay"])
         
@@ -157,12 +180,21 @@ def main(args=None):
             with torch.no_grad():
                 val_outputs = model(X_val).flatten()
                 val_loss = criterion(val_outputs, y_val)
-                val_probs = torch.sigmoid(val_outputs).cpu().numpy().flatten()
-                val_auroc = roc_auc_score(y_val.cpu().numpy(), val_probs)
-                val_accuracy = ((val_probs > 0.5) == y_val.cpu().numpy()).mean()
+                
+                if is_regression:
+                    val_preds = val_outputs.cpu().numpy()
+                    val_r2 = r2_score(y_val.cpu().numpy(), val_preds)
+                    val_rmse = np.sqrt(mean_squared_error(y_val.cpu().numpy(), val_preds))
+                    writer.add_scalar('Metrics/val_r2', val_r2, epoch)
+                    writer.add_scalar('Metrics/val_rmse', val_rmse, epoch)
+                else:
+                    val_probs = torch.sigmoid(val_outputs).cpu().numpy().flatten()
+                    val_auroc = roc_auc_score(y_val.cpu().numpy(), val_probs)
+                    val_accuracy = ((val_probs > 0.5) == y_val.cpu().numpy()).mean()
+                    writer.add_scalar('Metrics/val_auroc', val_auroc, epoch)
+                    writer.add_scalar('Metrics/val_accuracy', val_accuracy, epoch)
+                
                 writer.add_scalar('Loss/validation', val_loss, epoch)
-                writer.add_scalar('Metrics/val_auroc', val_auroc, epoch)
-                writer.add_scalar('Metrics/val_accuracy', val_accuracy, epoch)
                 
                 # Save best model based on validation loss
                 if val_loss < best_val_loss:
@@ -170,16 +202,20 @@ def main(args=None):
                     torch.save(model.state_dict(), model_path)
             
             if (epoch + 1) % 10 == 0:
-                print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}, Val AUROC: {val_auroc:.4f}')
+                if is_regression:
+                    print(f'Epoch [{epoch+1}/{args.epochs*2}], Train Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}, Val R2: {val_r2:.4f}')
+                else:
+                    print(f'Epoch [{epoch+1}/{args.epochs*2}], Train Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}, Val AUROC: {val_auroc:.4f}')
     else:
         args.epochs = 150
-
-        # Use default parameters
-        model = LogReg(input_size=input_size, output_size=1)
-        criterion = nn.BCELoss()
+        if is_regression:
+            model = LinReg(input_size=input_size, output_size=1)
+            criterion = nn.MSELoss()
+        else:
+            model = LogReg(input_size=input_size, output_size=1)
+            criterion = nn.BCELoss()
         optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
         
-        # Training with TensorBoard logging and validation
         best_val_loss = float('inf')
         for epoch in range(args.epochs):
             # Training step
@@ -189,7 +225,6 @@ def main(args=None):
             loss = criterion(outputs, y)
             loss.backward()
             optimizer.step()
-            accuracy = ((outputs > 0.5) == y).float().mean()
             
             writer.add_scalar('Loss/train', loss.item(), epoch)
             
@@ -198,40 +233,61 @@ def main(args=None):
             with torch.no_grad():
                 val_outputs = model(X_val).flatten()
                 val_loss = criterion(val_outputs, y_val).item()
-                val_probs = torch.sigmoid(val_outputs).cpu().numpy().flatten()
-                val_auroc = roc_auc_score(y_val.cpu().numpy(), val_probs)
                 
-                writer.add_scalar('Loss/validation', val_loss, epoch)
-                writer.add_scalar('Metrics/val_auroc', val_auroc, epoch)
+                if is_regression:
+                    val_preds = val_outputs.cpu().numpy()
+                    val_r2 = r2_score(y_val.cpu().numpy(), val_preds)
+                    val_rmse = np.sqrt(mean_squared_error(y_val.cpu().numpy(), val_preds))
+                    writer.add_scalar('Metrics/val_r2', val_r2, epoch)
+                    writer.add_scalar('Metrics/val_rmse', val_rmse, epoch)
+                    print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}, Val R2: {val_r2:.4f}')
+                else:
+                    if len(torch.unique(y)) <= 2:  # Check if binary classification
+                        accuracy = ((outputs > 0.5) == y).float().mean()
+                        val_probs = torch.sigmoid(val_outputs).cpu().numpy().flatten()
+                        val_auroc = roc_auc_score(y_val.cpu().numpy(), val_probs)
+                        writer.add_scalar('Metrics/val_auroc', val_auroc, epoch)
+                        print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {loss.item():.4f}, Train Accuracy: {accuracy:.4f} Val Loss: {val_loss:.4f}, Val AUROC: {val_auroc:.4f}')
+                    else:
+                        # For multi-class, would need different metrics
+                        print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}')
                 
                 # Save best model based on validation loss
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     torch.save(model.state_dict(), model_path)
-            
-            print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {loss.item():.4f}, Train Accuracy: {accuracy:.4f} Val Loss: {val_loss:.4f}, Val AUROC: {val_auroc:.4f}')
     
     # Load the best model for testing
-    best_model = LogReg(input_size=input_size, output_size=1)
+    if is_regression:
+        best_model = LinReg(input_size=input_size, output_size=1)
+    else:
+        best_model = LogReg(input_size=input_size, output_size=1)
+    
     best_model.load_state_dict(torch.load(model_path))
     best_model.eval()
     
     # Testing
     with torch.no_grad():
-        probs = best_model(X_test).cpu().numpy().flatten()
-        label_preds = (probs > 0.5).astype(int)
-        auroc = roc_auc_score(y_test, probs)
-        acc = (label_preds == y_test.cpu().numpy()).mean()
+        test_outputs = best_model(X_test).cpu().numpy().flatten()
         
-        # Log test metrics
-        writer.add_scalar('Metrics/test_auroc', auroc)
-        writer.add_scalar('Metrics/test_accuracy', acc)
-        
-        print(f"Test AUROC: {auroc:.4f}")
-        print(f"Test Accuracy: {acc:.4f}")
-
-        
-
+        if is_regression:
+            test_r2 = r2_score(y_test.cpu().numpy(), test_outputs)
+            test_rmse = np.sqrt(mean_squared_error(y_test.cpu().numpy(), test_outputs))
+            writer.add_scalar('Metrics/test_r2', test_r2)
+            writer.add_scalar('Metrics/test_rmse', test_rmse)
+            print(f"Test R²: {test_r2:.4f}")
+            print(f"Test RMSE: {test_rmse:.4f}")
+        else:
+            probs = test_outputs
+            label_preds = (probs > 0.5).astype(int)
+            auroc = roc_auc_score(y_test.cpu().numpy(), probs)
+            acc = (label_preds == y_test.cpu().numpy()).mean()
+            
+            writer.add_scalar('Metrics/test_auroc', auroc)
+            writer.add_scalar('Metrics/test_accuracy', acc)
+            
+            print(f"Test AUROC: {auroc:.4f}")
+            print(f"Test Accuracy: {acc:.4f}")
     
     # Close the TensorBoard writer
     writer.close()

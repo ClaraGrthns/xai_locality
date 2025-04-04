@@ -203,6 +203,36 @@ def compute_gradmethod_preds_for_all_kNN(tst_feat,
             dist)
     
 
+def compute_gradmethod_regressionpreds_for_all_kNN(tst_feat, 
+                                        tst_chunk,
+                                        predictions,
+                                        predictions_baseline, 
+                                        analysis_data, 
+                                        saliency_map, 
+                                        predict_fn, 
+                                        n_closest, 
+                                        tree,
+                                        ):
+    if tst_feat.ndim == 1:
+        tst_set = tst_set.reshape(1, -1)
+
+    dist, idx= tree.query(tst_feat, k=n_closest, return_distance=True, sort_results=True)
+    dist = np.array(dist)
+    # 1. Get all the kNN samples from the analysis dataset
+    samples_in_ball = [[analysis_data[idx] for idx in row] for row in idx]
+    samples_in_ball = torch.stack([torch.stack(row, dim=0) for row in samples_in_ball], dim=0)    
+    samples_reshaped = samples_in_ball.reshape(-1, *list(samples_in_ball.shape[2:])) # (num test samples * num closest points) x num features
+    with torch.no_grad():
+        model_preds = predict_fn(samples_reshaped)# (num test samples x num closest points, )
+
+    # 2. Predict labels of the kNN samples with the model
+    model_preds = model_preds.reshape(samples_in_ball.shape[0], samples_in_ball.shape[1]) #(num test samples,  num closest points) 
+    
+    local_preds = linear_classifier(samples_in_ball, saliency_map) #  ∇f(x)*x
+    local_preds += predictions_baseline # ∇f(x)*x + f(0)
+    return (model_preds.cpu().numpy(), local_preds.cpu().numpy(), dist)
+
+
 
 def compute_saliency_maps(explainer, predict_fn, data_loader_tst, transform = None):
     saliency_map = []

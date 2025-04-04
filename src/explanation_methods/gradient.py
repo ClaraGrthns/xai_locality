@@ -1,7 +1,9 @@
 from src.explanation_methods.base import BaseExplanationMethodHandler
 from captum.attr import IntegratedGradients, NoiseTunnel
 import torch
-from src.explanation_methods.gradient_methods.local_classifier import compute_gradmethod_preds_for_all_kNN, compute_saliency_maps
+from src.explanation_methods.gradient_methods.local_classifier import (compute_gradmethod_preds_for_all_kNN, 
+                                                                       compute_gradmethod_regressionpreds_for_all_kNN, 
+                                                                       compute_saliency_maps)
 import os.path as osp
 import os
 import h5py
@@ -43,20 +45,12 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
     
     def get_experiment_setting(self, fractions):
         setting = f"fractions-0-{np.round(fractions, 2)}_grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"      
+        if self.args.regression:
+            setting = "regression_" + setting
         return setting
-    
-    # def prepare_data_for_analysis(self, dataset, df_feat):
-    #     args = self.args
-    #     indices = np.random.permutation(len(dataset))
-    #     tst_indices, analysis_indices = np.split(indices, [args.max_test_points])
-    #     print("using the following indices for testing: ", tst_indices)
-    #     tst_data = Subset(dataset, tst_indices)
-    #     analysis_data = Subset(dataset, analysis_indices)
-    #     tst_feat, analysis_feat = np.split(df_feat[indices], [args.max_test_points])
-    #     data_loader_tst = DataLoader(tst_data, batch_size=args.chunk_size, shuffle=False)
-    #     return tst_feat, analysis_feat, data_loader_tst, analysis_data
 
-    def process_chunk(self, batch, tst_chunk_dist, df_feat_for_expl, explanations_chunk, predict_fn, n_points_in_ball, tree, chunk_start, chunk_end):
+
+    def process_chunk(self, batch, tst_chunk_dist, df_feat_for_expl, explanations_chunk, predict_fn, n_points_in_ball, tree):
         """
         Process a single chunk of data for gradient-based methods.
         """
@@ -66,34 +60,44 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         with torch.no_grad():
             predictions = predict_fn(tst_chunk)
             predictions_baseline = predict_fn(torch.zeros_like(tst_chunk))
-        
-        if not proba_output:
-            if predictions.shape[-1] == 1:
-                predictions_sm = torch.sigmoid(predictions)
-                predictions_sm = torch.cat([1 - predictions_sm, predictions_sm], dim=-1)
-            else:
-                predictions_sm = torch.softmax(predictions, dim=-1)
+        if self.args.regression:
+            return compute_gradmethod_regressionpreds_for_all_kNN(
+                tst_feat = tst_chunk_dist,
+                tst_chunk = tst_chunk,
+                predictions = predictions,
+                predictions_baseline = predictions_baseline,
+                analysis_data = df_feat_for_expl, 
+                saliency_map = explanations_chunk, 
+                predict_fn = predict_fn, 
+                n_closest = n_points_in_ball, 
+                tree = tree,
+            )
         else:
-            if predictions.shape[-1] == 1:
-                predictions_sm = torch.cat([1 - predictions, predictions], dim=-1)
+            if not proba_output:
+                if predictions.shape[-1] == 1:
+                    predictions_sm = torch.sigmoid(predictions)
+                    predictions_sm = torch.cat([1 - predictions_sm, predictions_sm], dim=-1)
+                else:
+                    predictions_sm = torch.softmax(predictions, dim=-1)
             else:
-                predictions_sm = predictions
-        top_labels = torch.argmax(predictions_sm, dim=1).tolist()
-
-        
-        return compute_gradmethod_preds_for_all_kNN(
-            tst_feat = tst_chunk_dist,
-            tst_chunk = tst_chunk,
-            predictions = predictions,
-            predictions_baseline = predictions_baseline,
-            analysis_data = df_feat_for_expl, 
-            saliency_map = explanations_chunk, 
-            predict_fn = predict_fn, 
-            n_closest = n_points_in_ball, 
-            tree = tree,
-            top_labels = top_labels,
-            proba_output=proba_output
-        )
+                if predictions.shape[-1] == 1:
+                    predictions_sm = torch.cat([1 - predictions, predictions], dim=-1)
+                else:
+                    predictions_sm = predictions
+            top_labels = torch.argmax(predictions_sm, dim=1).tolist()
+            return compute_gradmethod_preds_for_all_kNN(
+                tst_feat = tst_chunk_dist,
+                tst_chunk = tst_chunk,
+                predictions = predictions,
+                predictions_baseline = predictions_baseline,
+                analysis_data = df_feat_for_expl, 
+                saliency_map = explanations_chunk, 
+                predict_fn = predict_fn, 
+                n_closest = n_points_in_ball, 
+                tree = tree,
+                top_labels = top_labels,
+                proba_output=proba_output
+            )
         
 class SmoothGradHandler(IntegratedGradientsHandler):
     def set_explainer(self, **kwargs):

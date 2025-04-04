@@ -1,10 +1,6 @@
 from torch_frame.nn import Trompt, ExcelFormer, MLP, TabNet, TabTransformer, FTTransformer, ResNet
-
-from src.model.lightgbm import LightGBMHandler
-# from src.model.tab_inception_v3 import TabInceptionV3Handler, TabBinaryInceptionV3Handler 
 from src.model.pytorch_frame_lgm import PTFrame_LightGBMHandler
 from src.model.pytorch_frame_xgboost import PTFrame_XGBoostHandler
-# from src.model.inception_v3 import BinaryInceptionV3_Handler, InceptionV3_Handler
 from src.model.pytorch_frame_handler import TorchFrameHandler
 from src.model.pytorch_models_handler import PytorchHandler, LogReg
 
@@ -40,7 +36,6 @@ class ModelHandlerFactory:
         if model_type in ModelHandlerFactory.TORCH_MODLES:
             model_class = ModelHandlerFactory.TORCH_MODLES[model_type]
             return PytorchHandler(args, model_class)
-        
         if model_type in ModelHandlerFactory.TORCH_FRAME_MODELS:
             model_class = ModelHandlerFactory.TORCH_FRAME_MODELS[model_type]
             return TorchFrameHandler(args, model_class)

@@ -14,7 +14,7 @@ def cut_off_probability(prob):
     prob = np.where(prob > 1, 1, prob)
     return prob
 
-def get_feat_coeff_intercept(exp):
+def get_feat_coeff_intercept(exp, mode):
     """
     Extracts the feature IDs, coefficients, and intercept from a LIME explanation.
 
@@ -27,7 +27,10 @@ def get_feat_coeff_intercept(exp):
             - coeffs (numpy.ndarray): Array of coefficients corresponding to the feature IDs.
             - intercept (float): The intercept of the local linear model.
     """
-    top1_model = exp.top_labels[0]
+    if mode == "regression":
+        top1_model = 1 # corresponds to "positive" explanation
+    else:
+        top1_model = exp.top_labels[0]
     feat_ids = []
     coeffs = []
     for feat_id, coeff in exp.local_exp[top1_model]:
@@ -53,7 +56,7 @@ def get_binary_vectorized(samples_around_xs:list , xs:np.array, explainer):
     binary = (bins_sample == bins_instance[:, None, :])
     return binary
 
-def lime_pred_vectorized(binary_xs, exps):
+def lime_pred_vectorized(binary_xs, exps, mode):
     """
     Computes the local prediction using the binary vector and the LIME explanation.
 
@@ -69,7 +72,7 @@ def lime_pred_vectorized(binary_xs, exps):
     intercept_array = []
 
     for exp in exps:
-        feat_ids, coeffs, intercept = get_feat_coeff_intercept(exp)
+        feat_ids, coeffs, intercept = get_feat_coeff_intercept(exp, mode)
         feat_ids_array.append(feat_ids)
         coeffs_array.append(coeffs)
         intercept_array.append(intercept)
@@ -101,79 +104,15 @@ def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features, dis
         
     return explanations
 
-def compute_lime_fidelity_per_kNN(tst_set, dataset, explanations, explainer, predict_fn, n_closest, tree, pred_threshold=None):
-    """
-    Computes the accuracy of a LIME explanation by comparing the local model's predictions
-    to the original model's predictions for samples within a ball around the instance.
 
-    Args:
-        x (numpy.ndarray): The instances to explain, a 2D numpy array.
-        dataset (numpy.ndarray): The dataset to sample from, a 2D numpy array.
-        explainer (lime.lime_tabular.LimeTabularExplainer): The LIME explainer object.
-        predict_fn (callable): The prediction function suitable for LIME.
-        dist_measure (str): sklearn pariwise distance measure to use (e.g., "cosine").
-        dist_threshold (float): The distance threshold to determine closeness.
-        pred_threshold (float, optional): The threshold for binary classification. Defaults to 0.5.
-
-    Returns:
-        tuple: A tuple containing:
-            - accuracy (float): The accuracy of the local model's predictions.
-            - num_samples (int): The number of samples within the distance threshold.
-            - ratio_all_ones (float): The fraction of samples that are discretized into all 1s. 
-    """
-    if tst_set.ndim == 1:
-        tst_set = tst_set.reshape(1, -1)
-
-    if type(tst_set) == torch.Tensor:
-        tst_set = tst_set.numpy()
-
-    dist, idx = tree.query(tst_set, k=n_closest, return_distance=True)
-    R = np.max(dist, axis=-1)
-    top_labels = np.array([exp.top_labels[0] for exp in explanations])
-
-    # 1. Get all the kNN samples from the analysis dataset
-    samples_in_ball = [[dataset[idx][0] for idx in row] for row in idx]
-    if type(samples_in_ball[0]) == torch.Tensor:
-        samples_in_ball = [sample.numpy() for sample in samples_in_ball]
-    samples_in_ball = np.array([np.array(row) for row in samples_in_ball])
-    binary_sample = get_binary_vectorized(samples_in_ball, tst_set, explainer) #binarize for lime prediction
-    samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) #shape: (n tst samples * n closest points) x n features
-    
-    # 2. Predict labels of the kNN samples with the model
-    model_preds = predict_fn(samples_reshaped) #shape: (n tst samples * n closest points) x n classes
-    model_preds = model_preds.reshape(samples_in_ball.shape[0], samples_in_ball.shape[1], -1) #shape: n tst samples x n closest points x n classes
-    ## i) Get probability for the top label
-    model_prob_of_top_label = model_preds[np.arange(model_preds.shape[0]), :, top_labels]
-    variance_preds = model_prob_of_top_label.var(axis=-1)
-
-    ## ii) Get label predictions, is prediction the same as the top label?
-    labels_model_preds = np.argmax(model_preds, axis=-1) #shape: n tst samples x n closest points
-    model_predicted_top_label = labels_model_preds == top_labels[:, None]
-
-   
-    # 3. Predict labels of the kNN samples with the LIME explanation
-    ## i)+ii) Get probability for top label, if prob > threshold, predict as top label
-    local_preds = lime_pred_vectorized(binary_sample, explanations)
-    if pred_threshold is None:
-        pred_threshold = 1 / model_preds[0].ndim
-    local_preds_label = (local_preds >= pred_threshold).astype(np.int32)
-    
-    # 4. Compute metrics for binary and regression tasks
-    res_binary_classification = binary_classification_metrics_per_row(model_predicted_top_label, 
-                                                                      local_preds_label,
-                                                                      local_preds
-                                                                      )
-    res_regression = regression_metrics_per_row(model_prob_of_top_label,
-                                                cut_off_probability(local_preds))
-    res_impurity = impurity_metrics_per_row(model_predicted_top_label)
-    res_impurity = (*res_impurity, variance_preds)
-    
-
-    return n_closest, res_binary_classification, res_regression, res_impurity, R
-
-
-
-def get_lime_preds_for_all_kNN(tst_set, dataset, explanations, explainer, predict_fn, n_closest_max, tree, pred_threshold=0.5):
+def get_lime_preds_for_all_kNN(tst_set, 
+                               dataset, 
+                               explanations, 
+                               explainer, 
+                               predict_fn, 
+                               n_closest_max, 
+                               tree, 
+                               pred_threshold=0.5):
     """
     Computes the accuracy of a LIME explanation by comparing the local model's predictions
     to the original model's predictions for samples within a ball around the instance.
@@ -231,7 +170,7 @@ def get_lime_preds_for_all_kNN(tst_set, dataset, explanations, explainer, predic
    
     # 3. Predict labels of the kNN samples with the LIME explanation
     ## i)+ii) Get probability for top label, if prob > threshold, predict as top label
-    local_probs_top_label = lime_pred_vectorized(binary_sample, explanations)
+    local_probs_top_label = lime_pred_vectorized(binary_sample, explanations, mode = "classification")
     if pred_threshold is None:
         pred_threshold = 0.5
     local_binary_pred_top_labels = (local_probs_top_label >= pred_threshold).astype(int)
@@ -239,4 +178,39 @@ def get_lime_preds_for_all_kNN(tst_set, dataset, explanations, explainer, predic
     return (model_binary_preds_top_label, model_prob_of_top_label, \
             local_binary_pred_top_labels, cut_off_probability(local_probs_top_label), \
             dist)
+
+
+def get_lime_rergression_preds_for_all_kNN(tst_set, 
+                               dataset, 
+                               explanations, 
+                               explainer, 
+                               predict_fn, 
+                               n_closest_max, 
+                               tree):
+    
+    if tst_set.ndim == 1:
+        tst_set = tst_set.reshape(1, -1)
+    if type(tst_set) == torch.Tensor:
+        tst_set = tst_set.numpy()
+
+    dist, idx = tree.query(tst_set, k=n_closest_max, return_distance=True, sort_results=True)
+
+    # 1. Get all the kNN samples from the analysis dataset
+    samples_in_ball = [[dataset[idx] for idx in row] for row in idx]
+    if type(samples_in_ball[0]) == torch.Tensor:
+        samples_in_ball = [sample.numpy() for sample in samples_in_ball]
+
+    samples_in_ball = np.array([np.array(row) for row in samples_in_ball])
+    binary_sample = get_binary_vectorized(samples_in_ball, tst_set, explainer) #binarize for lime prediction
+    samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) #shape: (n tst samples * n closest points) x n features
+    
+    # 2. Predict y of the kNN samples with the model
+    model_preds = predict_fn(samples_reshaped) #shape: (n tst samples * n closest points)
+    model_preds = model_preds.reshape(samples_in_ball.shape[0], samples_in_ball.shape[1]) #shape: n tst samples x n closest points 
+
+    # 3. Predict labels of the kNN samples with the LIME explanation
+    ## i)+ii) Get probability for top label, if prob > threshold, predict as top label
+    local_preds = lime_pred_vectorized(binary_sample, explanations, mode="regression")
+    
+    return (model_preds, local_preds, dist)
 

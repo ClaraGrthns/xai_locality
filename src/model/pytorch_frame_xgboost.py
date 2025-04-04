@@ -44,7 +44,8 @@ class PTFrame_XGBoostHandler(BaseModelHandler):
         dummy_labels = np.zeros(X.shape[0])
         dtest = xgboost.DMatrix(X, label=dummy_labels, feature_types=types, enable_categorical=True)
         pred = self.model.model.predict(dtest)
-
+        if self.args.regression:
+            return pred
         if self.model.task_type == TaskType.BINARY_CLASSIFICATION:
             pred = np.column_stack((1 - pred, pred))
         return pred

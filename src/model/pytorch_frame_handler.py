@@ -10,6 +10,7 @@ from src.utils.pytorch_frame_utils import (
     tensorframe_to_tensor,
     transform_logit_to_class_proba
 )
+
 import numpy as np
 
 class TorchFrameHandler(BaseModelHandler):
@@ -25,7 +26,14 @@ class TorchFrameHandler(BaseModelHandler):
         file_name_wo_file_ending = Path(data_path).stem
         data_folder = os.path.dirname(data_path)
         print("loading col names and stats from", os.path.join(data_folder, file_name_wo_file_ending + "_col_names_dict.pt"))
-        checkpoint = torch.load(self.model_path, map_location=torch.device('cpu'))
+        try:
+            checkpoint = torch.load(self.model_path, map_location=torch.device('cpu'))
+        except (FileNotFoundError, ValueError, RuntimeError):
+            model_dir = os.path.dirname(self.model_path)
+            model_filename = f"{self.args.model_type}_{self.args.setting}_best_model.pt"
+            fallback_path = os.path.join(model_dir, model_filename)
+            print(f"Failed to load model from {self.model_path}, trying fallback path: {fallback_path}")
+            checkpoint = torch.load(fallback_path, map_location=torch.device('cpu'))
         self.col_names_dict = torch.load(
             os.path.join(data_folder, file_name_wo_file_ending + "_col_names_dict.pt"), 
             map_location=torch.device('cpu')
@@ -64,6 +72,9 @@ class TorchFrameHandler(BaseModelHandler):
         if self.args.method == "lime":
             with torch.no_grad():
                 pred = self.model(X)
-            pred = transform_logit_to_class_proba(pred)
-            return pred.detach().numpy()
+            if self.args.regression:
+                return pred.detach().numpy()
+            else:
+                pred = transform_logit_to_class_proba(pred)
+                return pred.detach().numpy()
         return self.model(X)

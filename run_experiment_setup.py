@@ -7,8 +7,10 @@ import copy
 import time
 
 from src.train.custom_data_frame_benchmark import main_deep_models, main_gbdt
-from knn_vs_accuracy import main as main_fraction_vs_accuracy
+from knn_vs_accuracy import main as main_knn_vs_accuracy
 from knn_on_model_preds import main as main_knn_on_model_preds
+from knn_on_model_preds_regression import main as main_knn_on_model_preds_regression
+from src.dataset.synthetic_data import get_setting_name_classification, get_setting_name_regression
 from src.utils.misc import set_random_seeds
 
 CUSTOM_MODELS = ["LogReg"]
@@ -37,6 +39,8 @@ def parse_args():
     parser.add_argument("--model_type", type=str, 
                         choices=["LightGBM", "XGBoost", "ExcelFormer", "MLP", "TabNet", "Trompt", "FTTransformer", "ResNet", "LogReg", "TabTransformer"],
                         help="Type of model to train/use")
+    parser.add_argument("--regression", action="store_true",)
+    parser.add_argument("--regression_model", type=str)
     parser.add_argument("--skip_training", action="store_true", 
                         help="Skip model training if the model already exists")
     parser.add_argument("--force_training", action="store_true", 
@@ -75,6 +79,14 @@ def parse_args():
     parser.add_argument("--hypercube", action="store_true", help="If True, the clusters are put on the vertices of a hypercube. If False, the clusters are put on the vertices of a random polytope.")
     parser.add_argument("--test_size", type=float, default=0.4, help="Test size for train-test split")
     parser.add_argument("--val_size", type=float, default=0.1, help="Validation size for train-validation split")
+
+    ## if regression:
+    # Adding the missing arguments for regression dataset creation
+    parser.add_argument("--noise", type=float, default=0.1, help="Standard deviation of the gaussian noise")
+    parser.add_argument("--bias", type=float, default=0.0, help="Bias term in the underlying linear model")
+    parser.add_argument("--tail_strength", type=float, default=0.5, help="Relative importance of the fat noisy tail of the covariance matrix")
+    parser.add_argument("--coef", type=bool, default=False, help="Whether to return the coefficients of the underlying linear model")
+    parser.add_argument("--effective_rank", type=int, default=None, help="Approximate number of singular vectors to use to generate the covariance matrix")
     
     # KNN analysis parameters
     parser.add_argument("--distance_measure", type=str, help="Distance measure for KNN")
@@ -121,19 +133,39 @@ def check_model_exists(args):
             from src.train.data_frame_benchmark import get_dataset_specs
             if not all([args.task_type, args.scale, args.idx]):
                 args.task_type, args.scale, args.idx = get_dataset_specs(args.setting)
+    elif args.regression:
+        setting_name = get_setting_name_regression(
+            n_features=args.n_features,
+            n_informative=args.n_informative,
+            n_samples=args.n_samples,
+            noise=args.noise,
+            bias=args.bias,
+            tail_strength=args.tail_strength,
+            coef=args.coef,
+            effective_rank=args.effective_rank,
+            random_seed=args.random_seed
+        )
+        args.setting = setting_name
     else:
-        setting_name = (f"n_feat{args.n_features}_n_informative{args.n_informative}_"
-                        f"n_redundant{args.n_redundant}_n_repeated{args.n_repeated}_"
-                        f"n_classes{args.n_classes}_n_samples{args.n_samples}_"
-                        f"n_clusters_per_class{args.n_clusters_per_class}_"
-                        f"class_sep{args.class_sep}_flip_y{args.flip_y}_"
-                        f"random_state{args.random_seed}")
-        if not args.hypercube:
-            setting_name += f'_hypercube{args.hypercube}'
+        setting_name = get_setting_name_classification(
+            n_features=args.n_features,
+            n_informative=args.n_informative,
+            n_redundant=args.n_redundant,
+            n_repeated=args.n_repeated,
+            n_classes=args.n_classes,
+            n_samples=args.n_samples,
+            n_clusters_per_class=args.n_clusters_per_class,
+            class_sep=args.class_sep,
+            flip_y=args.flip_y,
+            hypercube=args.hypercube,
+            random_seed=args.random_seed
+        )
         args.setting = setting_name
     model_path = get_results_path(args, "train")
-    
-    return osp.exists(model_path), model_path
+    model_dir = os.path.dirname(model_path)
+    model_filename = f"{args.model_type}_{args.setting}_best_model.pt"
+    fallback_path = os.path.join(model_dir, model_filename)
+    return osp.exists(model_path) or osp.exists(fallback_path), model_path
 
 def get_data_path(args):
     """Get data path based on model type and dataset."""
@@ -142,25 +174,37 @@ def get_data_path(args):
     else:
         # For synthetic data, check if it's ExcelFormer which has a special path format
         is_ExcelFormer_str = "ExcelFormer_" if args.model_type == 'ExcelFormer' else ""
-        return osp.join(args.data_folder, "synthetic_data", 
+        return osp.join(args.data_folder, "regression_synthetic_data" if args.regression else "synthetic_data" ,  
                       f"{is_ExcelFormer_str}{args.setting}_normalized_tensor_frame.pt")
 
 def get_results_path(args, step):
     """Get results path for a specific step (train, knn, fraction)."""
-    base_path = "" if args.use_benchmark else "synthetic_data"
-
+    if args.use_benchmark:
+        sub_directory = "" 
+    elif args.regression:
+        sub_directory = "regression_synthetic_data"
+    else:
+        sub_directory = "synthetic_data"
     if step == "knn":
-        return osp.join(args.results_folder, "knn_model_preds", args.model_type, 
-                      base_path, args.setting)
+        return osp.join(args.results_folder, 
+                        "knn_model_preds", 
+                        args.model_type, 
+                        sub_directory, 
+                        args.setting)
     elif step == "train" and args.use_benchmark:
+        if args.regression:
+            model_name = f"{args.model_type}_normalized_regression_{args.setting}_results.pt"
+        else:
+            model_name =f"{args.model_type}_normalized_binary_{args.setting}_results.pt"
         return osp.join(args.model_folder,
                         args.model_type, 
                         args.setting,
-                        f"{args.model_type}_normalized_binary_{args.setting}_results.pt")
+                        model_name
+                        )
     elif step == "train":
         return osp.join(args.model_folder,
                         args.model_type, 
-                        "synthetic_data",
+                        sub_directory , 
                         f"{args.model_type}_{args.setting}_results.pt")
     elif step == "fraction":
         # For fraction analysis, the path depends on the explanation method
@@ -171,14 +215,13 @@ def get_results_path(args, step):
             elif args.gradient_method == "IG+SmoothGrad":
                 method_subdir = "smooth_grad"
         return osp.join(args.results_folder, args.method, 
-                      method_subdir, args.model_type, base_path, args.setting)
+                      method_subdir, args.model_type, sub_directory, args.setting)
     return None
 
 def get_dataset_specific_settings(args):
     """Get dataset-specific settings like include_trn and include_val."""
     include_trn = False
     include_val = False
-    
     if args.setting == "jannis":
         include_trn = True
         include_val = True
@@ -192,7 +235,6 @@ def train_model(args):
     train_args = copy.deepcopy(args)
     train_args.results_path = get_results_path(args, "train")
     train_args.results_folder = osp.join(args.model_folder, args.model_type)
-
     if args.use_benchmark:
         from src.train.data_frame_benchmark import main_deep_models as benchmark_deep_models
         from src.train.data_frame_benchmark import main_gbdt as benchmark_gbdt
@@ -205,8 +247,7 @@ def train_model(args):
         else:
             benchmark_deep_models(train_args)
     else:
-        train_args.data_folder = osp.join(train_args.data_folder, "synthetic_data")
-        train_args.results_folder = osp.join(train_args.results_folder, "synthetic_data")
+        train_args.results_folder = osp.join(train_args.results_folder, "regression_synthetic_data" if args.regression else "synthetic_data")
         # For synthetic data
         if args.model_type in GBT_MODELS:
             main_gbdt(train_args)
@@ -221,31 +262,52 @@ def run_knn_analysis(args):
     print("Running KNN analysis on model predictions...")
     knn_args = copy.deepcopy(args)
     knn_args.results_path = get_results_path(args, "knn")
-    knn_args.data_folder = osp.join(args.data_folder, "synthetic_data") if not args.use_benchmark else args.data_folder
-    print(knn_args.model_path)
-    print(knn_args.model_folder)
-    main_knn_on_model_preds(knn_args)
+    if args.regression:
+        main_knn_on_model_preds_regression(knn_args)
+    else:
+        main_knn_on_model_preds(knn_args)
 
-def run_fraction_analysis(args):
+def run_knn_vs_local_model_analysis(args):
     """Run fraction vs accuracy analysis."""
     print("Running fraction vs accuracy analysis...")
     fraction_args = copy.deepcopy(args)
     fraction_args.results_path = get_results_path(args, "fraction")
     if not hasattr(fraction_args, 'distance_measure') or not fraction_args.distance_measure:
         fraction_args.distance_measure = fraction_args.distance_measures[0] if fraction_args.distance_measures else "euclidean"
-    main_fraction_vs_accuracy(fraction_args)
+    main_knn_vs_accuracy(fraction_args)
 
 def main():
     # Parse arguments and set random seed
     args = parse_args()
     set_random_seeds(args.random_seed)
     args.seed = args.random_seed
+    
+    # # Convert command line arguments to direct assignments
+    # args.model_type = "MLP"
+    # args.setting = "nyc-taxi-green-dec-2016"
+    # args.method = "gradient_methods"
+    # args.distance_measure = "euclidean"
+    # args.regression = True
+    # args.use_benchmark = True
+    # args.task_type = "regression"
+    # args.scale = "large"
+    # args.idx = 2
+    # args.num_trials = 5
+    # args.num_repeats = 5
+    # args.epochs = 10
+    # args.gradient_method = "IG"
+    
     if args.model_folder is None:
         args.model_folder = os.path.join(BASEDIR, "pretrained_models")
     if args.data_folder is None:
         args.data_folder = os.path.join(BASEDIR, "data")
+    if not args.use_benchmark:
+        subdir = "regression_synthetic_data" if args.regression else "synthetic_data"
+        args.data_folder = os.path.join(args.data_folder, subdir)
+
     if args.results_folder is None:
         args.results_folder = os.path.join(BASEDIR, "results")
+    
     
 
     model_exists, model_path = check_model_exists(args)
@@ -255,11 +317,14 @@ def main():
     args.include_trn = include_trn
     args.include_val = include_val
     print(args)
-
-    if not args.config:
-        is_synthetic = "" if args.use_benchmark else "synthetic_data"
-        args.config = f"{BASEDIR}/configs/{args.method}/{args.gradient_method or ''}/{args.model_type}/{is_synthetic}/{args.setting}/config.yaml"
-    
+    # if not args.config:
+    #     if args.use_benchmark:
+    #         is_synthetic = ""
+    #     elif args.regression:
+    #         is_synthetic = "regression_synthetic_data"
+    #     else:
+    #         is_synthetic = "synthetic_data"
+    #     args.config = f"{BASEDIR}/configs/{args.method}/{args.gradient_method or ''}/{args.model_type}/{is_synthetic}/{args.setting}/config.yaml"
     if (not model_exists or args.force_training) and not args.skip_training:
         print("Starting with model training...")
         start_time = time.time()
@@ -277,7 +342,7 @@ def main():
     if not args.skip_fraction:
         print("Starting fraction vs accuracy analysis...")
         start_time = time.time()
-        run_fraction_analysis(args)
+        run_knn_vs_local_model_analysis(args)
         print(f"Fraction vs accuracy analysis completed in {(time.time() - start_time):.2f} seconds.")
     print("Experiment complete!")
 

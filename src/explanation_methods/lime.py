@@ -1,6 +1,6 @@
 from src.explanation_methods.base import BaseExplanationMethodHandler
 import lime.lime_tabular
-from src.explanation_methods.lime_analysis.lime_local_classifier import compute_lime_fidelity_per_kNN, compute_explanations, get_lime_preds_for_all_kNN
+from src.explanation_methods.lime_analysis.lime_local_classifier import compute_explanations, get_lime_preds_for_all_kNN, get_lime_rergression_preds_for_all_kNN
 from src.utils.misc import get_path
 import os.path as osp
 import os
@@ -18,10 +18,12 @@ class LimeHandler(BaseExplanationMethodHandler):
         if type(trn_feat)== torch.Tensor:
             trn_feat = trn_feat.numpy()
         class_names = kwargs.get('class_names')
+        mode = "regression" if args.regression else "classification"
         self.explainer = lime.lime_tabular.LimeTabularExplainer(trn_feat, 
                                                     feature_names=np.arange(trn_feat.shape[1]),
                                                       class_names=class_names, 
                                                       discretize_continuous=True, 
+                                                      mode=mode, 
                                                       random_state=args.random_seed, 
                                                       kernel_width=args.kernel_width)
     
@@ -65,12 +67,10 @@ class LimeHandler(BaseExplanationMethodHandler):
         args = self.args
         df_setting = "complete_df" if args.include_trn and args.include_val else "only_test"
         experiment_setting = f"fractions-{0}-{np.round(fractions, 2)}_{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_accuracy_fraction"
-        # if args.num_lime_features > 10:
-        #     experiment_setting = f"num_features-{args.num_lime_features}_{experiment_setting}"
-        # if args.num_test_splits > 1:
-        #     experiment_setting = f"split-{args.split_idx}_{experiment_setting}"
         if self.args.num_lime_features > 10:
             experiment_setting += f"_num_features-{self.args.num_lime_features}"
+        if self.args.regression:
+            experiment_setting = "regression_" + experiment_setting
         return experiment_setting
     
     # def prepare_data_for_analysis(self, dataset, df_feat):
@@ -84,36 +84,48 @@ class LimeHandler(BaseExplanationMethodHandler):
     #         df_feat = np.concatenate([df_feat, val_feat], axis=0)
     #     return tst_feat, df_feat, tst_feat, df_feat
     
-    def process_chunk(self, batch, tst_chunk_dist, df_feat_for_expl, explanations_chunk, predict_fn, n_points_in_ball, tree, chunk_start, chunk_end):
+    def process_chunk(self, batch, tst_chunk_dist, df_feat_for_expl, explanations_chunk, predict_fn, n_points_in_ball, tree):
         """
         Process a single chunk of data for LIME method.
         """
         tst_chunk = batch.numpy()  # For LIME method, convert batch to numpy
         predict_threshold = self.args.predict_threshold
 
-        res = get_lime_preds_for_all_kNN(
-            tst_chunk, 
-            df_feat_for_expl, 
-            explanations_chunk, 
-            self.explainer, 
-            predict_fn, 
-            n_points_in_ball, 
-            tree, 
-            predict_threshold
-        )
-        
-        model_predicted_top_label, model_prob_of_top_label, local_preds_label, local_preds, dist = res
-        
-        # Reformat to match the expected output format of process_chunk
-        return (
-            model_prob_of_top_label,  # model_preds 
-            model_predicted_top_label,  # model_binary_preds
-            model_prob_of_top_label,  # model_probs
-            local_preds,  # local_preds
-            local_preds_label,  # local_binary_preds
-            local_preds,  # local_probs
-            dist  # dist
-        )
+        if self.args.regression:
+            return get_lime_rergression_preds_for_all_kNN(
+                tst_chunk, 
+                df_feat_for_expl, 
+                explanations_chunk, 
+                self.explainer, 
+                predict_fn, 
+                n_points_in_ball, 
+                tree, 
+            )
+        else:
+
+            res = get_lime_preds_for_all_kNN(
+                tst_chunk, 
+                df_feat_for_expl, 
+                explanations_chunk, 
+                self.explainer, 
+                predict_fn, 
+                n_points_in_ball, 
+                tree, 
+                predict_threshold
+            )
+            
+            model_predicted_top_label, model_prob_of_top_label, local_preds_label, local_preds, dist = res
+            
+            # Reformat to match the expected output format of process_chunk
+            return (
+                model_prob_of_top_label,  # model_preds 
+                model_predicted_top_label,  # model_binary_preds
+                model_prob_of_top_label,  # model_probs
+                local_preds,  # local_preds
+                local_preds_label,  # local_binary_preds
+                local_preds,  # local_probs
+                dist  # dist
+            )
 
 
 

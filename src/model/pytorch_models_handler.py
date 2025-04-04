@@ -21,6 +21,14 @@ class LogReg(nn.Module):
     
     def forward(self, x):
         return self.sigmoid(self.linear(x))
+    
+class LinReg(nn.Module):
+    def __init__(self, input_size):
+        super(LinReg, self).__init__()
+        self.linear = nn.Linear(input_size, 1)  # One output neuron
+    
+    def forward(self, x):
+        return self.linear(x)
 
 class PytorchHandler(BaseModelHandler):
     def __init__(self, args, model_class):
@@ -34,13 +42,13 @@ class PytorchHandler(BaseModelHandler):
         model.load_state_dict(torch.load(self.model_path))
         model.eval()
         return model
-
+    
     def predict_fn(self, X):
         if isinstance(X, np.ndarray):
             X = torch.Tensor(X)
         if X.dtype == torch.double:
             X = X.float()
-        if self.args.method == "lime":
+        if (not self.args.regression) and self.args.method == "lime":
             with torch.no_grad():
                 preds = self.model(X).numpy()
                 return np.column_stack((1 - preds, preds)) if preds.shape[1] == 1 else preds

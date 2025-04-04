@@ -56,7 +56,7 @@ sys.path.append(osp.join(os.getcwd(), '..'))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.dataset.synthetic_data import create_synthetic_data_sklearn
+from src.dataset.synthetic_data import create_synthetic_classification_data_sklearn, create_synthetic_regression_data_sklearn
 
 def set_random_seeds(seed=42):
     random.seed(seed)
@@ -120,6 +120,7 @@ parser.add_argument(
         'regression',
     ], default='binary_classification')
 parser.add_argument('--epochs', type=int, default=10)
+parser.add_argument('--regression', action='store_true')
 parser.add_argument('--num_trials', type=int, default=20,
                     help='Number of Optuna-based hyper-parameter tuning.')
 parser.add_argument(
@@ -148,6 +149,13 @@ parser.add_argument("--timeout", type=int, default=3600)
 parser.add_argument("--data_folder", type=str, default="/home/grotehans/xai_locality/data/synthetic_data")
 parser.add_argument("--test_size", type=float, default=0.4)
 parser.add_argument("--val_size", type=float, default=0.1)
+# Adding the missing arguments for regression dataset creation
+parser.add_argument("--noise", type=float, default=0.1, help="Standard deviation of the gaussian noise")
+parser.add_argument("--bias", type=float, default=0.0, help="Bias term in the underlying linear model")
+parser.add_argument("--tail_strength", type=float, default=0.5, help="Relative importance of the fat noisy tail of the covariance matrix")
+parser.add_argument("--coef", type=bool, default=False, help="Whether to return the coefficients of the underlying linear model")
+parser.add_argument("--effective_rank", type=int, default=None, help="Approximate number of singular vectors to use to generate the covariance matrix")
+parser.add_argument("--setting", type=str, default="", help="Name of the experimental setting")
 
 def prepare_data_and_models(args):
     """Prepare data and initialize model configurations based on provided arguments."""
@@ -172,8 +180,26 @@ def prepare_data_and_models(args):
         print(data.files)
         tst_feat, val_feat, trn_feat = data['X_test'], data['X_val'], data['X_train'] 
         y_test, y_val, y_train = data['y_test'], data['y_val'], data['y_train']
+    elif args.regression:
+        data_path_wo_file_ending, trn_feat, val_feat, tst_feat, y_train, y_val, y_test = create_synthetic_regression_data_sklearn(
+            regression_mode = args.regression_mode,
+            n_features=args.n_features,
+            n_informative=args.n_informative,
+            n_samples=args.n_samples, 
+            noise=args.noise,
+            bias=args.bias,
+            random_seed=args.seed,
+            data_folder=args.data_folder,
+            test_size=args.test_size,
+            val_size=args.val_size,
+            tail_strength=args.tail_strength,
+            coef=args.coef,
+            effective_rank=args.effective_rank,
+            )
+        data_folder = args.data_folder
+
     else: 
-        data_path_wo_file_ending, trn_feat, val_feat, tst_feat, y_train, y_val, y_test = create_synthetic_data_sklearn(
+        data_path_wo_file_ending, trn_feat, val_feat, tst_feat, y_train, y_val, y_test = create_synthetic_classification_data_sklearn(
             n_features=args.n_features, 
             n_informative=args.n_informative, 
             n_redundant=args.n_redundant, 
@@ -199,7 +225,7 @@ def prepare_data_and_models(args):
     df_tst = pd.DataFrame(tst_feat_norm)
     df_tst['y'] = y_test
     col_to_stype = {col: torch_frame.numerical for col in df_trn.columns}
-    col_to_stype['y'] = torch_frame.categorical
+    col_to_stype['y'] = torch_frame.numerical if args.regression else torch_frame.categorical
 
     os.makedirs(args.results_folder, exist_ok=True)
 
