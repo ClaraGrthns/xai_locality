@@ -20,15 +20,15 @@ from src.utils.pytorch_frame_utils import tensorframe_to_tensor
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a PyTorch model')
-    parser.add_argument('--dataset', type=str, default="higgs")
+    parser.add_argument('--dataset', type=str, default="year")
     parser.add_argument('--epochs', type=int, default=200, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--verbose', action='store_true', help='Print progress during training')
     parser.add_argument('--optimize', action='store_true', help='Use Optuna for hyperparameter optimization')
     parser.add_argument('--n_trials', type=int, default=20, help='Number of Optuna optimization trials')
-    parser.add_argument('--data_path', type=str, default='/home/grotehans/xai_locality/data/LightGBM_higgs_normalized_data.pt', help='Path to the dataset')
-    parser.add_argument('--model_path', type=str, default='/home/grotehans/xai_locality/pretrained_models/LogReg/higgs/LogReg_higgs_results.pt', help='Path to save the trained model')
+    parser.add_argument('--data_path', type=str, default='/home/grotehans/xai_locality/data/LightGBM_year_normalized_data.pt', help='Path to the dataset')
+    parser.add_argument('--model_path', type=str, default='/home/grotehans/xai_locality/pretrained_models/LinReg/year/LinReg_normalized_regression_year_results.pt', help='Path to save the trained model')
     parser.add_argument('--regression', action='store_true', help='Train a regression model instead of classification')
     parser.add_argument('--num_trials', type=int, default=20, help='Number of Optuna optimization trials')
     return parser.parse_args()
@@ -91,7 +91,7 @@ def objective_regression(trial, X, y, X_val, y_val, input_size, epochs, verbose)
     lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
     optimizer_name = trial.suggest_categorical("optimizer", ["SGD", "Adam"])
     weight_decay = trial.suggest_float("weight_decay", 1e-8, 1e-1, log=True)
-    model = LinReg(input_size=input_size, output_size=1)
+    model = LinReg(input_size=input_size)
     criterion = nn.MSELoss()
     if optimizer_name == "SGD":
         optimizer = optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -150,7 +150,7 @@ def main(args=None):
         writer.add_hparams(best_params, {'hparam/best_loss': study.best_value})
         
         if is_regression:
-            model = LinReg(input_size=input_size, output_size=1)
+            model = LinReg(input_size=input_size)
             criterion = nn.MSELoss()
         else:
             model = LogReg(input_size=input_size, output_size=1)
@@ -209,7 +209,7 @@ def main(args=None):
     else:
         args.epochs = 150
         if is_regression:
-            model = LinReg(input_size=input_size, output_size=1)
+            model = LinReg(input_size=input_size)
             criterion = nn.MSELoss()
         else:
             model = LogReg(input_size=input_size, output_size=1)
@@ -259,7 +259,7 @@ def main(args=None):
     
     # Load the best model for testing
     if is_regression:
-        best_model = LinReg(input_size=input_size, output_size=1)
+        best_model = LinReg(input_size=input_size)
     else:
         best_model = LogReg(input_size=input_size, output_size=1)
     

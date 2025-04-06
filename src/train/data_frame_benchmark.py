@@ -12,6 +12,9 @@
 # Permission is hereby granted, free of charge, to any person obtaining a copy...
 from torch_frame import Metric
 
+# Add this import near the top of the file
+from torch.utils.tensorboard import SummaryWriter
+import datetime
 
 import argparse
 import math
@@ -532,6 +535,7 @@ def train_and_eval_with_cfg(
     args,
     trial: Optional[optuna.trial.Trial] = None,
     config: Optional[dict] = None,
+    final_training: bool = False,
 ) -> tuple[torch.nn.Module, float, float]:
     """Train and evaluate a model with the given configuration."""
     if config is None:
@@ -554,6 +558,10 @@ def train_and_eval_with_cfg(
     device = config['device']
     dataset_name = config['dataset_name']
     
+    # Set up TensorBoard logging
+    log_dir = f"/home/grotehans/xai_locality/src/train/tensorboard_logs/{args.model_type}/{dataset_name}/{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    writer = SummaryWriter(log_dir)
+    print(f"TensorBoard logs will be saved to: {log_dir}")
     
     # Use model_cfg to set up training procedure
     if args.model_type == 'FTTransformerBucket':
@@ -581,18 +589,34 @@ def train_and_eval_with_cfg(
     test_loader = DataLoader(test_tensor_frame,
                              batch_size=train_cfg['batch_size'])
 
+    # Log model hyperparameters
+    writer.add_text('Model Configuration', str(model_cfg))
+    writer.add_text('Training Configuration', str(train_cfg))
+    
     if higher_is_better:
         best_val_metric = 0
     else:
         best_val_metric = math.inf
 
-    for epoch in range(1, args.epochs + 1):
+    if final_training:
+        epochs = np.max(args.epochs, 40)
+    else:
+        epochs = args.epochs
+    for epoch in range(1, epochs + 1):
         train_loss = train(model, train_loader, optimizer, epoch, device, dataset, out_channels, loss_fun)
         val_metric = test(model, val_loader, device, dataset, metric_computer)
+        
+        # Log metrics to TensorBoard
+        writer.add_scalar('Loss/train', train_loss, epoch)
+        writer.add_scalar('Metric/validation', val_metric, epoch)
+        writer.add_scalar('Learning_rate', optimizer.param_groups[0]['lr'], epoch)
+        
         if higher_is_better:
             if val_metric > best_val_metric:
                 best_val_metric = val_metric
                 best_test_metric = test(model, test_loader, device, dataset, metric_computer)
+                # Log best test metric
+                writer.add_scalar('Metric/test_best', best_test_metric, epoch)
                 # save new best model
                 best_model_state_dict = model.state_dict()
                 norm_path = os.path.join(args.results_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
@@ -601,21 +625,37 @@ def train_and_eval_with_cfg(
             if val_metric < best_val_metric:
                 best_val_metric = val_metric
                 best_test_metric = test(model, test_loader, device, dataset, metric_computer)
+                # Log best test metric
+                writer.add_scalar('Metric/test_best', best_test_metric, epoch)
                 best_model_state_dict = model.state_dict()
                 norm_path = os.path.join(args.results_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         lr_scheduler.step()
-        print(f'Train Loss: {train_loss:.4f}, Val: {val_metric:.4f}')
+        print(f'Epoch {epoch}/{epochs} - Train Loss: {train_loss:.4f}, Val: {val_metric:.4f}')
 
         if trial is not None:
             trial.report(val_metric, epoch)
             if trial.should_prune():
                 raise optuna.TrialPruned()
+    
+    # Final evaluation on test set
+    final_test_metric = test(model, test_loader, device, dataset, metric_computer)
+    writer.add_scalar('Metric/test_final', final_test_metric, epochs)
+    
+    # Log hyperparameters and final metrics together
+    hparam_dict = {**model_cfg, **train_cfg}
+    metric_dict = {
+        'hparam/best_val_metric': best_val_metric,
+        'hparam/best_test_metric': best_test_metric,
+        'hparam/final_test_metric': final_test_metric
+    }
+    writer.add_hparams(hparam_dict, metric_dict)
+    
+    # Close the writer
+    writer.close()
 
-    print(
-        f'Best val: {best_val_metric:.4f}, Best test: {best_test_metric:.4f}')
+    print(f'Best val: {best_val_metric:.4f}, Best test: {best_test_metric:.4f}')
     return best_model_state_dict, best_val_metric, best_test_metric
-
 
 def main_deep_models(args=None):
     """Execute deep learning model training and evaluation."""
@@ -728,7 +768,7 @@ def main_gbdt(args=None):
     else:
         num_classes = None
 
-    metric_task = Metric.ACCURACY if dataset.task_type.is_classification else Metric.MAE
+    metric_task = Metric.ACCURACY if dataset.task_type.is_classification else Metric.RMSE
     model = model_cls(task_type=dataset.task_type, num_classes=num_classes, metric=metric_task)
     
     import time

@@ -197,7 +197,6 @@ def prepare_data_and_models(args):
             effective_rank=args.effective_rank,
             )
         data_folder = args.data_folder
-
     else: 
         data_path_wo_file_ending, trn_feat, val_feat, tst_feat, y_train, y_val, y_test = create_synthetic_classification_data_sklearn(
             n_features=args.n_features, 

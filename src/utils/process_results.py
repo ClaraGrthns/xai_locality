@@ -1,5 +1,11 @@
 import os
 import numpy as np
+import re
+import matplotlib.ticker as ticker
+import matplotlib.lines as mlines
+import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
+import os.path as osp
 
 DATASET_TO_NUM_FEATURES = {"higgs": 24,
                            "jannis": 54,
@@ -11,10 +17,51 @@ DATASET_TO_NUM_FEATURES = {"higgs": 24,
 
 def file_matching(file, distance_measure, condition=lambda x: True):
         return condition(file) and distance_measure in file
+
+def get_synthetic_dataset_friendly_name(dataset_name, pattern=None):
+    """Generate a user-friendly name for synthetic datasets using regex to extract parameters"""
+    if pattern is None:
+        pattern = r'n_feat(\d+)_n_informative(\d+).*?n_clusters_per_class(\d+).*?class_sep([\d\.]+)'
+    match = re.search(pattern, dataset_name.split("/")[-1])
+    if match:
+        d = match.group(1)       # number of features
+        i = match.group(2)       # number of informative features
+        c = match.group(3)       # clusters per class
+        s = match.group(4)       # class separation
+        hypercube_param = "hc: ×" if "hypercubeFalse" in dataset_name else "hc: ✓"
+        return f"syn (d:{d}, if:{i}, c:{c}, s:{s}, {hypercube_param})"
+    return dataset_name
+
+def get_synthetic_dataset_friendly_name_regression(dataset_name, pattern=None):
+    """Generate a user-friendly name for synthetic regression datasets using regex to extract parameters"""
+    if pattern is None:
+        pattern = r'regression_(\w+)_n_feat(\d+)_n_informative(\d+)_n_samples(\d+)_noise([\d\.]+)_bias([\d\.]+)_random_state(\d+)'
+    match = re.search(pattern, dataset_name.split("/")[-1])
+    if match:
+        mode = match.group(1)    # regression mode (e.g., 'linear', 'friedman')
+        d = match.group(2)       # number of features
+        i = match.group(3)       # number of informative features
+        n = match.group(4)       # number of samples
+        noise = match.group(5)   # noise level
+        bias = match.group(6)    # bias
+        # Check for additional parameters
+        additional = ""
         
+        # Extract effective rank number if present
+        effective_rank_match = re.search(r'effective_rank(\d+)', dataset_name)
+        if effective_rank_match:
+            rank_num = effective_rank_match.group(1)
+            additional += f", er:{rank_num}"
+        return f"syn-reg {mode} (d:{d}, if:{i}, b: {bias}, n:{n}, ns:{noise}{additional})"
+    return dataset_name
+
 def get_results_files_dict(explanation_method: str, models: list[str], datasets: list[str], distance_measure:str="euclidean", lime_features = 10) -> dict:
     results_folder = f"/home/grotehans/xai_locality/results/{explanation_method}"
     results_files_dict = {}
+    if type(models) == str:
+        models = [models]
+    if type(datasets) == str:
+        datasets = [datasets]
     for model in models:
         results_files_dict[model] = {}
         for dataset in datasets:
@@ -32,7 +79,7 @@ def get_results_files_dict(explanation_method: str, models: list[str], datasets:
             else:
                 condition = lambda x: x.endswith("fraction.npz")
             res = [os.path.join(path_to_results, f) for f in os.listdir(f"{results_folder}/{model}/{dataset}") if file_matching(f, distance_measure, condition=condition)]
-            if len(res) > 0 and explanation_method == "lime":
+            if explanation_method == "lime":
                 results_files_dict[model][dataset] = res
             elif len(res) > 0:
                 results_files_dict[model][dataset] = res[0]
@@ -41,12 +88,9 @@ def get_results_files_dict(explanation_method: str, models: list[str], datasets:
     for model in results_files_dict:
         keys = list(results_files_dict[model].keys())
         for key in keys:
-            if "synthetic_data/n_feat50_n_informative2" in key:
-                results_files_dict[model]["synthetic (d:50, inf feat.: 2)"] = results_files_dict[model].pop(key)
-            elif "synthetic_data/n_feat50_n_informative10" in key:
-                results_files_dict[model]["synthetic (d:50, inf feat.: 10)"] = results_files_dict[model].pop(key)
-            elif "synthetic_data/n_feat100" in key:
-                results_files_dict[model]["synthetic (d:100, inf feat.: 50)"] = results_files_dict[model].pop(key)
+            if "synthetic_data/" in key:
+                friendly_name = get_synthetic_dataset_friendly_name(key)
+                results_files_dict[model][friendly_name] = results_files_dict[model].pop(key)
                 
     return results_files_dict
 
@@ -63,7 +107,7 @@ def load_and_get_non_zero_cols(data_path):
 
     Returns:
     tuple: A tuple containing:
-        - A tuple of numpy arrays for the following metrics, each truncated to non-zero columns:
+        - A tuple of numpy arrays for the following metrics, each truncated to non-zero columns: shapes: kNN x testpoints
             - accuracy (0)
             - precision (1)
             - recall (2)
@@ -125,24 +169,67 @@ def load_and_get_non_zero_cols(data_path):
             ratio_all_ones_local
             ), n_points_in_ball
 
+def load_and_get_non_zero_cols_regression(data_path):
+    """
+    Load results from a numpy file and extract non-zero columns for various metrics.
+
+    Parameters:
+    data_path (str): Path to the numpy file containing the results.
+
+    Returns:
+    tuple: A tuple containing:
+        - A tuple of numpy arrays for the following metrics, each truncated to non-zero columns: shapes: kNN x testpoints
+            - mse (0)
+            - mae (1)
+            - r2 (2)
+            - mse_constant_clf (3)
+            - mae_constant_clf (4)
+            - variance_logit (5)
+            - radius (6)
+        - n_points_in_ball (numpy array): Number of points in the ball.
+    """
+    results = np.load(data_path, allow_pickle=True)
+    # nr_non_zero_columns = get_non_zero_cols(results['mse']) 
+    n_points_in_ball = results['n_points_in_ball']
+    # Extract metrics for regression tasks
+    nr_non_zero_columns = get_non_zero_cols(results['mse']) 
+    n_points_in_ball = results['n_points_in_ball']
+    
+    # Extract the metrics needed for regression analysis
+    mse = results['mse']#[:, :nr_non_zero_columns]
+    mae = results['mae']#[:, :nr_non_zero_columns]
+    r2 = results['r2']#[:, :nr_non_zero_columns]
+    mse_constant_clf = results['mse_constant_clf']#[:, :nr_non_zero_columns]
+    mae_constant_clf = results['mae_constant_clf']#[:, :nr_non_zero_columns]
+    variance_logit = results.get('variance_logit', None)
+    if variance_logit is not None:
+        variance_logit = variance_logit#[:, :nr_non_zero_columns]
+    radius = results['radius']#[:, :nr_non_zero_columns]
+
+    return (mse, mae, r2,
+            mse_constant_clf, mae_constant_clf,
+            variance_logit, radius), n_points_in_ball
 
 
-def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidean"):
+
+
+def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidean", regression=False):
     distance_measure = distance_measure.lower()
+    extra_str = "_regression" if regression else ""
     if synthetic:
         # Get dataset name without synthetic_data/ prefix
         dataset_name = dataset.split('/')[-1]
         file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"synthetic_data/{dataset_name}/kNN_on_model_preds_{model}_{dataset_name}_"
+                    f"synthetic_data/{dataset_name}/kNN{extra_str}_on_model_preds_{model}_{dataset_name}_"
                     f"normalized_tensor_frame_dist_measure-{distance_measure}_random_seed-42.npz")
     else:
-        if model == "LogisticRegression":
+        if model == "LogReg" or model == "LinReg":
             file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"{dataset}/kNN_on_model_preds_{model}_LightGBM_{dataset}_normalized_data_"
+                    f"{dataset}/kNN{extra_str}_on_model_preds_{model}_LightGBM_{dataset}_normalized_data_"
                     f"dist_measure-{distance_measure}_random_seed-42.npz")
         else: 
             file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"{dataset}/kNN_on_model_preds_{model}_{model}_{dataset}_normalized_data_"
+                    f"{dataset}/kNN{extra_str}_on_model_preds_{model}_{model}_{dataset}_normalized_data_"
                     f"dist_measure-{distance_measure}_random_seed-42.npz")
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
@@ -177,7 +264,7 @@ def load_model_performance(model, dataset, synthetic=False):
         dataset_name = dataset.split('/')[-1]
         file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/synthetic_data/{dataset_name}/model_performance_{model}_{dataset_name}_normalized_tensor_frame_random_seed-42.npz"
     else:
-        if model == "LogisticRegression":
+        if model == "LogReg":
             file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_LightGBM_{dataset}_normalized_data_random_seed-42.npz"
         else:
             file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_{model}_{dataset}_normalized_data_random_seed-42.npz"
@@ -237,3 +324,31 @@ def get_best_metrics_of_knn(model, dataset, metric_sr_ls, synthetic=False, dista
         best_idx = np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
         metrics_res.append((best_metric, best_idx))
     return metrics_res if len(metrics_res) > 1 else metrics_res[0]
+
+def get_best_metrics_of_knn_regression(model, dataset, metric_sr_ls, synthetic=False, distance_measure="euclidean"):
+    distance_measure = distance_measure.lower()
+    metric_str_to_key_pair = {
+        "MSE $g_x$": ("res_regression", 0),
+        "MAE $g_x$": ("res_regression", 1),
+        "R2 $g_x$": ("res_regression", 2),
+        "MSE true labels": ("res_regression_true_y", 0),
+        "MAE true labels": ("res_regression_true_y", 1),
+        "R2 true labels": ("res_regression_true_y", 2),
+    }
+    if type(metric_sr_ls) == str:
+        metric_sr_ls = [metric_sr_ls]
+
+    res = load_knn_results(model, dataset, synthetic, distance_measure, regression = True)
+    if res is None:
+        return None
+    metrics_res = []
+    for metric_sr in metric_sr_ls:
+        if metric_sr not in metric_str_to_key_pair:
+            metrics_res.append((np.nan, np.nan))
+            continue
+        metric_key_pair = metric_str_to_key_pair[metric_sr]
+        best_metric = np.max(res[metric_key_pair[0]][:, metric_key_pair[1]])
+        best_idx = np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
+        metrics_res.append((best_metric, best_idx))
+    return metrics_res if len(metrics_res) > 1 else metrics_res[0]
+
