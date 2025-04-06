@@ -23,7 +23,7 @@ class LogReg(nn.Module):
         return self.sigmoid(self.linear(x))
     
 class LinReg(nn.Module):
-    def __init__(self, input_size):
+    def __init__(self, input_size, output_size=1):
         super(LinReg, self).__init__()
         self.linear = nn.Linear(input_size, 1)  # One output neuron
     
@@ -48,9 +48,13 @@ class PytorchHandler(BaseModelHandler):
             X = torch.Tensor(X)
         if X.dtype == torch.double:
             X = X.float()
-        if (not self.args.regression) and self.args.method == "lime":
-            with torch.no_grad():
-                preds = self.model(X).numpy()
-                return np.column_stack((1 - preds, preds)) if preds.shape[1] == 1 else preds
+        if self.args.method == "lime":
+            if self.args.regression:
+                with torch.no_grad():
+                    return self.model(X)
+            else:
+                with torch.no_grad():
+                    preds = self.model(X).numpy()
+                    return np.column_stack((1 - preds, preds)) if preds.shape[1] == 1 else preds
         else:
             return self.model(X)

@@ -2,7 +2,7 @@ from torch_frame.nn import Trompt, ExcelFormer, MLP, TabNet, TabTransformer, FTT
 from src.model.pytorch_frame_lgm import PTFrame_LightGBMHandler
 from src.model.pytorch_frame_xgboost import PTFrame_XGBoostHandler
 from src.model.pytorch_frame_handler import TorchFrameHandler
-from src.model.pytorch_models_handler import PytorchHandler, LogReg
+from src.model.pytorch_models_handler import PytorchHandler, LogReg, LinReg
 
 class ModelHandlerFactory:
     MODEL_HANDLERS = {
@@ -27,6 +27,7 @@ class ModelHandlerFactory:
     }
     TORCH_MODLES = {
         "LogReg": LogReg, 
+        "LinReg": LinReg,
     }
     @staticmethod
     def get_handler(args):

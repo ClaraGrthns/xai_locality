@@ -2,6 +2,7 @@ import numpy as np
 import os
 from torch.utils.data import DataLoader, Subset
 import time 
+import torch
 
 class BaseExplanationMethodHandler:
     def __init__(self,args):
@@ -74,9 +75,11 @@ class BaseExplanationMethodHandler:
                 n_points_in_ball, 
                 tree,
             )
-            
+            with torch.no_grad():
+                y_preds = predict_fn(batch)
+
             # Calculate metrics from chunk results
-            metrics = self._calculate_metrics(chunk_result, n_points_in_ball)
+            metrics = self._calculate_metrics(chunk_result, n_points_in_ball, y_preds)
             
             # Update results dictionary
             self._update_results_dict(results, metrics, chunk_start, chunk_end)
@@ -89,7 +92,7 @@ class BaseExplanationMethodHandler:
 
         return results
     
-    def _calculate_metrics(self, chunk_result, n_points_in_ball):
+    def _calculate_metrics(self, chunk_result, n_points_in_ball, y_preds):
         """
         Calculate various metrics from chunk results.
         
@@ -114,6 +117,7 @@ class BaseExplanationMethodHandler:
         
         mse = np.cumsum(np.square(model_preds - local_preds), axis=1) / kNNs
         mae = np.cumsum(np.abs(model_preds - local_preds), axis=1) / kNNs
+        mse_constant_clf = np.cumsum(np.square(model_preds - mean_model_preds), axis=1) / kNNs
         var_model_preds = np.cumsum(np.square(model_preds - mean_model_preds), axis=1) / kNNs
         r2 = 1 - (mse / var_model_preds)
         
@@ -124,6 +128,18 @@ class BaseExplanationMethodHandler:
             "variance_logit": var_model_preds.T,
             "radius": max_distances.T,
         }
+        if self.args.regression:
+            if type(y_preds) == torch.Tensor:
+                y_preds = y_preds.cpu().numpy()
+            if y_preds.ndim == 1:
+                y_preds = y_preds[:, None]
+            mse_constant_clf = np.cumsum(np.square(model_preds - y_preds), axis=1) / kNNs #(num test samples,  num closest points)-(num test samples,1)
+            mae_constant_clf = np.cumsum(np.abs(model_preds - y_preds), axis=1) / kNNs #(num test samples,  num closest points)-(num test samples,1)
+            return {**res_dict_regression,
+                    "mse_constant_clf": mse_constant_clf.T,
+                    "mae_constant_clf": mae_constant_clf.T,
+            }
+           
         if not self.args.regression:
             mean_model_preds_probs = np.cumsum(model_probs, axis=1) / kNNs
             acc = np.cumsum((model_binary_preds == local_binary_preds), axis=1) / kNNs
@@ -154,8 +170,6 @@ class BaseExplanationMethodHandler:
                     "ratio_all_ones_local": all_ones_local_binary_preds.T,
                     "gini": gini_impurity.T
             }
-        else:
-            return res_dict_regression
         
     
     def _update_results_dict(self, results, metrics, chunk_start, chunk_end):
@@ -247,7 +261,10 @@ class BaseExplanationMethodHandler:
         }
 
         if self.args.regression:
-            results = results_regression
+            results = {**results_regression, 
+                       "mse_constant_clf": np.zeros((num_fractions, self.args.max_test_points)),
+                       "mae_constant_clf": np.zeros((num_fractions, self.args.max_test_points)),
+            }
         else:
             results = {**results_classification, **results_regression}
             

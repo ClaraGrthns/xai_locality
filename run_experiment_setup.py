@@ -8,12 +8,11 @@ import time
 
 from src.train.custom_data_frame_benchmark import main_deep_models, main_gbdt
 from knn_vs_accuracy import main as main_knn_vs_accuracy
-from knn_on_model_preds import main as main_knn_on_model_preds
-from knn_on_model_preds_regression import main as main_knn_on_model_preds_regression
+from knn_analyzer import main as main_knn_analyzer
 from src.dataset.synthetic_data import get_setting_name_classification, get_setting_name_regression
 from src.utils.misc import set_random_seeds
 
-CUSTOM_MODELS = ["LogReg"]
+CUSTOM_MODELS = ["LogReg", "LinReg"]
 GBT_MODELS = ["LightGBM", "XGBoost", "CatBoost"]
 BASEDIR = str(Path(__file__).resolve().parent)
 print(f"Base directory: {BASEDIR}")
@@ -37,7 +36,7 @@ def parse_args():
     
     # Model configuration
     parser.add_argument("--model_type", type=str, 
-                        choices=["LightGBM", "XGBoost", "ExcelFormer", "MLP", "TabNet", "Trompt", "FTTransformer", "ResNet", "LogReg", "TabTransformer"],
+                        choices=["LightGBM", "XGBoost", "ExcelFormer", "MLP", "TabNet", "Trompt", "FTTransformer", "ResNet", "LogReg", "LinReg", "TabTransformer"],
                         help="Type of model to train/use")
     parser.add_argument("--regression", action="store_true",)
     parser.add_argument("--regression_model", type=str)
@@ -170,6 +169,8 @@ def check_model_exists(args):
 def get_data_path(args):
     """Get data path based on model type and dataset."""
     if args.use_benchmark:
+        if args.model_type in CUSTOM_MODELS:
+            return osp.join(args.data_folder, f"LightGBM_{args.setting}_normalized_data.pt")
         return osp.join(args.data_folder, f"{args.model_type}_{args.setting}_normalized_data.pt")
     else:
         # For synthetic data, check if it's ExcelFormer which has a special path format
@@ -262,10 +263,7 @@ def run_knn_analysis(args):
     print("Running KNN analysis on model predictions...")
     knn_args = copy.deepcopy(args)
     knn_args.results_path = get_results_path(args, "knn")
-    if args.regression:
-        main_knn_on_model_preds_regression(knn_args)
-    else:
-        main_knn_on_model_preds(knn_args)
+    main_knn_analyzer(knn_args)
 
 def run_knn_vs_local_model_analysis(args):
     """Run fraction vs accuracy analysis."""
@@ -282,20 +280,24 @@ def main():
     set_random_seeds(args.random_seed)
     args.seed = args.random_seed
     
-    # # Convert command line arguments to direct assignments
-    # args.model_type = "MLP"
-    # args.setting = "nyc-taxi-green-dec-2016"
-    # args.method = "gradient_methods"
-    # args.distance_measure = "euclidean"
-    # args.regression = True
-    # args.use_benchmark = True
-    # args.task_type = "regression"
-    # args.scale = "large"
-    # args.idx = 2
-    # args.num_trials = 5
-    # args.num_repeats = 5
-    # args.epochs = 10
-    # args.gradient_method = "IG"
+    if args.debug:  
+        args.model_type = "LinReg"
+        args.setting = "airlines_DepDelay_1M"
+        args.method = "gradient_methods"
+        args.distance_measure = "euclidean"
+        args.regression = True
+        args.force = True
+        args.use_benchmark = True
+        args.task_type = "regression"
+        args.scale = "large"
+        args.idx = 0
+        args.num_trials = 5
+        args.num_repeats = 1
+        args.epochs = 25
+        args.gradient_method = "IG"
+        # args.force_training = True
+        # args.force_overwrite = True
+
     
     if args.model_folder is None:
         args.model_folder = os.path.join(BASEDIR, "pretrained_models")

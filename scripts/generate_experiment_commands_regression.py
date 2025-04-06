@@ -1,10 +1,32 @@
 import os
 import argparse
 from pathlib import Path
+import sys
+sys.path.append(os.path.join(os.getcwd(), '..'))
+
+def get_setting_name_regression(regression_mode,
+                                n_features,
+                                n_informative, 
+                                n_samples, 
+                                noise,
+                                bias,
+                                tail_strength,
+                                coef,
+                                effective_rank,
+                                random_seed):
+    setting_name = (f'regression_{regression_mode}_n_feat{n_features}_n_informative{n_informative}_n_samples{n_samples}_'
+                    f'noise{noise}_bias{bias}_random_state{random_seed}')
+    
+    # Add additional parameters if they differ from defaults
+    if effective_rank is not None:
+        setting_name += f'_effective_rank{effective_rank}_tail_strength{tail_strength}'
+    if coef:
+        setting_name += '_coefTrue'
+    return setting_name
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Generate Python commands for running experiments")
-    parser.add_argument('--output_dir', type=str, default='experiment_commands',
+    parser.add_argument('--output_dir', type=str, default='experiment_commands_regression',
                         help='Directory to save the generated command files')
     parser.add_argument('--base_dir', type=str, default=str(Path(__file__).resolve().parent.parent),
                         help='Base directory for the experiment')
@@ -26,7 +48,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     # Create directory structure - organize by method first
     if method == "gradient_methods" and gradient_method:
         if gradient_method == "IG":
-            method_dir = os.path.join(output_dir, method, "integrated_gradients")
+            method_dir = os.path.join(output_dir, method, "integrated_gradient")
         else:
             method_dir = os.path.join(output_dir, method, "smooth_grad")
     else:
@@ -37,7 +59,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     
     # Then by dataset
     if is_synthetic:
-        dataset_dir = os.path.join(model_dir, "synthetic_data", setting)
+        dataset_dir = os.path.join(model_dir, "regression_synthetic_data" ,  setting)
     else:
         dataset_dir = os.path.join(model_dir, setting)
     
@@ -47,96 +69,59 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     os.makedirs(model_dir, exist_ok=True)
     
     # Format args for the command
-    base_args = f"--model_type {model} --setting {setting} --method {method} --distance_measure {distance_measure}"
+    base_args = f"--model_type {model} --setting {setting} --method {method} --distance_measure {distance_measure} --regression --force"
     
     if is_synthetic:
         # Use the synthetic parameters directly instead of parsing them from the setting name
         if synthetic_params is not None:
             # Extract all parameters with proper defaults
-            n_features = synthetic_params.get('n_features', 50)
+            regression_mode = synthetic_params.get('regression_mode', True)
+            n_features = synthetic_params.get('n_features', 100)
             n_informative = synthetic_params.get('n_informative', 10)
-            n_redundant = synthetic_params.get('n_redundant', 30)
-            n_repeated = synthetic_params.get('n_repeated', 0)
-            n_classes = synthetic_params.get('n_classes', 2)
             n_samples = synthetic_params.get('n_samples', 100000)
-            n_clusters_per_class = synthetic_params.get('n_clusters_per_class', 3)
-            class_sep = synthetic_params.get('class_sep', 0.9)
-            flip_y = synthetic_params.get('flip_y', 0.05)
+            noise = synthetic_params.get('noise', 0.0)
+            bias = synthetic_params.get('bias', 0.0)
             random_seed = synthetic_params.get('random_seed', 42)
-            hypercube = synthetic_params.get('hypercube', False)
+            data_folder = synthetic_params.get('data_folder', 'data')
+            test_size = synthetic_params.get('test_size', 0.4)
+            val_size = synthetic_params.get('val_size', 0.1)
+            tail_strength = synthetic_params.get('tail_strength', 0.5)
+            coef = synthetic_params.get('coef', False)
+            effective_rank = synthetic_params.get('effective_rank', None)
             
             # Add synthetic data parameters
-            synthetic_args = (f" --n_features {n_features}"
+            synthetic_args = (f" --regression_mode {regression_mode}"
+                             f" --n_features {n_features}"
                              f" --n_informative {n_informative}"
-                             f" --n_redundant {n_redundant}"
-                             f" --n_repeated {n_repeated}"
-                             f" --n_classes {n_classes}"
                              f" --n_samples {n_samples}"
-                             f" --n_clusters_per_class {n_clusters_per_class}"
-                             f" --class_sep {class_sep}"
-                             f" --flip_y {flip_y}"
+                             f" --noise {noise}"
+                             f" --bias {bias}"
                              f" --random_seed {random_seed}"
+                             f" --data_folder {data_folder}"
+                             f" --test_size {test_size}"
+                             f" --val_size {val_size}"
+                             f" --tail_strength {tail_strength}"
                              )
-            
-            # Add hypercube flag ONLY if it's True
-            if hypercube:
-                synthetic_args += " --hypercube"
-        else:
-            # If no synthetic_params provided, parse from the setting name
-            params = {}
-            for param in setting.split('_'):
-                if param.startswith('n_feat'):
-                    params['n_features'] = param[6:]
-                elif param.startswith('n_informative'):
-                    params['n_informative'] = param[13:]
-                elif param.startswith('n_redundant'):
-                    params['n_redundant'] = param[11:]
-                elif param.startswith('n_repeated'):
-                    params['n_repeated'] = param[10:]
-                elif param.startswith('n_classes'):
-                    params['n_classes'] = param[9:]
-                elif param.startswith('n_samples'):
-                    params['n_samples'] = param[9:]
-                elif param.startswith('n_clusters_per_class'):
-                    params['n_clusters_per_class'] = param[20:]
-                elif param.startswith('class_sep'):
-                    params['class_sep'] = param[9:]
-                elif param.startswith('flip_y'):
-                    params['flip_y'] = param[6:]
-                elif param.startswith('random_state'):
-                    params['random_seed'] = param[12:]
-                elif param.startswith('hypercube'):
-                    params['hypercube'] = param[9:]
-            
-            # Add synthetic data parameters from parsed setting
-            synthetic_args = (f" --n_features {params.get('n_features', 50)}"
-                             f" --n_informative {params.get('n_informative', 10)}"
-                             f" --n_redundant {params.get('n_redundant', 30)}"
-                             f" --n_repeated {params.get('n_repeated', 0)}"
-                             f" --n_classes {params.get('n_classes', 2)}"
-                             f" --n_samples {params.get('n_samples', 100000)}"
-                             f" --n_clusters_per_class {params.get('n_clusters_per_class', 3)}"
-                             f" --class_sep {params.get('class_sep', 0.9)}"
-                             f" --flip_y {params.get('flip_y', 0.05)}"
-                             f" --random_seed {params.get('random_seed', 42)}"
-                             )
-            
-            if params.get('hypercube', "False").lower() == "true":
-                synthetic_args += " --hypercube"
-            
-        base_args += synthetic_args
-        base_args += " --num_trials 15 --num_repeats 1 --epochs 10 --optimize"
+            if coef:
+                synthetic_args += " --coef"
+            if effective_rank is not None:
+                synthetic_args += f" --effective_rank {effective_rank}"
+            base_args += synthetic_args
     else:
         # For benchmark datasets
-        if setting == "jannis":
-            base_args += " --include_trn --include_val  --scale medium --idx 6  --num_trials 5 --num_repeats 1 --epochs 25"
-        elif setting == "MiniBooNE":
-            base_args += " --include_val --scale medium --idx 3 --num_trials 5 --num_repeats 1 --epochs 25"
-        elif setting == "higgs":
-            base_args += " --use_benchmark --task_type binary_classification --scale large --idx 0 --num_trials 5 --num_repeats 1 --epochs 10"
-        base_args += " --use_benchmark --task_type binary_classification"
+        if setting == "airlines_DepDelay_1M":
+            base_args += " --use_benchmark --task_type regression --scale large --idx 0 --num_trials 5 --num_repeats 1 --epochs 25"
+        elif setting == "delays_zurich_transport":
+            base_args += " --use_benchmark --task_type regression --scale large --idx 1 --num_trials 5 --num_repeats 1 --epochs 25"
+        elif setting == "nyc-taxi-green-dec-2016":
+            base_args += " --use_benchmark --task_type regression --scale large --idx 2 --num_trials 5 --num_repeats 1 --epochs 25"
+        elif setting == "microsoft":
+            base_args += " --use_benchmark --task_type regression --scale large --idx 3 --num_trials 5 --num_repeats 1 --epochs 25"
+        elif setting == "yahoo":
+            base_args += " --use_benchmark --task_type regression --scale large --idx 4 --num_trials 5 --num_repeats 1 --epochs 25"
+        elif setting == "year":
+            base_args += " --use_benchmark --task_type regression --scale large --idx 5 --num_trials 5 --num_repeats 1 --epochs 25"
     
-    # Method-specific parameters
     if method == "lime":
         base_args += f" --kernel_width {kernel_width} --num_lime_features {num_lime_features}"
     elif method == "gradient_methods" and gradient_method:
@@ -154,7 +139,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
         base_args += " --skip_fraction"
     
     # Create the full command
-    command = f"/home/grotehans/miniconda3/envs/tab_models/bin/python run_experiment_setup.py -u {base_args}"
+    command = f"/home/grotehans/miniconda3/envs/tab_models/bin/python -u run_experiment_setup.py {base_args}"
     
     # Define filename - include distance measure to distinguish files
     distance_suffix = f"_{distance_measure}"
@@ -190,251 +175,39 @@ def main():
     # Define synthetic configurations with explicit parameters
     synthetic_configs = [
         {
-            'n_features': 50, 
-            'n_informative': 2, 
-            'n_redundant': 30, 
-            'n_repeated': 0, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 2, 
-            'class_sep': 0.9, 
-            'flip_y': 0.01, 
+            'regression_mode': "linear",
+            'n_features': 100,
+            'n_informative': 10,
+            'n_samples': 100000,
+            'bias': 1.0,
+            'noise': 0.0,
             'random_seed': 42,
-            'hypercube': True
+            'tail_strength': 0.5,
+            'effective_rank': None, 
+            'coef': True
         },
-        {
-            'n_features': 50, 
-            'n_informative': 10, 
-            'n_redundant': 30, 
-            'n_repeated': 0, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 3, 
-            'class_sep': 0.9, 
-            'flip_y': 0.01, 
-            'random_seed': 42,
-            'hypercube': True
-        },
-        {
-            'n_features': 100, 
-            'n_informative': 50, 
-            'n_redundant': 30, 
-            'n_repeated': 0, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 3, 
-            'class_sep': 0.9, 
-            'flip_y': 0.01, 
-            'random_seed': 42,
-            'hypercube': True
-        },
-        {
-            'n_features': 25, 
-            'n_informative': 5, 
-            'n_redundant': 15, 
-            'n_repeated': 2, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 4, 
-            'class_sep': 0.8, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-        {
-            'n_features': 25, 
-            'n_informative': 10, 
-            'n_redundant': 5, 
-            'n_repeated': 2, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 4, 
-            'class_sep': 0.8, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': True
-        },
-        {
-            'n_features': 55, 
-            'n_informative': 30, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 10, 
-            'class_sep': 0.6, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-        {
-            'n_features': 55, 
-            'n_informative': 30, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 10, 
-            'class_sep': 0.7, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': True
-        },
-        {
-            'n_features': 55, 
-            'n_informative': 30, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 5, 
-            'class_sep': 0.8, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-        {
-            'n_features': 40, 
-            'n_informative': 20, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 10, 
-            'class_sep': 0.7, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-        {
-            'n_features': 40, 
-            'n_informative': 20, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 10, 
-            'class_sep': 0.7, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': True
-        },
-        {
-            'n_features': 55, 
-            'n_informative': 20, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 20, 
-            'class_sep': 0.3, 
-            'flip_y': 0.05, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-        {
-            'n_features': 100, 
-            'n_informative': 60, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 50, 
-            'class_sep': 0.3, 
-            'flip_y': 0.1, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-         {
-            'n_features': 100, 
-            'n_informative': 10, 
-            'n_redundant': 50, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 50, 
-            'class_sep': 0.8, 
-            'flip_y': 0.1, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-        {
-            'n_features': 200, 
-            'n_informative': 20, 
-            'n_redundant': 50, 
-            'n_repeated': 0, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 50, 
-            'class_sep': 0.5, 
-            'flip_y': 0.1, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-
-         {
-            'n_features': 100, 
-            'n_informative': 60, 
-            'n_redundant': 5, 
-            'n_repeated': 5, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 20, 
-            'class_sep': 0.2, 
-            'flip_y': 0.1, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-
-        {
-            'n_features': 50, 
-            'n_informative':10, 
-            'n_redundant': 10, 
-            'n_repeated': 0, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 40, 
-            'class_sep': 0.2, 
-            'flip_y': 0.01, 
-            'random_seed': 42,
-            'hypercube': False
-        },
-        {
-            'n_features': 50, 
-            'n_informative':10, 
-            'n_redundant': 10, 
-            'n_repeated': 0, 
-            'n_classes': 2, 
-            'n_samples': 100000, 
-            'n_clusters_per_class': 10, 
-            'class_sep': 0.2, 
-            'flip_y': 0.1, 
-            'random_seed': 42,
-            'hypercube': False
-        },
+        
     ]
     
     # Generate setting names from configurations
     synthetic_settings = []
     for config in synthetic_configs:
-        setting = (f"n_feat{config['n_features']}_"
-                   f"n_informative{config['n_informative']}_"
-                   f"n_redundant{config['n_redundant']}_"
-                   f"n_repeated{config['n_repeated']}_"
-                   f"n_classes{config['n_classes']}_"
-                   f"n_samples{config['n_samples']}_"
-                   f"n_clusters_per_class{config['n_clusters_per_class']}_"
-                   f"class_sep{config['class_sep']}_"
-                   f"flip_y{config['flip_y']}_"
-                   f"random_state{config['random_seed']}")
-        if not config['hypercube']:
-            setting += f"_hypercube{config['hypercube']}"
+        setting = get_setting_name_regression(regression_mode=config['regression_mode'],
+                                              n_features=config['n_features'],
+                                              n_informative=config['n_informative'],
+                                              n_samples=config['n_samples'],
+                                              noise=config['noise'],
+                                              bias=config['bias'],
+                                              tail_strength=config['tail_strength'],
+                                              effective_rank=config['effective_rank'],
+                                              coef=config['coef'],
+                                              random_seed=config['random_seed'])
         synthetic_settings.append((setting, config))
     
-    models = ["LightGBM", "MLP", "LogReg",  "TabNet", "FTTransformer", "ResNet", "TabTransformer"]
-    standard_settings = ["higgs", "jannis"]
+    models = ["LightGBM", "MLP", "LinReg",  "TabNet", "FTTransformer", "ResNet", "TabTransformer"]
+    standard_settings = ["airlines_DepDelay_1M", "delays_zurich_transport", "nyc-taxi-green-dec-2016", "microsoft", "yahoo", "year"]
     methods = ["lime", "gradient_methods"]
-    distance_measures = ["euclidean", "manhattan", "cosine"]
+    distance_measures = ["euclidean"]
     
     # Generate all command files
     created_files = []
@@ -630,14 +403,14 @@ def main():
                     
                     # Synthetic datasets
                     for dataset, _ in synthetic_settings:
-                        dataset_dir = os.path.join(output_dir, method, gradient_dir, model, "synthetic_data", dataset)
-                        dataset_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/synthetic_data/{dataset}/" in f]
+                        dataset_dir = os.path.join(output_dir, method, gradient_dir, model, "regression_synthetic_data",  dataset)
+                        dataset_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/regression_synthetic_data/{dataset}/" in f]
                         
                         if dataset_files:
                             dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
                             with open(dataset_run_all, "w") as f:
                                 f.write("#!/bin/bash\n\n")
-                                f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}/synthetic_data/{dataset}\n\n")
+                                f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}/regression_synthetic_data/{dataset}\n\n")
                                 for file in dataset_files:
                                     f.write(f"{file}\n")
                             
@@ -663,14 +436,14 @@ def main():
                 
                 # Synthetic datasets
                 for dataset, _ in synthetic_settings:
-                    dataset_dir = os.path.join(output_dir, method, model, "synthetic_data", dataset)
-                    dataset_files = [f for f in created_files if f"{method}/{model}/synthetic_data/{dataset}/" in f]
+                    dataset_dir = os.path.join(output_dir, method, model, "regression_synthetic_data",  dataset)
+                    dataset_files = [f for f in created_files if f"{method}/{model}/regression_synthetic_data/{dataset}/" in f]
                     
                     if dataset_files:
                         dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
                         with open(dataset_run_all, "w") as f:
                             f.write("#!/bin/bash\n\n")
-                            f.write(f"# Run all experiments for {method}/{model}/synthetic_data/{dataset}\n\n")
+                            f.write(f"# Run all experiments for {method}/{model}/regression_synthetic_data/{dataset}\n\n")
                             for file in dataset_files:
                                 f.write(f"{file}\n")
                         
