@@ -18,6 +18,31 @@ DATASET_TO_NUM_FEATURES = {"higgs": 24,
 def file_matching(file, distance_measure, condition=lambda x: True):
         return condition(file) and distance_measure in file
 
+
+def get_kernel_widths_to_filepaths(files):
+    """Extract kernel widths from file paths."""
+    if not isinstance(files, list):
+        files = [files]
+    widths = []
+    for f in files:
+        match = re.search(r'kernel_width-(\d+\.?\d*)', str(f))
+        widths.append((float(match.group(1)), f) if match else (None, f))
+    return sorted(widths, key=lambda x: x[0])
+
+def get_synthetic_dataset_mapping(datasets, regression=False):
+    """Generate a mapping between user-friendly names and full synthetic dataset names"""
+    mapping = {}
+    if type(datasets) == str:
+        datasets = [datasets]
+    for dataset in datasets:
+        if 'syn' in dataset:
+            if regression:
+                friendly_name = get_synthetic_dataset_friendly_name_regression(dataset)
+            else:
+                friendly_name = get_synthetic_dataset_friendly_name(dataset)
+            mapping[friendly_name] = dataset
+    return mapping
+
 def get_synthetic_dataset_friendly_name(dataset_name, pattern=None):
     """Generate a user-friendly name for synthetic datasets using regex to extract parameters"""
     if pattern is None:
@@ -35,7 +60,7 @@ def get_synthetic_dataset_friendly_name(dataset_name, pattern=None):
 def get_synthetic_dataset_friendly_name_regression(dataset_name, pattern=None):
     """Generate a user-friendly name for synthetic regression datasets using regex to extract parameters"""
     if pattern is None:
-        pattern = r'regression_(\w+)_n_feat(\d+)_n_informative(\d+)_n_samples(\d+)_noise([\d\.]+)_bias([\d\.]+)_random_state(\d+)'
+        pattern = r'regression_(\w+)_n_feat(\d+)_n_informative(\d+)_n_samples(\d+)_noise([\d\.]+)_bias([\d\.]+)(?:_random_state(\d+))?(?:_effective_rank(\d+)_tail_strength([\d\.]+))?'
     match = re.search(pattern, dataset_name.split("/")[-1])
     if match:
         mode = match.group(1)    # regression mode (e.g., 'linear', 'friedman')
@@ -46,16 +71,15 @@ def get_synthetic_dataset_friendly_name_regression(dataset_name, pattern=None):
         bias = match.group(6)    # bias
         # Check for additional parameters
         additional = ""
-        
         # Extract effective rank number if present
         effective_rank_match = re.search(r'effective_rank(\d+)', dataset_name)
         if effective_rank_match:
             rank_num = effective_rank_match.group(1)
             additional += f", er:{rank_num}"
-        return f"syn-reg {mode} (d:{d}, if:{i}, b: {bias}, n:{n}, ns:{noise}{additional})"
+        return f"syn-reg {mode} \n(d:{d}, if:{i}, b: {bias}, ns:{noise}{additional})"
     return dataset_name
 
-def get_results_files_dict(explanation_method: str, models: list[str], datasets: list[str], distance_measure:str="euclidean", lime_features = 10) -> dict:
+def get_results_files_dict(explanation_method: str, models: list[str], datasets: list[str], distance_measure:str="euclidean", lime_features = 10, sampled_around_instance=False) -> dict:
     results_folder = f"/home/grotehans/xai_locality/results/{explanation_method}"
     results_files_dict = {}
     if type(models) == str:
@@ -68,37 +92,41 @@ def get_results_files_dict(explanation_method: str, models: list[str], datasets:
             path_to_results = os.path.join(results_folder, model, dataset)
             if not os.path.exists(path_to_results):
                 continue
-            if explanation_method == "lime":
-                if isinstance(lime_features, int) and lime_features != 10:
-                    condition = lambda x: f"num_features-{lime_features}.npz" in x
-                elif lime_features == "all":
-                    num_feat = DATASET_TO_NUM_FEATURES[dataset]
-                    condition = lambda x: f"num_features-{num_feat}.npz" in x
-                else:
-                    condition = lambda x: x.endswith("fraction.npz")
+            if sampled_around_instance:
+                condition = lambda x: x.startswith("sampled") and x.endswith("fraction.npz")
             else:
-                condition = lambda x: x.endswith("fraction.npz")
+                if explanation_method == "lime":
+                    if isinstance(lime_features, int) and lime_features != 10:
+                        condition = lambda x: x.startswith("fractions") and f"num_features-{lime_features}.npz" in x
+                    elif lime_features == "all":
+                        num_feat = DATASET_TO_NUM_FEATURES[dataset]
+                        condition = lambda x: (x.startswith("fractions") or x.startswith("regression")) and f"num_features-{num_feat}.npz" in x
+                    else:
+                        condition = lambda x: (x.startswith("fractions")or x.startswith("regression")) and x.endswith("fraction.npz")
+                else:
+                    condition = lambda x: (x.startswith("fractions") or x.startswith("regression")) and x.endswith("fraction.npz")
             res = [os.path.join(path_to_results, f) for f in os.listdir(f"{results_folder}/{model}/{dataset}") if file_matching(f, distance_measure, condition=condition)]
             if explanation_method == "lime":
                 results_files_dict[model][dataset] = res
             elif len(res) > 0:
                 results_files_dict[model][dataset] = res[0]
-    
     # Rename synthetic dataset keys
     for model in results_files_dict:
         keys = list(results_files_dict[model].keys())
         for key in keys:
-            if "synthetic_data/" in key:
+            if "regression_synthetic_data" in key:
+                friendly_name = get_synthetic_dataset_friendly_name_regression(key)
+                results_files_dict[model][friendly_name] = results_files_dict[model].pop(key)
+            elif "synthetic_data/" in key:
                 friendly_name = get_synthetic_dataset_friendly_name(key)
                 results_files_dict[model][friendly_name] = results_files_dict[model].pop(key)
-                
     return results_files_dict
 
 def get_non_zero_cols(array):
     return array.shape[1] - np.sum(np.all(array == 0, axis=0))
 
 
-def load_and_get_non_zero_cols(data_path):
+def load_results_clf(data_path):
     """
     Load results from a numpy file and extract non-zero columns for various metrics.
 
@@ -169,7 +197,7 @@ def load_and_get_non_zero_cols(data_path):
             ratio_all_ones_local
             ), n_points_in_ball
 
-def load_and_get_non_zero_cols_regression(data_path):
+def load_results_regression(data_path):
     """
     Load results from a numpy file and extract non-zero columns for various metrics.
 
@@ -192,49 +220,46 @@ def load_and_get_non_zero_cols_regression(data_path):
     # nr_non_zero_columns = get_non_zero_cols(results['mse']) 
     n_points_in_ball = results['n_points_in_ball']
     # Extract metrics for regression tasks
-    nr_non_zero_columns = get_non_zero_cols(results['mse']) 
     n_points_in_ball = results['n_points_in_ball']
     
     # Extract the metrics needed for regression analysis
-    mse = results['mse']#[:, :nr_non_zero_columns]
-    mae = results['mae']#[:, :nr_non_zero_columns]
-    r2 = results['r2']#[:, :nr_non_zero_columns]
-    mse_constant_clf = results['mse_constant_clf']#[:, :nr_non_zero_columns]
-    mae_constant_clf = results['mae_constant_clf']#[:, :nr_non_zero_columns]
+    mse = results['mse']
+    mae = results['mae']
+    r2 = results['r2']
+    mse_constant_clf = results['mse_constant_clf']
+    mae_constant_clf = results['mae_constant_clf']
     variance_logit = results.get('variance_logit', None)
     if variance_logit is not None:
-        variance_logit = variance_logit#[:, :nr_non_zero_columns]
-    radius = results['radius']#[:, :nr_non_zero_columns]
+        variance_logit = variance_logit
+    radius = results['radius']
 
     return (mse, mae, r2,
             mse_constant_clf, mae_constant_clf,
             variance_logit, radius), n_points_in_ball
 
 
-
-
 def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidean", regression=False):
     distance_measure = distance_measure.lower()
-    extra_str = "_regression" if regression else ""
+    suffix = "_regression" if regression else ""
+    prefix = "regression_" if regression else ""
     if synthetic:
         # Get dataset name without synthetic_data/ prefix
         dataset_name = dataset.split('/')[-1]
         file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"synthetic_data/{dataset_name}/kNN{extra_str}_on_model_preds_{model}_{dataset_name}_"
+                    f"{prefix}synthetic_data/{dataset_name}/kNN{suffix}_on_model_preds_{model}_{dataset_name}_"
                     f"normalized_tensor_frame_dist_measure-{distance_measure}_random_seed-42.npz")
     else:
         if model == "LogReg" or model == "LinReg":
             file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"{dataset}/kNN{extra_str}_on_model_preds_{model}_LightGBM_{dataset}_normalized_data_"
+                    f"{dataset}/kNN{suffix}_on_model_preds_{model}_LightGBM_{dataset}_normalized_data_"
                     f"dist_measure-{distance_measure}_random_seed-42.npz")
         else: 
             file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"{dataset}/kNN{extra_str}_on_model_preds_{model}_{model}_{dataset}_normalized_data_"
+                    f"{dataset}/kNN{suffix}_on_model_preds_{model}_{model}_{dataset}_normalized_data_"
                     f"dist_measure-{distance_measure}_random_seed-42.npz")
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
         return None
-    
     try:
         res = np.load(file_path, allow_pickle=True)
         return res
@@ -290,7 +315,7 @@ def get_performance_metrics_model(model, dataset, metric_str, synthetic=False):
         return float(res['classification_model'][metric_str_to_key_pair[metric_str]])
 
 
-def get_best_metrics_of_knn(model, dataset, metric_sr_ls, synthetic=False, distance_measure="euclidean"):
+def get_best_metrics_of_knn_clf(model, dataset, metric_sr_ls, synthetic=False, distance_measure="euclidean"):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
         "Accuracy $g_x$": ("classification", 0),
@@ -310,7 +335,6 @@ def get_best_metrics_of_knn(model, dataset, metric_sr_ls, synthetic=False, dista
     }
     if type(metric_sr_ls) == str:
         metric_sr_ls = [metric_sr_ls]
-
     res = load_knn_results(model, dataset, synthetic, distance_measure)
     if res is None:
         return None
@@ -329,6 +353,7 @@ def get_best_metrics_of_knn_regression(model, dataset, metric_sr_ls, synthetic=F
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
         "MSE $g_x$": ("res_regression", 0),
+        "RMSE $g_x$": ("res_regression", 0),
         "MAE $g_x$": ("res_regression", 1),
         "R2 $g_x$": ("res_regression", 2),
         "MSE true labels": ("res_regression_true_y", 0),
@@ -348,6 +373,8 @@ def get_best_metrics_of_knn_regression(model, dataset, metric_sr_ls, synthetic=F
             continue
         metric_key_pair = metric_str_to_key_pair[metric_sr]
         best_metric = np.max(res[metric_key_pair[0]][:, metric_key_pair[1]])
+        if metric_sr == "RMSE $g_x$":
+            best_metric = np.sqrt(best_metric)
         best_idx = np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
         metrics_res.append((best_metric, best_idx))
     return metrics_res if len(metrics_res) > 1 else metrics_res[0]
