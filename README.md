@@ -71,7 +71,7 @@ Using sklearns method: ```sklearn.datasets.make_classification```
 - Simple MLP
 
 #### Statistical ML Models (PyTorch)
-- LogisticRegression, implemented with pytorch for differentiability
+- LogReg, implemented with pytorch for differentiability
 
 #### Gradient Boosting Models
 - XGBoost

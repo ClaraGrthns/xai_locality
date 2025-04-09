@@ -37,63 +37,83 @@ def main(args):
         print("The model is a PyTorch module.")
         pytorch_total_params = sum(p.numel() for p in model.parameters())
         print(f"Total number of parameters: {pytorch_total_params}")
-    trn_for_expl, tst_for_dist, df_for_dist, tst_for_expl, df_for_expl = model_handler.load_data()
-
-    print("Length of data set for analysis", len(df_for_dist))
-    args.num_lime_features = np.min([args.num_lime_features, df_for_dist.shape[1]])
+    trn_feat, tst_feat, analysis_feat, tst_dataset, analysis_dataset = model_handler.load_data() # trn_feat, tst_feat, analysis_feat, tst_dataset, analysis_dataset
+    print("Length of data set for analysis", len(analysis_feat))
+    args.num_lime_features = np.min([args.num_lime_features, analysis_feat.shape[1]])
     print("Number of LIME features: ", args.num_lime_features)
     predict_fn = model_handler.predict_fn
     
     if args.method == "lime":
         if (args.kernel_width is None or args.kernel_width == "default"):
-            args.kernel_width = np.round(np.sqrt(trn_for_expl.shape[1]) * .75, 2)  # Default value
+            args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2)  # Default value
         elif args.kernel_width == "double":
-            args.kernel_width = np.round(np.sqrt(trn_for_expl.shape[1]) * 1.5, 2)
+            args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * 1.5, 2)
         elif args.kernel_width == "half":
-            args.kernel_width = np.round(np.sqrt(trn_for_expl.shape[1]) * 0.375, 2)
+            args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * 0.375, 2)
         print("Kernel width: ", args.kernel_width)
 
     method = args.method if args.method != "gradient_methods" else args.gradient_method
     explainer_handler = ExplanationMethodHandlerFactory.get_handler(method=method)(args)
-    explainer_handler.set_explainer(dataset=trn_for_expl,
+    explainer_handler.set_explainer(dataset=trn_feat,
                                     class_names=model_handler.get_class_names(),
                                     model=predict_fn)
     
     explanations = explainer_handler.compute_explanations(results_path=results_path, 
                                                           predict_fn=predict_fn, 
-                                                          tst_data=tst_for_expl)
+                                                          tst_data=tst_dataset)
     
     validate_distance_measure(args.distance_measure)
     distance_measure = args.distance_measure
     
     # tree = BallTree(df_for_dist, metric=distance_measure) if args.distance_measure != "cosine" else BallTree(df_for_dist, metric=distance_measure, func=cosine_distance)
     if distance_measure == "seuclidean":
-        tree = BallTree(df_for_dist, metric=distance_measure, V=np.var(df_for_dist, axis=0))
+        tree = BallTree(analysis_feat, metric=distance_measure, V=np.var(analysis_feat, axis=0))
     elif distance_measure == "mahalanobis":
-        tree = BallTree(df_for_dist, metric=distance_measure, V=np.cov(df_for_dist, rowvar=False))
+        tree = BallTree(analysis_feat, metric=distance_measure, V=np.cov(analysis_feat, rowvar=False))
     elif distance_measure == "cosine":
         from scipy.spatial.distance import cosine
-        tree = BallTree(df_for_dist, metric=cosine)
+        tree = BallTree(analysis_feat, metric=cosine)
     else:
-        tree = BallTree(df_for_dist, metric=distance_measure)
+        tree = BallTree(analysis_feat, metric=distance_measure)
+
+    path_max_dist = os.path.join(args.data_folder, f"{args.setting}_max_distances.npz")
+    if os.path.exists(path_max_dist):
+        max_distances = np.load(path_max_dist)["max_distances"]
+    else:
+        print("Computing max distances for each point in the test set")
+        # Compute max distances for each point in the test set
+        max_distances = np.array([np.max(tree.query(dp.reshape(1, -1), k=len(analysis_feat), return_distance=True)[0]) for dp in tst_feat])
+        np.savez(path_max_dist, max_distances=max_distances)
+        print("Max distances saved to: ", path_max_dist)
+    print("Max distances loaded from: ", path_max_dist)
+
+    max_distance = np.max(max_distances)
+    max_radius = 0.05 * max_distance
+    print("Max radius: ", max_radius)
+    print("Max distance: ", max_distance)
 
     n_points_in_ball = 200
+    if args.sample_around_instance:
+        n_points_in_ball = 25
     print("Considering the closest neighbours: ", n_points_in_ball)
     
-    max_fraction = n_points_in_ball/len(df_for_expl)        
-    experiment_setting = explainer_handler.get_experiment_setting(max_fraction)
+    max_fraction = n_points_in_ball/len(analysis_dataset)        
+    experiment_setting = explainer_handler.get_experiment_setting(max_fraction, max_radius)
+    explainer_handler.set_experiment_setting(max_fraction, max_radius)
     experiment_path = os.path.join(results_path, experiment_setting +".npz")
+
     if os.path.exists(experiment_path) and not args.force:
         print(f"Experiment with setting {experiment_setting} already exists.")
         exit(-1)
     else:
         print(f"Experiment with setting {experiment_setting} does not exist yet. Starting analysis.")    
     results_g_x = explainer_handler.run_analysis(
-                     tst_feat_for_expl = tst_for_expl, 
-                     tst_feat_for_dist = tst_for_dist, 
-                     df_feat_for_expl = df_for_expl, 
+                     tst_feat_for_expl = tst_dataset, 
+                     tst_feat_for_dist = tst_feat, 
+                     df_feat_for_expl = analysis_dataset, 
                      explanations = explanations, 
                      n_points_in_ball = n_points_in_ball, 
+                     max_radius = max_radius,
                      predict_fn = predict_fn, 
                      tree = tree,
                      results_path = results_path,

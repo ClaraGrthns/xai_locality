@@ -29,7 +29,9 @@ configs/lime/**/*.yaml
 configs/gradient_methods/**/*.yaml
 sh_commands
 experiment_commands
+experiment_commands_clf_sampling/
 experiment_commands_regression/
+experiment_commands_regression_sampling/
 lime/
 runs/
 tensorboard_logs/

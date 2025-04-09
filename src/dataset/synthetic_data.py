@@ -63,8 +63,6 @@ def get_setting_name_regression(regression_mode,
     # Add additional parameters if they differ from defaults
     if effective_rank is not None:
         setting_name += f'_effective_rank{effective_rank}_tail_strength{tail_strength}'
-    if coef:
-        setting_name += '_coefTrue'
     return setting_name
 
 def get_setting_name_classification(n_features,
@@ -161,6 +159,7 @@ def create_synthetic_regression_data_sklearn(regression_mode,
                                             coef=False,         # Return true coefficients
                                             effective_rank=None  # Approximate rank of the data
                                            ):
+    coef = False
     setting_name = get_setting_name_regression(
         regression_mode, 
         n_features=n_features,
@@ -184,8 +183,6 @@ def create_synthetic_regression_data_sklearn(regression_mode,
         y_train = data['y_train']
         y_val = data['y_val']
         y_test = data['y_test']
-        if coef:
-            coef_true = data['coef_true']
     else:
         out = make_regression(
                 n_samples=n_samples, 
@@ -200,7 +197,7 @@ def create_synthetic_regression_data_sklearn(regression_mode,
                 random_state=random_seed
             )
     
-        X, y, coef_true = out if coef else out[0], out[1], None
+        X, y =  out[0], out[1]
         
         y = apply_nonlinearity(X, y, regression_mode, n_informative)
         column_rng = np.random.RandomState(random_seed)
@@ -208,20 +205,12 @@ def create_synthetic_regression_data_sklearn(regression_mode,
         column_rng.shuffle(col_indices)
         X = X[:, col_indices]
         
-        if coef and coef_true is not None:
-            coef_true = coef_true[col_indices]
         X, X_test, y, y_test = train_test_split(X, y, test_size=test_size, random_state=random_seed)
         X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_size, random_state=random_seed)
         
         if not os.path.exists(data_folder):
             os.makedirs(data_folder)
-        if coef:
-            np.savez(file_path, 
-                     X_train=X_train, X_val=X_val, X_test=X_test, 
-                     y_train=y_train, y_val=y_val, y_test=y_test,
-                     coef_true=coef_true)
-        else:
-            np.savez(file_path, 
+        np.savez(file_path, 
                      X_train=X_train, X_val=X_val, X_test=X_test, 
                      y_train=y_train, y_val=y_val, y_test=y_test)
     return setting_name, X_train, X_val, X_test, y_train, y_val, y_test

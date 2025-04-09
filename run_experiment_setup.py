@@ -56,8 +56,8 @@ def parse_args():
                         help="Scale of benchmark dataset")
     parser.add_argument("--idx", type=int, default=0,
                         help="Index of benchmark dataset")
-    parser.add_argument("--num_trials", type=int,  help="Number of trials for training")
-    parser.add_argument("--num_repeats", type=int, help="Number of repeats for training")
+    parser.add_argument("--num_trials", type=int,  help="Number of trials for training", default=15)
+    parser.add_argument("--num_repeats", type=int, help="Number of repeats for training", default = 1)
 
     # Train configuration
     parser.add_argument("--epochs", type=int, help="Number of epochs for training")
@@ -78,13 +78,13 @@ def parse_args():
     parser.add_argument("--hypercube", action="store_true", help="If True, the clusters are put on the vertices of a hypercube. If False, the clusters are put on the vertices of a random polytope.")
     parser.add_argument("--test_size", type=float, default=0.4, help="Test size for train-test split")
     parser.add_argument("--val_size", type=float, default=0.1, help="Validation size for train-validation split")
+    parser.add_argument("--regression_mode", type=str)
 
     ## if regression:
     # Adding the missing arguments for regression dataset creation
     parser.add_argument("--noise", type=float, default=0.1, help="Standard deviation of the gaussian noise")
     parser.add_argument("--bias", type=float, default=0.0, help="Bias term in the underlying linear model")
     parser.add_argument("--tail_strength", type=float, default=0.5, help="Relative importance of the fat noisy tail of the covariance matrix")
-    parser.add_argument("--coef", type=bool, default=False, help="Whether to return the coefficients of the underlying linear model")
     parser.add_argument("--effective_rank", type=int, default=None, help="Approximate number of singular vectors to use to generate the covariance matrix")
     
     # KNN analysis parameters
@@ -111,8 +111,10 @@ def parse_args():
     parser.add_argument("--num_lime_features", type=int, default=10, 
                         help="Number of features to use in LIME explanation")
     parser.add_argument("--predict_threshold", type=float,)
-    parser.add_argument("--include_trn", action="store_true", help="Include training data in LIME")
-    parser.add_argument("--include_val", action="store_true", help="Include validation data in LIME")
+    parser.add_argument("--include_trn", action="store_true", help="Include training data")
+    parser.add_argument("--include_val", action="store_true", help="Include validation data")
+    parser.add_argument("--sample_around_instance", action="store_true", help="Sample around instance instead of kNN")
+    parser.add_argument("--n_samples_around_instance",type=int, default = 100, help="Number of samples around instance instead of kNN")
     
     # Process steps control
     parser.add_argument("--skip_knn", action="store_true", help="Skip KNN analysis")
@@ -135,12 +137,13 @@ def check_model_exists(args):
     elif args.regression:
         setting_name = get_setting_name_regression(
             n_features=args.n_features,
+            regression_mode=args.regression_mode,
             n_informative=args.n_informative,
             n_samples=args.n_samples,
             noise=args.noise,
             bias=args.bias,
             tail_strength=args.tail_strength,
-            coef=args.coef,
+            coef=False,
             effective_rank=args.effective_rank,
             random_seed=args.random_seed
         )
@@ -175,7 +178,7 @@ def get_data_path(args):
     else:
         # For synthetic data, check if it's ExcelFormer which has a special path format
         is_ExcelFormer_str = "ExcelFormer_" if args.model_type == 'ExcelFormer' else ""
-        return osp.join(args.data_folder, "regression_synthetic_data" if args.regression else "synthetic_data" ,  
+        return osp.join(args.data_folder,  
                       f"{is_ExcelFormer_str}{args.setting}_normalized_tensor_frame.pt")
 
 def get_results_path(args, step):
@@ -281,22 +284,34 @@ def main():
     args.seed = args.random_seed
     
     if args.debug:  
-        args.model_type = "LinReg"
-        args.setting = "airlines_DepDelay_1M"
-        args.method = "gradient_methods"
+        args.model_type = "LogReg"
+        args.setting = "n_feat25_n_informative10_n_redundant5_n_repeated2_n_classes2_n_samples100000_n_clusters_per_class4_class_sep0.8_flip_y0.05_random_state42"
+        args.method = "lime"
         args.distance_measure = "euclidean"
-        args.regression = True
-        args.force = True
-        args.use_benchmark = True
-        args.task_type = "regression"
-        args.scale = "large"
-        args.idx = 0
-        args.num_trials = 5
+        args.n_features = 25
+        args.n_informative = 10
+        args.n_redundant = 5
+        args.n_repeated = 2
+        args.n_classes = 2
+        args.n_samples = 100000
+        args.n_clusters_per_class = 4
+        args.class_sep = 0.8
+        args.flip_y = 0.05
+        args.random_seed = 42
+        args.hypercube = True
+        args.num_trials = 15
         args.num_repeats = 1
-        args.epochs = 25
-        args.gradient_method = "IG"
-        # args.force_training = True
-        # args.force_overwrite = True
+        args.epochs = 10
+        args.optimize = True
+        args.kernel_width = "default"
+        args.num_lime_features = 10
+        args.force_overwrite = True
+        args.force_training = True
+
+    
+    if args.force_training:
+        args.force_overwrite = True
+        args.force = True
 
     
     if args.model_folder is None:
@@ -318,6 +333,7 @@ def main():
     include_trn, include_val = get_dataset_specific_settings(args)
     args.include_trn = include_trn
     args.include_val = include_val
+    args.coef = False
     print(args)
     # if not args.config:
     #     if args.use_benchmark:

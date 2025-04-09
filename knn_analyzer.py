@@ -55,8 +55,6 @@ def load_or_compute_predictions(model_handler, data, loader, save_path, prefix="
                     if isinstance(preds, torch.Tensor):
                         preds = preds.numpy()
                     predictions.append(preds)
-                    if debug and i == 10:
-                        break
                 predictions = np.concatenate(predictions, axis=0)
             else:
                 predictions = model_handler.predict_fn(data)
@@ -171,6 +169,7 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
     print("Computing metrics for the actual model")
     auroc, accuracy, precision, recall, f1 = binary_classification_metrics(
         y_tst, ys_tst_predicted_labels, y_tst_proba_top_label)
+    print(f"Model performance: AUROC={auroc}, Accuracy={accuracy}, Precision={precision}, Recall={recall}, F1={f1}")
     res_model = np.array([auroc, accuracy, precision, recall, f1])
     
     model_res = {"classification_model": res_model}
@@ -222,6 +221,7 @@ def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn
     # Save model performance metrics
     print("Computing metrics for the actual model")
     mse, mae, r2 = regression_metrics(y_tst, y_tst_preds)
+    print(f"Model performance: MSE={mse}, MAE={mae}, R2={r2}")
     res_model = np.array([mse, mae, r2])
     model_res = {"regression_model": res_model}
     model_experiment_setting = f"model_regression_performance_{args.model_type}_{file_name_wo_file_ending}_random_seed-{args.random_seed}"
