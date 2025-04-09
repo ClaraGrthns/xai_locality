@@ -26,7 +26,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     # Create directory structure - organize by method first
     if method == "gradient_methods" and gradient_method:
         if gradient_method == "IG":
-            method_dir = os.path.join(output_dir, method, "integrated_gradients")
+            method_dir = os.path.join(output_dir, method, "integrated_gradient")
         else:
             method_dir = os.path.join(output_dir, method, "smooth_grad")
     else:
@@ -129,12 +129,16 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     else:
         # For benchmark datasets
         if setting == "jannis":
-            base_args += " --include_trn --include_val  --scale medium --idx 6  --num_trials 5 --num_repeats 1 --epochs 25"
+            base_args += " --include_trn --include_val  --scale medium --idx 6"
         elif setting == "MiniBooNE":
-            base_args += " --include_val --scale medium --idx 3 --num_trials 5 --num_repeats 1 --epochs 25"
+            base_args += " --include_val --scale medium --idx 3"
         elif setting == "higgs":
-            base_args += " --use_benchmark --task_type binary_classification --scale large --idx 0 --num_trials 5 --num_repeats 1 --epochs 10"
-        base_args += " --use_benchmark --task_type binary_classification"
+            base_args += " --use_benchmark --task_type binary_classification --scale large --idx 0"
+        if setting == "higgs":
+            base_args += " --epochs 10"
+        else:
+            base_args += " --epochs 25"
+        base_args += " --use_benchmark --task_type binary_classification --num_trials 5 --num_repeats 1 "
     
     # Method-specific parameters
     if method == "lime":
@@ -154,20 +158,22 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
         base_args += " --skip_fraction"
     
     # Create the full command
-    command = f"/home/grotehans/miniconda3/envs/tab_models/bin/python run_experiment_setup.py -u {base_args}"
+    command = f"/home/grotehans/miniconda3/envs/tab_models/bin/python -u run_experiment_setup.py {base_args}"
     
     # Define filename - include distance measure to distinguish files
     distance_suffix = f"_{distance_measure}"
-    
+    file_name_add_on = "_skip_kNN" if skip_knn else ""
+    file_name_add_on += "_skip_fraction" if skip_fraction else ""
+    file_name_add_on += "_force_training" if force_training else ""
     if method == "lime":
-        filename = f"lime_{kernel_width}{distance_suffix}.sh"
+        filename = f"lime_{kernel_width}{distance_suffix}{file_name_add_on}.sh"
     elif method == "gradient_methods" and gradient_method:
         if gradient_method == "IG":
-            filename = f"gradient_integrated_gradient{distance_suffix}.sh"
+            filename = f"gradient_integrated_gradient{distance_suffix}{file_name_add_on}.sh"
         else:
-            filename = f"gradient_{gradient_method}{distance_suffix}.sh"
+            filename = f"gradient_{gradient_method}{distance_suffix}{file_name_add_on}.sh"
     else:
-        filename = f"{method}{distance_suffix}.sh"
+        filename = f"{method}{distance_suffix}{file_name_add_on}.sh"
     
     # Write command to file
     file_path = os.path.join(model_dir, filename)
@@ -432,7 +438,7 @@ def main():
         synthetic_settings.append((setting, config))
     
     models = ["LightGBM", "MLP", "LogReg",  "TabNet", "FTTransformer", "ResNet", "TabTransformer"]
-    standard_settings = ["higgs", "jannis"]
+    standard_settings = ["diabetes130us", "MiniBooNE", "credit", "california", "magic_telescope",  "house_16H", "higgs_small", "higgs", "jannis"]#["higgs", "jannis"] # "bank_marketing"
     methods = ["lime", "gradient_methods"]
     distance_measures = ["euclidean", "manhattan", "cosine"]
     
@@ -539,7 +545,7 @@ def main():
         
         # Special handling for gradient_methods with subdirectories
         if method == "gradient_methods":
-            gradient_dirs = ["integrated_gradients"]
+            gradient_dirs = ["integrated_gradient"]
             for gradient_dir in gradient_dirs:
                 gradient_method_dir = os.path.join(method_dir, gradient_dir)
                 gradient_files = [f for f in created_files if f"{method}/{gradient_dir}/" in f]
@@ -570,7 +576,7 @@ def main():
     # Create model-specific run_all.sh files within each method
     for method in methods:
         if method == "gradient_methods":
-            gradient_dirs = ["integrated_gradients"]
+            gradient_dirs = ["integrated_gradient"]
             for gradient_dir in gradient_dirs:
                 for model in models:
                     model_dir = os.path.join(output_dir, method, gradient_dir, model)
@@ -609,7 +615,7 @@ def main():
     # Create dataset-specific run_all.sh files within each method/model
     for method in methods:
         if method == "gradient_methods":
-            gradient_dirs = ["integrated_gradients"]
+            gradient_dirs = ["integrated_gradient"]
             for gradient_dir in gradient_dirs:
                 for model in models:
                     # Standard datasets
@@ -686,7 +692,7 @@ def main():
         # Run each method's run_all.sh
         for method in methods:
             if method == "gradient_methods":
-                for gradient_dir in ["integrated_gradients"]:
+                for gradient_dir in ["integrated_gradient"]:
                     method_run_all = os.path.join(output_dir, method, gradient_dir, "run_all.sh")
                     if os.path.exists(method_run_all):
                         f.write(f"echo 'Running experiments for {method}/{gradient_dir}...'\n")

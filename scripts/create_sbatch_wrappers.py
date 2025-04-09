@@ -9,11 +9,11 @@ def determine_resources(script_content):
     
     # Default values
     resources = {
-        "partition": "day",
+        "partition": "test",
         "cpus_per_task": "12",
         "mem_per_cpu": "16G",
         "gres": "gpu:1",
-        "time": "2:00:00"
+        "time": "10:00"
     }
     
     # Check for lightweight models
@@ -167,7 +167,7 @@ def main():
     
     # Find all .sh files but exclude run_all.sh files
     all_sh_files = glob.glob(os.path.join(experiment_dir, "**/*.sh"), recursive=True)
-    sh_files = [f for f in all_sh_files if os.path.basename(f) != "run_all.sh"]
+    sh_files = [f for f in all_sh_files if (os.path.basename(f) != "run_all.sh" or "force_training" not in f)]
     
     if not sh_files:
         print(f"No individual experiment shell scripts found in {experiment_dir}")

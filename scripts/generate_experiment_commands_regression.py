@@ -11,7 +11,6 @@ def get_setting_name_regression(regression_mode,
                                 noise,
                                 bias,
                                 tail_strength,
-                                coef,
                                 effective_rank,
                                 random_seed):
     setting_name = (f'regression_{regression_mode}_n_feat{n_features}_n_informative{n_informative}_n_samples{n_samples}_'
@@ -20,8 +19,6 @@ def get_setting_name_regression(regression_mode,
     # Add additional parameters if they differ from defaults
     if effective_rank is not None:
         setting_name += f'_effective_rank{effective_rank}_tail_strength{tail_strength}'
-    if coef:
-        setting_name += '_coefTrue'
     return setting_name
 
 def parse_arguments():
@@ -67,7 +64,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     model_dir = os.path.join(dataset_dir, distance_measure)
     
     os.makedirs(model_dir, exist_ok=True)
-    
+    epochs = 15 if model not in  ["TabTransformer", "FTTransformer"] else 10
     # Format args for the command
     base_args = f"--model_type {model} --setting {setting} --method {method} --distance_measure {distance_measure} --regression --force"
     
@@ -86,7 +83,6 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
             test_size = synthetic_params.get('test_size', 0.4)
             val_size = synthetic_params.get('val_size', 0.1)
             tail_strength = synthetic_params.get('tail_strength', 0.5)
-            coef = synthetic_params.get('coef', False)
             effective_rank = synthetic_params.get('effective_rank', None)
             
             # Add synthetic data parameters
@@ -100,12 +96,10 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
                              f" --data_folder {data_folder}"
                              f" --test_size {test_size}"
                              f" --val_size {val_size}"
-                             f" --tail_strength {tail_strength}"
+                             f" --epochs {epochs} --num_trials 5 --num_repeats 1 "
                              )
-            if coef:
-                synthetic_args += " --coef"
             if effective_rank is not None:
-                synthetic_args += f" --effective_rank {effective_rank}"
+                synthetic_args += f" --effective_rank {effective_rank} --tail_strength {tail_strength} "
             base_args += synthetic_args
     else:
         # For benchmark datasets
@@ -143,16 +137,18 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     
     # Define filename - include distance measure to distinguish files
     distance_suffix = f"_{distance_measure}"
-    
+    file_name_add_on = "_skip_kNN" if skip_knn else ""
+    file_name_add_on += "_skip_fraction" if skip_fraction else ""
+    file_name_add_on += "_force_training" if force_training else ""
     if method == "lime":
-        filename = f"lime_{kernel_width}{distance_suffix}.sh"
+        filename = f"lime_{kernel_width}{distance_suffix}{file_name_add_on}.sh"
     elif method == "gradient_methods" and gradient_method:
         if gradient_method == "IG":
-            filename = f"gradient_integrated_gradient{distance_suffix}.sh"
+            filename = f"gradient_integrated_gradient{distance_suffix}{file_name_add_on}.sh"
         else:
-            filename = f"gradient_{gradient_method}{distance_suffix}.sh"
+            filename = f"gradient_{gradient_method}{distance_suffix}{file_name_add_on}.sh"
     else:
-        filename = f"{method}{distance_suffix}.sh"
+        filename = f"{method}{distance_suffix}{file_name_add_on}.sh"
     
     # Write command to file
     file_path = os.path.join(model_dir, filename)
@@ -175,17 +171,55 @@ def main():
     # Define synthetic configurations with explicit parameters
     synthetic_configs = [
         {
-            'regression_mode': "linear",
+            'regression_mode': "polynomial",
             'n_features': 100,
-            'n_informative': 10,
+            'n_informative': 50,
             'n_samples': 100000,
-            'bias': 1.0,
+            'bias': 0,
             'noise': 0.0,
             'random_seed': 42,
             'tail_strength': 0.5,
-            'effective_rank': None, 
-            'coef': True
+            'effective_rank': 30, 
         },
+         {
+            'regression_mode': "interaction",
+            'n_features': 50,
+            'n_informative': 30,
+            'n_samples': 100000,
+            'bias': 10.0,
+            'noise': 0.1,
+            'random_seed': 42,
+            'tail_strength': 0.5,
+            'effective_rank': 14, 
+        },
+         {
+            'regression_mode': "periodic",
+            'n_features': 100,
+            'n_informative': 60,
+            'n_samples': 100000,
+            'bias': 1.0,
+            'noise': 0.4,
+            'random_seed': 42,
+        },
+         {
+            'regression_mode': "hierarchical",
+            'n_features': 50,
+            'n_informative': 5,
+            'n_samples': 100000,
+            'bias': 0,
+            'noise': 0.01,
+            'random_seed': 42,
+        },
+         {
+            'regression_mode': "neural_like",
+            'n_features': 50,
+            'n_informative': 20,
+            'n_samples': 100000,
+            'bias': 0,
+            'noise': 0.01,
+            'random_seed': 42,
+        },
+
         
     ]
     
@@ -198,9 +232,8 @@ def main():
                                               n_samples=config['n_samples'],
                                               noise=config['noise'],
                                               bias=config['bias'],
-                                              tail_strength=config['tail_strength'],
-                                              effective_rank=config['effective_rank'],
-                                              coef=config['coef'],
+                                              tail_strength=config.get('tail_strength', None),
+                                              effective_rank=config.get('effective_rank', None),
                                               random_seed=config['random_seed'])
         synthetic_settings.append((setting, config))
     
