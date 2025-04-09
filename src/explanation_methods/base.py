@@ -47,7 +47,8 @@ class BaseExplanationMethodHandler:
                      tst_feat_for_dist, 
                      df_feat_for_expl, 
                      explanations, 
-                     n_points_in_ball, 
+                     n_points_in_ball,
+                     max_radius,
                      predict_fn, 
                      tree,
                      results_path,
@@ -74,17 +75,18 @@ class BaseExplanationMethodHandler:
                 predict_fn, 
                 n_points_in_ball, 
                 tree,
+                max_radius
             )
             with torch.no_grad():
                 y_preds = predict_fn(batch)
 
-            # Calculate metrics from chunk results
-            metrics = self._calculate_metrics(chunk_result, n_points_in_ball, y_preds)
+            if self.args.sample_around_instance: 
+                metrics = self._calculate_metrics_R(chunk_result, y_preds)
+            else:
+                metrics = self._calculate_metrics_kNN(chunk_result, n_points_in_ball, y_preds)
             
-            # Update results dictionary
             self._update_results_dict(results, metrics, chunk_start, chunk_end)
             
-            # Save results after processing each chunk
             self._save_chunk_results(results_path, experiment_setting, results)
             
             print(f"Processed chunk {i}/{(len(tst_feat_for_expl) + chunk_size - 1) // chunk_size}")
@@ -92,7 +94,7 @@ class BaseExplanationMethodHandler:
 
         return results
     
-    def _calculate_metrics(self, chunk_result, n_points_in_ball, y_preds):
+    def _calculate_metrics_kNN(self, chunk_result, n_points_in_ball, y_preds):
         """
         Calculate various metrics from chunk results.
         
@@ -117,7 +119,6 @@ class BaseExplanationMethodHandler:
         
         mse = np.cumsum(np.square(model_preds - local_preds), axis=1) / kNNs
         mae = np.cumsum(np.abs(model_preds - local_preds), axis=1) / kNNs
-        mse_constant_clf = np.cumsum(np.square(model_preds - mean_model_preds), axis=1) / kNNs
         var_model_preds = np.cumsum(np.square(model_preds - mean_model_preds), axis=1) / kNNs
         r2 = 1 - (mse / var_model_preds)
         
@@ -154,6 +155,79 @@ class BaseExplanationMethodHandler:
 
             ratio_of_ones = np.cumsum(model_binary_preds, axis=1)/kNNs
             all_ones_local_binary_preds = np.cumsum(local_binary_preds, axis=1) / kNNs
+            gini_impurity = 1 - (np.square(ratio_of_ones)+ np.square(1 - ratio_of_ones))
+
+            return {**res_dict_regression,
+                    "accuraccy_constant_clf": ratio_of_ones.T,
+                    "accuracy": acc.T,
+                    "precision": precision.T,
+                    "recall": recall.T,
+                    "f1": f1.T,
+                    "mse_proba": mse_proba.T,
+                    "mae_proba": mae_proba.T,
+                    "r2_proba": r2_proba.T,
+                    "variance_proba": var_model_preds_probs.T,
+                    "ratio_all_ones": ratio_of_ones.T,
+                    "ratio_all_ones_local": all_ones_local_binary_preds.T,
+                    "gini": gini_impurity.T
+            }
+        
+    def _calculate_metrics_R(self, chunk_result, y_preds):
+        """
+        Calculate various metrics from chunk results.
+        
+        Args:
+            chunk_result: Tuple containing prediction results from process_chunk
+            n_points_in_ball: Number of neighbors to consider
+            
+        Returns:
+            Dictionary of calculated metrics
+        """
+        if self.args.regression:
+            model_preds, local_preds, radii = chunk_result
+        else:
+            model_preds, model_binary_preds, model_probs, local_preds, local_binary_preds, local_probs, radii = chunk_result
+        
+        
+        mean_model_preds = np.nanmean(model_preds, axis=-1)
+        
+        mse = np.nanmean(np.square(model_preds - local_preds), axis=-1)
+        mae = np.nanmean(np.abs(model_preds - local_preds), axis=-1)
+        var_model_preds = np.nanvar(model_preds, axis=-1)
+        r2 = 1 - (mse / var_model_preds)
+
+        res_dict_regression = {
+            "mse": mse.T,
+            "mae": mae.T,
+            "r2": r2.T,
+            "variance_logit": var_model_preds.T,
+            "radius": radii.T,
+        }
+        if self.args.regression:
+            if type(y_preds) == torch.Tensor:
+                y_preds = y_preds.cpu().numpy()
+            if y_preds.ndim == 1:
+                y_preds = y_preds[:, None]
+            mse_constant_clf = np.nanmean(np.square(model_preds - y_preds[:, None, :]), axis=-1) #(num test samples,  num closest points)-(num test samples,1)
+            mae_constant_clf = np.nanmean(np.abs(model_preds - y_preds[:, None, :]), axis=-1) #(num test samples,  num closest points)-(num test samples,1)
+            return {**res_dict_regression,
+                    "mse_constant_clf": mse_constant_clf.T,
+                    "mae_constant_clf": mae_constant_clf.T,
+            }
+           
+        if not self.args.regression:
+            acc = np.nanmean((model_binary_preds == local_binary_preds), axis=-1)
+            precision = np.nanmean(model_binary_preds * local_binary_preds, axis=-1) / (np.nanmean(local_binary_preds, axis=-1) + 1e-10)
+            recall = np.nanmean(model_binary_preds * local_binary_preds, axis=-1) / (np.nanmean(model_binary_preds, axis=-1) + 1e-10)
+            f1 = 2 * (precision * recall) / (precision + recall + 1e-10)
+            mse_proba = np.nanmean(np.square(model_probs - local_probs), axis=-1)
+            mae_proba = np.nanmean(np.abs(model_probs - local_probs), axis=-1)
+
+            var_model_preds_probs = np.nanvar(model_probs, axis=-1)
+            r2_proba = 1 - (mse_proba / var_model_preds_probs)
+
+            ratio_of_ones = np.nanmean(model_binary_preds, axis=-1)
+            all_ones_local_binary_preds = np.nanmean(local_binary_preds, axis=-1)
             gini_impurity = 1 - (np.square(ratio_of_ones)+ np.square(1 - ratio_of_ones))
 
             return {**res_dict_regression,
@@ -214,8 +288,8 @@ class BaseExplanationMethodHandler:
                 results[key][idx, chunk_start:chunk_end] = value
         return results
     
-    def set_experiment_setting(self, max_fraction):
-        self.experiment_setting = self.get_experiment_setting(max_fraction)
+    def set_experiment_setting(self, max_fraction, max_radius=None):
+        self.experiment_setting = self.get_experiment_setting(max_fraction, max_radius)
     
     def run_analysis(self, 
                      tst_feat_for_expl, 
@@ -223,47 +297,47 @@ class BaseExplanationMethodHandler:
                      df_feat_for_expl, 
                      explanations, 
                      n_points_in_ball, 
+                     max_radius,
                      predict_fn, 
                      tree,
                      results_path,
                      ):
-        
-        max_fraction = n_points_in_ball/len(df_feat_for_expl)        
-        experiment_setting = self.get_experiment_setting(max_fraction)
-        
-
-        num_fractions = len(np.arange(n_points_in_ball))
+        if self.args.sample_around_instance:
+            range_n_points_in_ball = np.arange(n_points_in_ball)
+        else: 
+            range_n_points_in_ball = np.linspace(0.001, max_radius, n_points_in_ball) 
+        experiment_setting = self.experiment_setting
         results_regression = {
-            "mse": np.zeros((num_fractions, self.args.max_test_points)),
-            "mae": np.zeros((num_fractions, self.args.max_test_points)),
-            "r2": np.zeros((num_fractions, self.args.max_test_points)),            
-            "variance_logit": np.zeros((num_fractions, self.args.max_test_points)),
-            "radius": np.zeros((num_fractions, self.args.max_test_points)),
-            "n_points_in_ball": np.arange(n_points_in_ball),
+            "mse": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "mae": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "r2": np.full((n_points_in_ball, self.args.max_test_points), np.nan),            
+            "variance_logit": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "radius": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "n_points_in_ball": range_n_points_in_ball,
         }
         results_classification = {
-            "accuraccy_constant_clf": np.zeros((num_fractions, self.args.max_test_points)),
-            "accuracy": np.zeros((num_fractions, self.args.max_test_points)),
-            "aucroc": np.zeros((num_fractions, self.args.max_test_points)),
-            "precision": np.zeros((num_fractions, self.args.max_test_points)),
-            "recall": np.zeros((num_fractions, self.args.max_test_points)),
-            "f1": np.zeros((num_fractions, self.args.max_test_points)),
+            "accuraccy_constant_clf": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "accuracy": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "aucroc": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "precision": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "recall": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "f1": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
             
-            "mse_proba": np.zeros((num_fractions, self.args.max_test_points)),
-            "mae_proba": np.zeros((num_fractions, self.args.max_test_points)),
-            "r2_proba": np.zeros((num_fractions, self.args.max_test_points)),
+            "mse_proba": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "mae_proba": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "r2_proba": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
             
-            "gini": np.zeros((num_fractions, self.args.max_test_points)),
-            "variance_proba": np.zeros((num_fractions, self.args.max_test_points)),
-            "ratio_all_ones": np.zeros((num_fractions, self.args.max_test_points)),
-            "ratio_all_ones_local": np.zeros((num_fractions, self.args.max_test_points)),
+            "gini": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "variance_proba": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "ratio_all_ones": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+            "ratio_all_ones_local": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
 
         }
 
         if self.args.regression:
             results = {**results_regression, 
-                       "mse_constant_clf": np.zeros((num_fractions, self.args.max_test_points)),
-                       "mae_constant_clf": np.zeros((num_fractions, self.args.max_test_points)),
+                       "mse_constant_clf": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
+                       "mae_constant_clf": np.full((n_points_in_ball, self.args.max_test_points), np.nan),
             }
         else:
             results = {**results_classification, **results_regression}
@@ -273,6 +347,7 @@ class BaseExplanationMethodHandler:
                  df_feat_for_expl=df_feat_for_expl, 
                  explanations=explanations, 
                  n_points_in_ball=n_points_in_ball, 
+                 max_radius=max_radius,
                  predict_fn=predict_fn, 
                  tree=tree,
                  results_path=results_path,

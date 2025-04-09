@@ -5,7 +5,8 @@ from joblib import Parallel, delayed
 import time
 import torch
 
-from src.utils.metrics import gini_impurity, binary_classification_metrics_per_row, regression_metrics_per_row, impurity_metrics_per_row
+from src.utils.sampling import uniform_ball_sample
+
 from tqdm import tqdm
 
 
@@ -51,7 +52,7 @@ def get_binary_vectorized(samples_around_xs:list , xs:np.array, explainer):
     Returns:
         numpy.ndarray: A binary vector indicating which features match between the instance and the explained instance.
     """
-    bins_sample = explainer.discretizer.discretize(samples_around_xs)
+    bins_sample = explainer.discretizer.discretize(samples_around_xs) # TODO: this could be a problem when np.nan is involved maybe change lime package
     bins_instance = explainer.discretizer.discretize(xs)
     binary = (bins_sample == bins_instance[:, None, :])
     return binary
@@ -106,13 +107,15 @@ def compute_explanations(explainer, tst_feat, predict_fn, num_lime_features, dis
 
 
 def get_lime_preds_for_all_kNN(tst_set, 
-                               dataset, 
                                explanations, 
                                explainer, 
                                predict_fn, 
-                               n_closest_max, 
-                               tree, 
-                               pred_threshold=0.5):
+                               samples_in_ball, 
+                               sample_around_instance,
+                               n_samples_around_instance,
+                               distance_measure,
+                               pred_threshold=0.5,
+                               ):
     """
     Computes the accuracy of a LIME explanation by comparing the local model's predictions
     to the original model's predictions for samples within a ball around the instance.
@@ -130,41 +133,39 @@ def get_lime_preds_for_all_kNN(tst_set,
     Returns:
         tuple: A tuple containing: 
         - model_predicted_top_label (numpy.ndarray): Binary array indicating if the model predicted the same label for k neighbours of each instance in tst_set.
-                shape: n tst samples x n closest points.
+                shape: num_test_samples x num_kNN.
         - model_prob_of_top_label (numpy.ndarray): The model's softmaxed predictions: Probability for the top label.
-                shape: n tst samples x n closest points.
+                shape: num_test_samples x num_kNN.
         - local_preds_label (numpy.ndarray): The local model's predictions for the top label.
-                shape: n tst samples x n closest points.
+                shape: num_test_samples x num_kNN.
         - local_preds (numpy.ndarray): The local model's predictions.
-                shape: n tst samples x n closest points.
+                shape: num_test_samples x num_kNN.
         - dist (numpy.ndarray): The distances of the kNN samples from the instances of tst_set.
-                shape: n tst samples x n closest points.
+                shape: num_test_samples x num_kNN.
     """
     if tst_set.ndim == 1:
         tst_set = tst_set.reshape(1, -1)
-
     if type(tst_set) == torch.Tensor:
         tst_set = tst_set.numpy()
-
-    dist, idx = tree.query(tst_set, k=n_closest_max, return_distance=True, sort_results=True)
     top_labels = np.array([exp.top_labels[0] for exp in explanations])
-
-    # 1. Get all the kNN samples from the analysis dataset
-    samples_in_ball = [[dataset[idx] for idx in row] for row in idx]
-    if type(samples_in_ball[0]) == torch.Tensor:
-        samples_in_ball = [sample.numpy() for sample in samples_in_ball]
-    samples_in_ball = np.array([np.array(row) for row in samples_in_ball])
+    sample_dim = samples_in_ball.ndim
+    samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) # kNN: (num_test_samples * num_kNN) x n_feat or R:  (num_test_samples * num_kNN * n_samples_around_instance) x n_feat
+    if sample_dim == 3:
+        n_test_points, n_closest_points, n_features = samples_in_ball.shape
+    elif sample_dim == 4:
+        n_test_points, n_closest_points, n_samples_around_instance, n_features = samples_in_ball.shape
+        samples_in_ball = samples_in_ball.reshape(-1, n_closest_points*n_samples_around_instance, n_features) # (num_test_samples * num_kNN) x n_feat
     binary_sample = get_binary_vectorized(samples_in_ball, tst_set, explainer) #binarize for lime prediction
-    samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) #shape: (n tst samples * n closest points) x n features
     
     # 2. Predict labels of the kNN samples with the model
-    model_preds = predict_fn(samples_reshaped) #shape: (n tst samples * n closest points) x n classes
-    model_preds = model_preds.reshape(samples_in_ball.shape[0], samples_in_ball.shape[1], -1) #shape: n tst samples x n closest points x n classes
+    model_preds = predict_fn(samples_reshaped) #shape: (num_test_samples * num_kNN) x n classes
+    num_classes = model_preds.shape[-1]
+    model_preds = model_preds.reshape(n_test_points, -1 , num_classes)  # kNN:  (num_test_samples, num_closest_points, nclass) R: (num_test_samples, num_closest_points*n_samples_around_instance, nclass)
     ## i) Get probability for the top label
     model_prob_of_top_label = model_preds[np.arange(model_preds.shape[0]), :, top_labels]
 
     ## ii) Get label predictions, is prediction the same as the top label?
-    labels_model_preds = np.argmax(model_preds, axis=-1) #shape: n tst samples x n closest points
+    labels_model_preds = np.argmax(model_preds, axis=-1) #shape: num_test_samples x num_kNN
     model_binary_preds_top_label = (labels_model_preds == top_labels[:, None]).astype(int)
 
    
@@ -176,41 +177,40 @@ def get_lime_preds_for_all_kNN(tst_set,
     local_binary_pred_top_labels = (local_probs_top_label >= pred_threshold).astype(int)
 
     return (model_binary_preds_top_label, model_prob_of_top_label, \
-            local_binary_pred_top_labels, cut_off_probability(local_probs_top_label), \
-            dist)
+            local_binary_pred_top_labels, cut_off_probability(local_probs_top_label))
 
 
 def get_lime_rergression_preds_for_all_kNN(tst_set, 
-                               dataset, 
                                explanations, 
                                explainer, 
                                predict_fn, 
-                               n_closest_max, 
-                               tree):
+                               samples_in_ball,
+                               n_samples_around_instance,
+                ):
     
     if tst_set.ndim == 1:
         tst_set = tst_set.reshape(1, -1)
     if type(tst_set) == torch.Tensor:
         tst_set = tst_set.numpy()
 
-    dist, idx = tree.query(tst_set, k=n_closest_max, return_distance=True, sort_results=True)
+    sample_dim = samples_in_ball.ndim
+    samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) # kNN: (num_test_samples * num_kNN) x n_feat or R:  (num_test_samples * num_kNN * n_samples_around_instance) x n_feat
 
-    # 1. Get all the kNN samples from the analysis dataset
-    samples_in_ball = [[dataset[idx] for idx in row] for row in idx]
-    if type(samples_in_ball[0]) == torch.Tensor:
-        samples_in_ball = [sample.numpy() for sample in samples_in_ball]
+    if sample_dim == 3:
+        n_test_points, n_closest_points, n_features = samples_in_ball.shape
+    elif sample_dim == 4:
+        n_test_points, n_closest_points, n_samples_around_instance, n_features = samples_in_ball.shape
+        samples_in_ball = samples_in_ball.reshape(-1, n_closest_points*n_samples_around_instance, n_features) # (num_test_samples * num_kNN) x n_feat
 
-    samples_in_ball = np.array([np.array(row) for row in samples_in_ball])
     binary_sample = get_binary_vectorized(samples_in_ball, tst_set, explainer) #binarize for lime prediction
-    samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) #shape: (n tst samples * n closest points) x n features
     
     # 2. Predict y of the kNN samples with the model
-    model_preds = predict_fn(samples_reshaped) #shape: (n tst samples * n closest points)
-    model_preds = model_preds.reshape(samples_in_ball.shape[0], samples_in_ball.shape[1]) #shape: n tst samples x n closest points 
+    model_preds = predict_fn(samples_reshaped) #shape: (num_test_samples * num_kNN)
+    model_preds = model_preds.reshape(n_test_points, -1 ) #shape: (num_test_samples, num_kNN) or (num_test_samples, num_kNN x n_samples_around_instance)
 
     # 3. Predict labels of the kNN samples with the LIME explanation
     ## i)+ii) Get probability for top label, if prob > threshold, predict as top label
     local_preds = lime_pred_vectorized(binary_sample, explanations, mode="regression")
     
-    return (model_preds, local_preds, dist)
+    return (model_preds, local_preds)
 
