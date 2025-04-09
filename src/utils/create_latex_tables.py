@@ -40,7 +40,7 @@ def model_accuracy_on_test_latex_table(data_model_performance, knn_results):
             n_feat = n_feat_match.group(1) if n_feat_match else "?"
             n_informative = n_informative_match.group(1) if n_informative_match else "?"
             
-            display_name = f"Synthetic (f={n_feat}, i={n_informative})"
+            display_name = f"Synthetic (d={n_feat}, i={n_informative})"
             dataset_display_names[dataset] = display_name
         else:
             # Capitalize real dataset names
@@ -129,11 +129,36 @@ def kNN_on_model_preds_latex_table(results_dict, models_to_include=None, dataset
         LaTeX code for the table
     """
     # Define mapping for synthetic datasets
-    SYNTHETIC_DATASET_MAPPING = {
-        "synthetic (d:50, inf feat.: 2)": "synthetic_data/n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42",
-        "synthetic (d:50, inf feat.: 10)": "synthetic_data/n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42",
-        "synthetic (d:100, inf feat.: 50)": "synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42"
-    }
+    # Create mapping for synthetic datasets
+    SYNTHETIC_DATASET_MAPPING = {}
+    
+    # Function to parse synthetic dataset path and create a readable name
+    def parse_synthetic_dataset(dataset_path):
+        if not dataset_path.startswith('synthetic_data'):
+            return None
+            
+        params = {}
+        # Extract parameters using regex
+        for param in ['n_feat', 'n_informative', 'n_redundant', 'n_repeated', 
+                     'n_classes', 'n_samples', 'n_clusters_per_class', 
+                     'class_sep', 'flip_y', 'random_state']:
+            match = re.search(f"{param}(\\d+(?:\\.\\d+)?)", dataset_path)
+            if match:
+                params[param] = match.group(1)
+        
+        # Create readable name based on the most important parameters
+        if 'n_feat' in params and 'n_informative' in params:
+            return f"syn (d:{params['n_feat']}, inf feat.: {params['n_informative']}), sep: {params.get('class_sep', 'N/A')}, clusters: {params.get('n_clusters_per_class', 'N/A')}"
+        else:
+            return "synthetic (unknown params)"
+    
+    # Populate mapping for all synthetic datasets
+    for model in results_dict:
+        for dataset in results_dict[model]:
+            if dataset.startswith('synthetic_data'):
+                readable_name = parse_synthetic_dataset(dataset)
+                if readable_name:
+                    SYNTHETIC_DATASET_MAPPING[readable_name] = dataset
     
     # Reverse mapping for synthetic datasets
     REVERSE_MAPPING = {v: k for k, v in SYNTHETIC_DATASET_MAPPING.items()}
