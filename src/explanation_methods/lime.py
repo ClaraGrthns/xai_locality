@@ -25,7 +25,7 @@ class LimeHandler(BaseExplanationMethodHandler):
                                                       class_names=class_names, 
                                                       discretize_continuous=True, 
                                                       mode=mode, 
-                                                      random_state=args.random_seed, 
+                                                      random_state=args.random_seed_synthetic_data, 
                                                       kernel_width=args.kernel_width)
     
     def explain_instance(self, **kwargs):
@@ -35,7 +35,10 @@ class LimeHandler(BaseExplanationMethodHandler):
     def compute_explanations(self, results_path, predict_fn, tst_data):
         args = self.args
         # Construct the explanation file name and path
-        explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}_distance_measure-{args.distance_measure}"
+        if args.random_seed == 42:
+            explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}_distance_measure-{args.distance_measure}"
+        else:
+            explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}_distance_measure-{args.distance_measure}_random_seed-{args.random_seed}"
         if args.num_lime_features > 10 :
             explanation_file_name += f"_num_features-{args.num_lime_features}"
         # if args.num_lime_features > 10:
@@ -67,7 +70,12 @@ class LimeHandler(BaseExplanationMethodHandler):
     def get_experiment_setting(self, fractions, max_radius=None):
         args = self.args
         df_setting = "complete_df" if args.include_trn and args.include_val else "only_test"
-        experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_accuracy_fraction"
+        if self.args.random_seed != 42: # not good style but too lazy to rename now.
+            experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
+        else:   
+            experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_accuracy_fraction"
+        if self.args.downsample_analysis != 1.0:
+            experiment_setting = f"downsample-{np.round(args.downsample_analysis, 2)}_" + experiment_setting
         if self.args.sample_around_instance:
             experiment_setting = f"sampled_at_point_max_R-{np.round(max_radius, 2)}_" + experiment_setting
         else:

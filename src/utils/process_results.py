@@ -9,9 +9,9 @@ import os.path as osp
 
 DATASET_TO_NUM_FEATURES = {"higgs": 24,
                            "jannis": 54,
-                           "synthetic_data/n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state42": 50, 
-            "synthetic_data/n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42": 50,
-            "synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state42": 100,
+                           "synthetic_data/n_feat50_n_informative2_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class2_class_sep0.9_flip_y0.01_random_state{random_seed}": 50, 
+            "synthetic_data/n_feat50_n_informative10_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state{random_seed}": 50,
+            "synthetic_data/n_feat100_n_informative50_n_redundant30_n_repeated0_n_classes2_n_samples100000_n_clusters_per_class3_class_sep0.9_flip_y0.01_random_state{random_seed}": 100,
 }
 
 
@@ -79,7 +79,14 @@ def get_synthetic_dataset_friendly_name_regression(dataset_name, pattern=None):
         return f"syn-reg {mode} \n(d:{d}, if:{i}, b: {bias}, ns:{noise}{additional})"
     return dataset_name
 
-def get_results_files_dict(explanation_method: str, models: list[str], datasets: list[str], distance_measure:str="euclidean", lime_features = 10, sampled_around_instance=False) -> dict:
+def get_results_files_dict(explanation_method: str,
+                        models: list[str], 
+                        datasets: list[str], 
+                        distance_measure: str = "euclidean", 
+                        lime_features=10, 
+                        sampled_around_instance=False, 
+                        random_seed=42,
+                        downsample_analysis=1.0) -> dict:
     results_folder = f"/home/grotehans/xai_locality/results/{explanation_method}"
     results_files_dict = {}
     if type(models) == str:
@@ -102,10 +109,24 @@ def get_results_files_dict(explanation_method: str, models: list[str], datasets:
                         num_feat = DATASET_TO_NUM_FEATURES[dataset]
                         condition = lambda x: (x.startswith("fractions") or x.startswith("regression")) and f"num_features-{num_feat}.npz" in x
                     else:
-                        condition = lambda x: (x.startswith("fractions")or x.startswith("regression")) and x.endswith("fraction.npz")
+                        condition = lambda x: (x.startswith("fractions") or x.startswith("regression")) and x.endswith("fraction.npz")
                 else:
                     condition = lambda x: (x.startswith("fractions") or x.startswith("regression")) and x.endswith("fraction.npz")
-            res = [os.path.join(path_to_results, f) for f in os.listdir(f"{results_folder}/{model}/{dataset}") if file_matching(f, distance_measure, condition=condition)]
+            
+            def random_seed_condition(file):
+                if random_seed == 42:
+                    return f"random_seed-{random_seed}" in file or "random_seed" not in file
+                return f"random_seed-{random_seed}" in file
+            
+            def downsample_condition(file):
+                if downsample_analysis == 1.0:
+                    return "downsample" not in file
+                else:
+                    return f"downsample-{np.round(downsample_analysis, 2)}" in file
+            # Combine conditions
+            combined_condition = lambda x: file_matching(x, distance_measure, condition=condition) and random_seed_condition(x) and downsample_condition(x)
+            
+            res = [os.path.join(path_to_results, f) for f in os.listdir(path_to_results) if combined_condition(f)]
             if explanation_method == "lime":
                 results_files_dict[model][dataset] = res
             elif len(res) > 0:
@@ -156,36 +177,36 @@ def load_results_clf(data_path):
         - n_points_in_ball (numpy array): Number of points in the ball.
     """
     results = np.load(data_path, allow_pickle=True)
-    nr_non_zero_columns = get_non_zero_cols(results['accuracy']) 
+    # nr_non_zero_columns = get_non_zero_cols(results['accuracy']) 
     n_points_in_ball = results['n_points_in_ball']
     # Common metrics for both methods
-    accuraccy_constant_clf = results['accuraccy_constant_clf'][:, :nr_non_zero_columns]
-    accuracy = results['accuracy'][:, :nr_non_zero_columns]
-    precision = results['precision'][:, :nr_non_zero_columns]
-    recall = results['recall'][:, :nr_non_zero_columns]
-    f1 = results['f1'][:, :nr_non_zero_columns]
-    mse_proba = results['mse_proba'][:, :nr_non_zero_columns]
-    mae_proba = results['mae_proba'][:, :nr_non_zero_columns]
-    r2_proba = results['r2_proba'][:, :nr_non_zero_columns]
-    gini = results["gini"][:, :nr_non_zero_columns]
-    ratio_all_ones = results['ratio_all_ones'][:, :nr_non_zero_columns]
-    radius = results['radius'][:, :nr_non_zero_columns]
-    variance_proba = results["variance_proba"][:, :nr_non_zero_columns]
+    accuraccy_constant_clf = results['accuraccy_constant_clf']
+    accuracy = results['accuracy']
+    precision = results['precision']
+    recall = results['recall']
+    f1 = results['f1']
+    mse_proba = results['mse_proba']
+    mae_proba = results['mae_proba']
+    r2_proba = results['r2_proba']
+    gini = results["gini"]
+    ratio_all_ones = results['ratio_all_ones']
+    radius = results['radius']
+    variance_proba = results["variance_proba"]
     variance_logit = results.get('variance_logit', None)
     if variance_logit is not None:
-        variance_logit = variance_logit[:, :nr_non_zero_columns]
+        variance_logit = variance_logit
     mse = results.get('mse', None)
     if mse is not None:
-        mse = mse[:, :nr_non_zero_columns]
+        mse = mse
     mae = results.get('mae', None)
     if mae is not None:
-        mae = mae[:, :nr_non_zero_columns]
+        mae = mae
     r2 = results.get('r2', None)
     if r2 is not None:
-        r2 = r2[:, :nr_non_zero_columns]
+        r2 = r2
     ratio_all_ones_local = results.get("ratio_all_ones_local", None)
     if ratio_all_ones_local is not None:
-        ratio_all_ones_local = ratio_all_ones_local[:, :nr_non_zero_columns]
+        ratio_all_ones_local = ratio_all_ones_local
 
     return (accuracy, precision, recall, f1,
             mse_proba, mae_proba, r2_proba,
@@ -238,7 +259,7 @@ def load_results_regression(data_path):
             variance_logit, radius), n_points_in_ball
 
 
-def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidean", regression=False):
+def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidean", regression=False, random_seed=42, downsample_analysis=1.0):
     distance_measure = distance_measure.lower()
     suffix = "_regression" if regression else ""
     prefix = "regression_" if regression else ""
@@ -247,16 +268,16 @@ def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidea
         dataset_name = dataset.split('/')[-1]
         file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
                     f"{prefix}synthetic_data/{dataset_name}/kNN{suffix}_on_model_preds_{model}_{dataset_name}_"
-                    f"normalized_tensor_frame_dist_measure-{distance_measure}_random_seed-42.npz")
+                    f"normalized_tensor_frame_dist_measure-{distance_measure}_random_seed-{random_seed}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}.npz")
     else:
         if model == "LogReg" or model == "LinReg":
             file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
                     f"{dataset}/kNN{suffix}_on_model_preds_{model}_LightGBM_{dataset}_normalized_data_"
-                    f"dist_measure-{distance_measure}_random_seed-42.npz")
+                    f"dist_measure-{distance_measure}_random_seed-{random_seed}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}.npz")
         else: 
             file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
                     f"{dataset}/kNN{suffix}_on_model_preds_{model}_{model}_{dataset}_normalized_data_"
-                    f"dist_measure-{distance_measure}_random_seed-42.npz")
+                    f"dist_measure-{distance_measure}_random_seed-{random_seed}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}.npz")
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
         return None
@@ -267,7 +288,7 @@ def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidea
         print(f"Error loading {file_path}: {e}")
         return None   
 
-def load_model_performance(model, dataset, synthetic=False):
+def load_model_performance(model, dataset, synthetic=False, random_seed=42):
     """Loads model performance metrics from a .npz file.
 
     Parameters
@@ -287,12 +308,12 @@ def load_model_performance(model, dataset, synthetic=False):
     """
     if synthetic:
         dataset_name = dataset.split('/')[-1]
-        file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/synthetic_data/{dataset_name}/model_performance_{model}_{dataset_name}_normalized_tensor_frame_random_seed-42.npz"
+        file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/synthetic_data/{dataset_name}/model_performance_{model}_{dataset_name}_normalized_tensor_frame_random_seed-{random_seed}.npz"
     else:
         if model == "LogReg":
-            file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_LightGBM_{dataset}_normalized_data_random_seed-42.npz"
+            file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_LightGBM_{dataset}_normalized_data_random_seed-{random_seed}.npz"
         else:
-            file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_{model}_{dataset}_normalized_data_random_seed-42.npz"
+            file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_{model}_{dataset}_normalized_data_random_seed-{random_seed}.npz"
     try:
         res = np.load(file_path, allow_pickle=True)
         return res
@@ -300,8 +321,8 @@ def load_model_performance(model, dataset, synthetic=False):
         print(f"Error loading {file_path}: {e}")
         return None
     
-def get_performance_metrics_model(model, dataset, metric_str, synthetic=False):
-    res = load_model_performance(model, dataset, synthetic)
+def get_performance_metrics_model(model, dataset, metric_str, synthetic=False, random_seed=42):
+    res = load_model_performance(model, dataset, synthetic, random_seed)
     if res is None:
         return np.nan
     else:
@@ -315,7 +336,7 @@ def get_performance_metrics_model(model, dataset, metric_str, synthetic=False):
         return float(res['classification_model'][metric_str_to_key_pair[metric_str]])
 
 
-def get_best_metrics_of_knn_clf(model, dataset, metric_sr_ls, synthetic=False, distance_measure="euclidean"):
+def get_best_metrics_of_knn_clf(model, dataset, metric_sr_ls, synthetic=False, distance_measure="euclidean", random_seed=42):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
         "Accuracy $g_x$": ("classification", 0),
@@ -335,7 +356,12 @@ def get_best_metrics_of_knn_clf(model, dataset, metric_sr_ls, synthetic=False, d
     }
     if type(metric_sr_ls) == str:
         metric_sr_ls = [metric_sr_ls]
-    res = load_knn_results(model, dataset, synthetic, distance_measure)
+    res = load_knn_results(model = model, 
+                           dataset = dataset, 
+                           synthetic = synthetic, 
+                           distance_measure= distance_measure, 
+                           random_seed = random_seed, 
+                           regression=False)
     if res is None:
         return None
     metrics_res = []
@@ -349,7 +375,7 @@ def get_best_metrics_of_knn_clf(model, dataset, metric_sr_ls, synthetic=False, d
         metrics_res.append((best_metric, best_idx))
     return metrics_res if len(metrics_res) > 1 else metrics_res[0]
 
-def get_best_metrics_of_knn_regression(model, dataset, metric_sr_ls, synthetic=False, distance_measure="euclidean"):
+def get_best_metrics_of_knn_regression(model, dataset, metric_sr_ls, synthetic=False, distance_measure="euclidean", random_seed=42):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
         "MSE $g_x$": ("res_regression", 0),
@@ -363,7 +389,12 @@ def get_best_metrics_of_knn_regression(model, dataset, metric_sr_ls, synthetic=F
     if type(metric_sr_ls) == str:
         metric_sr_ls = [metric_sr_ls]
 
-    res = load_knn_results(model, dataset, synthetic, distance_measure, regression = True)
+    res = load_knn_results(model=model, 
+                           dataset=dataset, synthetic = synthetic, 
+                           distance_measure= distance_measure, 
+                           random_seed = random_seed,  
+                           regression = True,
+                        )
     if res is None:
         return None
     metrics_res = []

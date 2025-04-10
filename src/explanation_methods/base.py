@@ -302,7 +302,7 @@ class BaseExplanationMethodHandler:
                      tree,
                      results_path,
                      ):
-        if self.args.sample_around_instance:
+        if not self.args.sample_around_instance:
             range_n_points_in_ball = np.arange(n_points_in_ball)
         else: 
             range_n_points_in_ball = np.linspace(0.001, max_radius, n_points_in_ball) 

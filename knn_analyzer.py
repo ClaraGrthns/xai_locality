@@ -98,7 +98,6 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
         
         
         experiment_setting = f"kNN_on_model_preds_{args.model_type}_{file_name_wo_file_ending}_dist_measure-{distance_measure}_random_seed-{args.random_seed}"
-        
         if osp.exists(osp.join(results_path, experiment_setting + ".npz")) and not args.force_overwrite:
             print(f"Results for the experiment setting {experiment_setting} already exist. Skipping.")
             continue
@@ -153,7 +152,6 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
             _, accuracy, precision, recall, f1 = binary_classification_metrics(
                 y_tst, classifier_preds, None)
             res_classification_true_labels[i] = [accuracy, precision, recall, f1]
-    
         # Save results for this distance measure
         res_dict = {
             "k_nns": k_nns,

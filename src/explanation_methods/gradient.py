@@ -28,7 +28,10 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         device = torch.device("cpu")
         saliency_map_folder = osp.join(results_path, 
                                         "saliency_maps")
-        saliency_map_file_path = osp.join(saliency_map_folder, f"saliency_map_{self.args.gradient_method}.h5")
+        if self.args.random_seed != 42: # not good style but too lazy to rename now.
+            saliency_map_file_path = osp.join(saliency_map_folder, f"saliency_map_{self.args.gradient_method}_random_seed-{self.args.random_seed}.h5")
+        else:
+            saliency_map_file_path = osp.join(saliency_map_folder, f"saliency_map_{self.args.gradient_method}.h5")
         print("Looking for saliency maps in: ", saliency_map_file_path)
         if osp.exists(saliency_map_file_path) and not self.args.force:
             print(f"Using precomputed saliency maps from: {saliency_map_file_path}")
@@ -45,7 +48,12 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         return saliency_maps
     
     def get_experiment_setting(self, fractions, max_radius):
-        setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"
+        if self.args.random_seed != 42: # not good style but too lazy to rename now.
+            setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
+        else:
+            setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"
+        if self.args.downsample_analysis != 1.0:
+            setting = f"downsample-{np.round(self.args.downsample_analysis, 2)}_" + setting
         if self.args.sample_around_instance:
             setting = f"sampled_at_point_max_R-{np.round(max_radius, 2)}_" + setting
         else:
@@ -75,14 +83,7 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
             predictions_baseline = predict_fn(torch.zeros_like(tst_chunk))
 
         if self.args.sample_around_instance:
-            dist = np.linspace(0.001, max_radius, n_points_in_ball) 
-            # file_path = osp.join(self.args.data_folder, "uniform_ball_samples", f"{self.args.setting}_uniform_ball_samples.h5")
-            # if osp.exists(file_path):
-            #     print(f"Using precomputed uniform ball samples from: {file_path}")
-            #     with h5py.File(file_path, "r") as f:
-            #         samples_in_ball = f["uniform_ball_samples"][:]
-            # else:
-            #     
+            dist = np.linspace(0.001, max_radius, n_points_in_ball)   
             samples_in_ball = uniform_ball_sample(
                     centers = tst_chunk_dist,
                     R_list = dist,

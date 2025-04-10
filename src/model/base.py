@@ -32,6 +32,9 @@ class BaseModelHandler:
     def _get_split_indices(self, whole_tst_feat):
         indices = np.random.permutation(len(whole_tst_feat))
         tst_indices, analysis_indices = np.split(indices, [self.args.max_test_points])
+        if self.args.downsample_analysis != 1.0:
+            downsample_size = int(self.args.downsample_analysis * len(analysis_indices))
+            analysis_indices = analysis_indices[:downsample_size] 
         print("using the following indices for testing: ", tst_indices)
         return tst_indices, analysis_indices
     

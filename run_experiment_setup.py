@@ -2,9 +2,9 @@ import argparse
 import os
 import os.path as osp
 from pathlib import Path
-import sys
 import copy
 import time
+import numpy as np
 
 from src.train.custom_data_frame_benchmark import main_deep_models, main_gbdt
 from knn_vs_accuracy import main as main_knn_vs_accuracy
@@ -25,6 +25,8 @@ def parse_args():
 
     # Basic configuration
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed for reproducibility")
+    parser.add_argument("--random_seed_synthetic_data", type=int, default=42, help="Random seed for reproducibility")
+    parser.add_argument("--downsample_analysis", nargs='+', type=float, default=1.0, help="Downsample size for analysis (single float or multiple floats)")    
     parser.add_argument("--data_folder", type=str,  
                         help="Path to the data folder")
     parser.add_argument("--model_folder", type=str, default=BASEDIR + "/pretrained_models",
@@ -145,7 +147,7 @@ def check_model_exists(args):
             tail_strength=args.tail_strength,
             coef=False,
             effective_rank=args.effective_rank,
-            random_seed=args.random_seed
+            random_seed=args.random_seed_synthetic_data
         )
         args.setting = setting_name
     else:
@@ -160,7 +162,7 @@ def check_model_exists(args):
             class_sep=args.class_sep,
             flip_y=args.flip_y,
             hypercube=args.hypercube,
-            random_seed=args.random_seed
+            random_seed=args.random_seed_synthetic_data
         )
         args.setting = setting_name
     model_path = get_results_path(args, "train")
@@ -281,32 +283,26 @@ def main():
     # Parse arguments and set random seed
     args = parse_args()
     set_random_seeds(args.random_seed)
-    args.seed = args.random_seed
+    args.seed = args.random_seed_synthetic_data
+    args.force = True #TODO: Delete
+    args.force_overwrite = True
     
     if args.debug:  
-        args.model_type = "LogReg"
-        args.setting = "n_feat25_n_informative10_n_redundant5_n_repeated2_n_classes2_n_samples100000_n_clusters_per_class4_class_sep0.8_flip_y0.05_random_state42"
+        args.model_type = "LightGBM"
+        args.setting = "credit"
         args.method = "lime"
         args.distance_measure = "euclidean"
-        args.n_features = 25
-        args.n_informative = 10
-        args.n_redundant = 5
-        args.n_repeated = 2
-        args.n_classes = 2
-        args.n_samples = 100000
-        args.n_clusters_per_class = 4
-        args.class_sep = 0.8
-        args.flip_y = 0.05
         args.random_seed = 42
-        args.hypercube = True
-        args.num_trials = 15
+        args.epochs = 25
+        args.use_benchmark = True
+        args.task_type = "binary_classification"
+        args.num_trials = 5
         args.num_repeats = 1
-        args.epochs = 10
-        args.optimize = True
         args.kernel_width = "default"
         args.num_lime_features = 10
-        args.force_overwrite = True
-        args.force_training = True
+        args.downsample_analysis = -1
+        args.force_overwrite = False
+
 
     
     if args.force_training:
@@ -335,14 +331,16 @@ def main():
     args.include_val = include_val
     args.coef = False
     print(args)
-    # if not args.config:
-    #     if args.use_benchmark:
-    #         is_synthetic = ""
-    #     elif args.regression:
-    #         is_synthetic = "regression_synthetic_data"
-    #     else:
-    #         is_synthetic = "synthetic_data"
-    #     args.config = f"{BASEDIR}/configs/{args.method}/{args.gradient_method or ''}/{args.model_type}/{is_synthetic}/{args.setting}/config.yaml"
+
+    if type(args.downsample_analysis) == float:
+        downsample_analysis_fractions = [args.downsample_analysis]
+    elif type(args.downsample_analysis) == list:
+        downsample_analysis_fractions = args.downsample_analysis
+    elif args.downsample_analysis == -1.:
+        downsample_analysis_fractions = np.linspace(0.3, 1.0, 10)
+    else:
+        raise ValueError("input does not match any of the expected types")
+    
     if (not model_exists or args.force_training) and not args.skip_training:
         print("Starting with model training...")
         start_time = time.time()
@@ -354,13 +352,16 @@ def main():
     if not args.skip_knn:
         print("Starting KNN analysis...")
         start_time = time.time()
+        args.downsample_analysis = 1.0
         run_knn_analysis(args)
         print(f"KNN analysis completed in {(time.time() - start_time)/60:.2f} minutes.")
     
     if not args.skip_fraction:
         print("Starting fraction vs accuracy analysis...")
         start_time = time.time()
-        run_knn_vs_local_model_analysis(args)
+        for fraction in downsample_analysis_fractions:
+            args.downsample_analysis = fraction
+            run_knn_vs_local_model_analysis(args)
         print(f"Fraction vs accuracy analysis completed in {(time.time() - start_time):.2f} seconds.")
     print("Experiment complete!")
 

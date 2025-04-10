@@ -34,8 +34,8 @@ METRICS_MAP_REG = {
     "MAE const. local model": 4,
     "Variance $f(x)$": 5,
     "Radius": 6,
-    "MSE const. local model - MSE $g_x$": (0, 3),
-    "MAE const. local model - MAE $g_x$": (1, 4)
+    "MSE const. local model - MSE $g_x$": (3, 0),
+    "MAE const. local model - MAE $g_x$": (4, 1)
 }
 
 
@@ -81,13 +81,13 @@ def create_legend(models, colors, method, unique_kw_lines_idx):
     return handles, labels
 
 def plot_dataset_metrics(models, datasets, method, metrics, distance="euclidean", 
-                       max_neighbors=None, save=False, lime_features=10, regression=False):
+                       max_neighbors=None, save=False, lime_features=10, regression=False, random_seed=42):
     """Main plotting function."""
     if regression:
         from src.utils.process_results import load_results_regression as load_results
     else:
         from src.utils.process_results import load_results_clf as load_results
-    results = get_results_files_dict(method, models, datasets, distance, lime_features)
+    results = get_results_files_dict(method, models, datasets, distance, lime_features, random_seed=random_seed)
     cmap = plt.cm.tab10
     if regression:
         metrics_map = METRICS_MAP_REG
@@ -109,21 +109,21 @@ def plot_dataset_metrics(models, datasets, method, metrics, distance="euclidean"
                     default_kw = np.median([kw[0] for kw in kernel_widths_fp])
                     for i, (width, path) in enumerate(kernel_widths_fp):
                         data, neighbors = load_results(path)
+                        neighbors = np.arange(0, len(neighbors))
                         neighbors = neighbors + 1 if neighbors[0] == 0 else neighbors
-                        vals = data[metric_idx[1]] - data[metric_idx[0]] if is_diff else data[metric_idx]
+                        vals = data[metric_idx[0]] - data[metric_idx[1]] if is_diff else data[metric_idx]
                         idx_linestyle = int(default_kw == width) + int(width > default_kw) - int(width < default_kw)
                         unique_kw_lines.add(idx_linestyle)
                         plot_metric(ax, vals, neighbors, colors[model], LINESTYLES[idx_linestyle], max_neighbors)
                 else:
                     data, neighbors = load_results(files[0] if isinstance(files, list) else files)
                     neighbors = neighbors + 1 if neighbors[0] == 0 else neighbors
-                    vals = data[metric_idx[1]] - data[metric_idx[0]] if is_diff else data[metric_idx]
+                    vals = data[metric_idx[0]] - data[metric_idx[1]] if is_diff else data[metric_idx]
                     plot_metric(ax, vals, neighbors, colors[model], '-', max_neighbors)
                 
                 if is_diff:
                     ax.axhline(0, color='k', alpha=0.8, linewidth=0.8)
-            
-            ax.set_title(metric.replace("$g_x$", "$f(x')$") if "const" in metric else metric)
+            ax.set_title(metric)
             ax.set_xlabel(f"Neighborhood size ({distance} distance)")
             ax.grid(True, linestyle=':')
         
@@ -213,7 +213,7 @@ def get_filtered_diff(mean_diffs, filter):
         'mean': np.mean
     }
     return filters.get(filter, lambda x: x[filter])(mean_diffs) if isinstance(filter, str) else mean_diffs[filter]
-def get_knn_vs_metric_data(res_model, model_name, mapping, filter, metric, compute_difference, distance, regression=False):
+def get_knn_vs_metric_data(res_model, model_name, mapping, filter, metric, compute_difference, distance, regression=False, random_seed=42):
     """Extract kNN and performance difference data."""
     if regression:
         from src.utils.process_results import load_results_regression as load_results
@@ -238,24 +238,33 @@ def get_knn_vs_metric_data(res_model, model_name, mapping, filter, metric, compu
             filtered_diff = get_filtered_diff(mean_metric, filter)
             synthetic = "syn" in dataset
             dataset_name = dataset if not synthetic else mapping.get(dataset, dataset)
-            knn_result = get_best_metrics(model_name, dataset_name, f"{metric} $g_x$", synthetic=synthetic, distance_measure=distance)
+            knn_result = get_best_metrics(model_name, dataset_name, f"{metric} $g_x$", synthetic=synthetic, distance_measure=distance, random_seed=random_seed)
             if knn_result:
                 results.append((dataset, knn_result[0], filtered_diff))
         except Exception as e:
             print(f"Error processing {dataset} for {model_name}: {str(e)}")
     return results
 
-def plot_knn_metrics_vs_metric(models, method, datasets, distance="euclidean", ax=None, 
-                           marker_size=80, filter="max", metric="MSE", compute_difference = False, regression=False):
+def plot_knn_metrics_vs_metric(models, 
+                               method, 
+                               datasets, 
+                               distance="euclidean",
+                               ax=None,
+                               marker_size=80, 
+                               filter="max", 
+                               metric="MSE", 
+                               compute_difference = False, 
+                               regression=False, 
+                               random_seed=42):
     """Main plotting function comparing model complexity vs performance difference."""
-    ax = ax or plt.subplots(figsize=(9, 6))[1]
+    ax = ax or plt.subplots(figsize=(9, 7))[1]
     markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*']
     cmap = plt.cm.tab20
     
     # Collect and organize all data
     all_results = defaultdict(list)
     for model in models:
-        model_results = get_results_files_dict(method, [model], datasets, distance)[model]
+        model_results = get_results_files_dict(method, [model], datasets, distance, random_seed=random_seed)[model]
         mapping = get_synthetic_dataset_mapping(datasets, regression)
         points = get_knn_vs_metric_data(model_results, model, mapping, filter, metric, compute_difference, distance, regression)
         for dataset, metric_res, diff in points:
