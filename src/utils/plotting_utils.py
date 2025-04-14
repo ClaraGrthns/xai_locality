@@ -3,7 +3,7 @@ import re
 import matplotlib.pyplot as plt
 from matplotlib import gridspec, lines
 from collections import defaultdict
-
+import time
 from src.utils.process_results import get_results_files_dict, get_kernel_widths_to_filepaths, get_synthetic_dataset_mapping
 # Constants
 METRICS_TO_IDX_CLF = {
@@ -85,28 +85,35 @@ def plot_dataset_metrics(models, datasets, method, metrics, distance="euclidean"
     """Main plotting function."""
     if regression:
         from src.utils.process_results import load_results_regression as load_results
-    else:
-        from src.utils.process_results import load_results_clf as load_results
-    results = get_results_files_dict(method, models, datasets, distance, lime_features, random_seed=random_seed)
-    cmap = plt.cm.tab10
-    if regression:
         metrics_map = METRICS_MAP_REG
     else:
+        from src.utils.process_results import load_results_clf as load_results
         metrics_map = METRICS_TO_IDX_CLF
+    start_time = time.time()
+    results = get_results_files_dict(method, models, datasets, distance, lime_features, random_seed=random_seed)
+    cmap = plt.cm.tab10
+    
     for dataset in set(d for model_data in results.values() for d in model_data):
+        dataset_start_time = time.time()
+        print(f"Starting dataset {dataset} at {time.strftime('%H:%M:%S')}")
         fig, axes, legend_ax = setup_plot(len(metrics))
         dataset_models = [m for m in results if dataset in results[m]]
         colors = {m: cmap(i) for i, m in enumerate(dataset_models)}
         unique_kw_lines = set()
-        for ax, metric in zip(axes, metrics):
-            
+        for ax_idx, (ax, metric) in enumerate(zip(axes, metrics)):
+            metric_start_time = time.time()
+            print(f"  Processing metric {metric} ({ax_idx+1}/{len(metrics)})")
             metric_idx = metrics_map[metric]
             is_diff = "-" in metric or "Difference" in metric
             for model in dataset_models:
+                model_start_time = time.time()
                 files = results[model][dataset]
                 if method == "lime" and metric not in ["Variance $f(x)$", "Radius"]:
+                    kernel_start_time = time.time()
                     kernel_widths_fp = get_kernel_widths_to_filepaths(files)
+                    print(f"    Time to get_kernel_widths_to_filepaths: {time.time() - kernel_start_time:.2f} seconds")
                     default_kw = np.median([kw[0] for kw in kernel_widths_fp])
+
                     for i, (width, path) in enumerate(kernel_widths_fp):
                         data, neighbors = load_results(path)
                         neighbors = np.arange(0, len(neighbors))
@@ -123,12 +130,14 @@ def plot_dataset_metrics(models, datasets, method, metrics, distance="euclidean"
                 
                 if is_diff:
                     ax.axhline(0, color='k', alpha=0.8, linewidth=0.8)
+                print(f"    Time for model {model}: {time.time() - model_start_time:.2f} seconds")
             ax.set_title(metric)
             ax.set_xlabel(f"Neighborhood size ({distance} distance)")
             ax.grid(True, linestyle=':')
-        
+        legend_start_time = time.time()
         handles, labels = create_legend(dataset_models, colors, method, unique_kw_lines)
         legend_ax.legend(handles, labels, frameon=True, fontsize=9)
+        print(f"  Time to create legend: {time.time() - legend_start_time:.2f} seconds")
         method_title = method.split("/")[-1]
         method_title = " ".join(method_title.split("_"))
         if method == "lime" and lime_features == "all":
@@ -139,9 +148,19 @@ def plot_dataset_metrics(models, datasets, method, metrics, distance="euclidean"
             title += " (all features)"
         y_position = 1.03 if "syn" in dataset else 1.02
         fig.suptitle(title, fontsize=14, y=y_position)
-        # if save:
-        #     plt.savefig(f"graphics/{method}_{dataset}_{'_'.join(metrics)}.pdf")
-        plt.show()
+        if save:
+            save_start = time.time()
+            # Fastest save configuration
+            fig.savefig(
+                f"graphics/{method}_{dataset}.pdf",
+                bbox_inches='tight',  # Only if needed
+                dpi=150,              # Reduced from 300
+                # optimize=True,         # Enable PDF optimizations
+                metadata={'CreationDate': None}  # Disable timestamp
+            )
+            print(f"  Time to save figure: {time.time() - save_start:.2f} seconds")
+        else:
+            plt.show()
 
 
 
@@ -255,7 +274,8 @@ def plot_knn_metrics_vs_metric(models,
                                metric="MSE", 
                                compute_difference = False, 
                                regression=False, 
-                               random_seed=42):
+                               random_seed=42,
+                               save=False):
     """Main plotting function comparing model complexity vs performance difference."""
     ax = ax or plt.subplots(figsize=(9, 7))[1]
     markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*']
@@ -306,7 +326,14 @@ def plot_knn_metrics_vs_metric(models,
     ax.set_position([ax.get_position().x0, ax.get_position().y0, 
                     ax.get_position().width * 0.8, ax.get_position().height])
     create_dual_legend(ax, unique_datasets, colors, models, markers)
-    plt.tight_layout()
+    if save:
+        plt.savefig(
+        f"graphics/complexity_vs_{filter}_metrics_{method}_{dataset}.pdf",
+        bbox_inches='tight',  # Only if needed
+        dpi=150,              # Reduced from 300
+        optimize=True,         # Enable PDF optimizations
+        metadata={'CreationDate': None}  # Disable timestamp
+        )
     return ax
 
 
