@@ -137,10 +137,10 @@ def plot_dataset_metrics(models, datasets, method, metrics, distance="euclidean"
         title = f"{method_title.capitalize()} on {dataset.capitalize()}"
         if method == "lime" and lime_features == "all":
             title += " (all features)"
-        fig.suptitle(title, fontsize=14, y=1.02)
-        
-        if save:
-            plt.savefig(f"graphics/{method}_{dataset}_{'_'.join(metrics)}.pdf")
+        y_position = 1.03 if "syn" in dataset else 1.02
+        fig.suptitle(title, fontsize=14, y=y_position)
+        # if save:
+        #     plt.savefig(f"graphics/{method}_{dataset}_{'_'.join(metrics)}.pdf")
         plt.show()
 
 
@@ -260,11 +260,11 @@ def plot_knn_metrics_vs_metric(models,
     ax = ax or plt.subplots(figsize=(9, 7))[1]
     markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*']
     cmap = plt.cm.tab20
-    
+    res_dict = get_results_files_dict(method, models, datasets, distance, random_seed=random_seed)
     # Collect and organize all data
     all_results = defaultdict(list)
     for model in models:
-        model_results = get_results_files_dict(method, [model], datasets, distance, random_seed=random_seed)[model]
+        model_results = res_dict[model]
         mapping = get_synthetic_dataset_mapping(datasets, regression)
         points = get_knn_vs_metric_data(model_results, model, mapping, filter, metric, compute_difference, distance, regression)
         for dataset, metric_res, diff in points:

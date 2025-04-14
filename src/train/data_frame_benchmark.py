@@ -110,6 +110,9 @@ dataset_lookup = {
             4: "yahoo",
             5: "year",
         },
+        "medium": {
+            3: "medical_charges",
+        }
     },
 }
 

@@ -26,7 +26,7 @@ def get_kernel_widths_to_filepaths(files):
     widths = []
     for f in files:
         match = re.search(r'kernel_width-(\d+\.?\d*)', str(f))
-        widths.append((float(match.group(1)), f) if match else (None, f))
+        widths.append((float(match.group(1)), f) if match else (np.inf, f))
     return sorted(widths, key=lambda x: x[0])
 
 def get_synthetic_dataset_mapping(datasets, regression=False):
@@ -86,7 +86,7 @@ def get_results_files_dict(explanation_method: str,
                         lime_features=10, 
                         sampled_around_instance=False, 
                         random_seed=42,
-                        downsample_analysis=1.0) -> dict:
+                        downsampled=False) -> dict:
     results_folder = f"/home/grotehans/xai_locality/results/{explanation_method}"
     results_files_dict = {}
     if type(models) == str:
@@ -96,7 +96,10 @@ def get_results_files_dict(explanation_method: str,
     for model in models:
         results_files_dict[model] = {}
         for dataset in datasets:
-            path_to_results = os.path.join(results_folder, model, dataset)
+            if downsampled:
+                path_to_results = os.path.join(results_folder, model, dataset, "downsampled")
+            else:
+                path_to_results = os.path.join(results_folder, model, dataset)
             if not os.path.exists(path_to_results):
                 continue
             if sampled_around_instance:
@@ -114,23 +117,33 @@ def get_results_files_dict(explanation_method: str,
                     condition = lambda x: (x.startswith("fractions") or x.startswith("regression")) and x.endswith("fraction.npz")
             
             def random_seed_condition(file):
-                if random_seed == 42:
-                    return f"random_seed-{random_seed}" in file or "random_seed" not in file
-                return f"random_seed-{random_seed}" in file
-            
-            def downsample_condition(file):
-                if downsample_analysis == 1.0:
-                    return "downsample" not in file
-                else:
-                    return f"downsample-{np.round(downsample_analysis, 2)}" in file
+                if random_seed:
+                    return f"random_seed" in file
+                return f"random_seed-42" in file
             # Combine conditions
-            combined_condition = lambda x: file_matching(x, distance_measure, condition=condition) and random_seed_condition(x) and downsample_condition(x)
-            
-            res = [os.path.join(path_to_results, f) for f in os.listdir(path_to_results) if combined_condition(f)]
+            combined_condition = lambda x: file_matching(x, distance_measure, condition=condition) and random_seed_condition(x)
+            files = [os.path.join(path_to_results, f) for f in os.listdir(path_to_results) if combined_condition(f)]
+            # Filter files with random_seed-42
+            seed42_files = [f for f in files if "random_seed-42" in f or ("random_seed" not in f)]
+            if explanation_method == "lime" and seed42_files and random_seed and not downsampled:
+                kernel_widths = get_kernel_widths_to_filepaths(seed42_files)
+                kernel_widths = [kw for kw in kernel_widths if kw[0] is not None]  # Filter out None kernel widths
+                if kernel_widths:
+                    median_idx = len(kernel_widths) // 2
+                    res = kernel_widths[median_idx][1]
+                else:
+                    res = seed42_files[0]
+                if random_seed:
+                    res = list(set(files)-set(seed42_files)| {res})
+            else:
+                res = files
             if explanation_method == "lime":
+                results_files_dict[model][dataset] = res
+            elif downsampled or random_seed:
                 results_files_dict[model][dataset] = res
             elif len(res) > 0:
                 results_files_dict[model][dataset] = res[0]
+
     # Rename synthetic dataset keys
     for model in results_files_dict:
         keys = list(results_files_dict[model].keys())
