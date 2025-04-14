@@ -26,7 +26,8 @@ def parse_args():
     # Basic configuration
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--random_seed_synthetic_data", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--downsample_analysis", nargs='+', type=float, default=1.0, help="Downsample size for analysis (single float or multiple floats)")    
+    parser.add_argument("--downsample_analysis", action="store_true", help="Downsample size for analysis (single float or multiple floats)")    
+    parser.add_argument("--create_additional_analysis_data", action="store_true", help="Experiment: create_additional_analysis_data and then Downsample size for analysis (single float or multiple floats)")    
     parser.add_argument("--data_folder", type=str,  
                         help="Path to the data folder")
     parser.add_argument("--model_folder", type=str, default=BASEDIR + "/pretrained_models",
@@ -166,10 +167,7 @@ def check_model_exists(args):
         )
         args.setting = setting_name
     model_path = get_results_path(args, "train")
-    model_dir = os.path.dirname(model_path)
-    model_filename = f"{args.model_type}_{args.setting}_best_model.pt"
-    fallback_path = os.path.join(model_dir, model_filename)
-    return osp.exists(model_path) or osp.exists(fallback_path), model_path
+    return osp.exists(model_path), model_path
 
 def get_data_path(args):
     """Get data path based on model type and dataset."""
@@ -285,24 +283,32 @@ def main():
     set_random_seeds(args.random_seed)
     args.seed = args.random_seed_synthetic_data
     args.force = True #TODO: Delete
-    args.force_overwrite = True
+    args.force_overwrite = True #TODO: Delete
     
     if args.debug:  
-        args.model_type = "LightGBM"
-        args.setting = "credit"
+        args.model_type = "ResNet"
+        args.setting = "regression_piecewise_n_feat60_n_informative15_n_samples200000_noise0.25_bias0.3_random_state42_effective_rank60_tail_strength0.4"
         args.method = "lime"
         args.distance_measure = "euclidean"
+        args.regression = True
+        args.force = True
+        args.regression_mode = "piecewise"
+        args.n_features = 60
+        args.n_informative = 15
+        args.n_samples = 200000
+        args.noise = 0.25
+        args.bias = 0.3
         args.random_seed = 42
-        args.epochs = 25
-        args.use_benchmark = True
-        args.task_type = "binary_classification"
+        args.data_folder = "data"
+        args.test_size = 0.4
+        args.val_size = 0.1
+        args.epochs = 15
         args.num_trials = 5
         args.num_repeats = 1
+        args.effective_rank = 60
+        args.tail_strength = 0.4
         args.kernel_width = "default"
         args.num_lime_features = 10
-        args.downsample_analysis = -1
-        args.force_overwrite = False
-
 
     
     if args.force_training:
@@ -321,8 +327,6 @@ def main():
     if args.results_folder is None:
         args.results_folder = os.path.join(BASEDIR, "results")
     
-    
-
     model_exists, model_path = check_model_exists(args)
     args.model_path = model_path
     args.data_path = get_data_path(args)
@@ -332,14 +336,10 @@ def main():
     args.coef = False
     print(args)
 
-    if type(args.downsample_analysis) == float:
-        downsample_analysis_fractions = [args.downsample_analysis]
-    elif type(args.downsample_analysis) == list:
-        downsample_analysis_fractions = args.downsample_analysis
-    elif args.downsample_analysis == -1.:
-        downsample_analysis_fractions = np.linspace(0.3, 1.0, 10)
+    if args.downsample_analysis:
+        downsample_analysis_fractions = np.linspace(0.1, 1.0, 50)[:-1]
     else:
-        raise ValueError("input does not match any of the expected types")
+        downsample_analysis_fractions = [1]
     
     if (not model_exists or args.force_training) and not args.skip_training:
         print("Starting with model training...")

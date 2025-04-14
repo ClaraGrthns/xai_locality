@@ -93,6 +93,7 @@ def main(args):
     print("Max distance: ", max_distance)
 
     n_points_in_ball = 200
+    n_points_in_ball = np.min([n_points_in_ball, len(analysis_dataset)])
     if args.sample_around_instance:
         n_points_in_ball = 25
     print("Considering the closest neighbours: ", n_points_in_ball)
