@@ -4,11 +4,18 @@ import numpy as np
 from src.dataset.tab_data import TabularDataset
 from src.utils.misc import get_path
 import torch
+from sklearn.datasets import make_classification
+from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split
 from src.utils.pytorch_frame_utils import (
     tensorframe_to_tensor,
     load_dataframes, 
     ) 
-
+from src.dataset.synthetic_data import create_synthetic_classification_data_sklearn, create_synthetic_regression_data_sklearn
+from torch_frame.data import Dataset
+import torch_frame
+import pandas as pd
+import os
 
 class BaseModelHandler:
     def __init__(self, args):
@@ -32,7 +39,7 @@ class BaseModelHandler:
     def _get_split_indices(self, whole_tst_feat):
         indices = np.random.permutation(len(whole_tst_feat))
         tst_indices, analysis_indices = np.split(indices, [self.args.max_test_points])
-        if self.args.downsample_analysis != 1.0:
+        if self.args.downsample_analysis != 1.0 and not self.args.create_additional_analysis_data:
             downsample_size = int(self.args.downsample_analysis * len(analysis_indices))
             analysis_indices = analysis_indices[:downsample_size] 
         print("using the following indices for testing: ", tst_indices)
@@ -44,7 +51,18 @@ class BaseModelHandler:
         tst_feat = whole_tst_feat[tst_indices]
         analysis_y = y[analysis_indices]
         tst_y = y[tst_indices]
+
         return tst_feat, analysis_feat, tst_y, analysis_y
+    
+    def _transform_materialize_data(self, X, y):
+        df = pd.DataFrame(X)
+        df['y'] = y
+        col_to_stype = {col: torch_frame.numerical for col in df.columns}
+        col_to_stype['y'] = torch_frame.numerical if self.args.regression else torch_frame.categorical
+        dataset = Dataset(df, col_to_stype=col_to_stype, target_col='y')
+        dataset.materialize()
+        tensorframe = dataset.tensor_frame
+        return tensorframe_to_tensor(tensorframe)
     
     def load_data_for_kNN(self):
         """
@@ -81,6 +99,7 @@ class BaseModelHandler:
         return trn_feat, analysis_feat, tst_feat, y_trn, analysis_y, tst_y 
     
     def _split_data_in_tst_analysis(self, whole_tst_feat, val_feat, trn_feat):
+        args = self.args
         tst_indices, analysis_indices = self._get_split_indices(whole_tst_feat)
         analysis_feat = whole_tst_feat[analysis_indices]
         tst_feat = whole_tst_feat[tst_indices]
@@ -93,7 +112,51 @@ class BaseModelHandler:
             if isinstance(val_feat, np.ndarray):
                 analysis_feat = np.concatenate([analysis_feat, val_feat], axis=0)
             else:
-                analysis_feat = torch.cat([analysis_feat, val_feat], dim=0) 
+                analysis_feat = torch.cat([analysis_feat, val_feat], dim=0)
+        if "synthetic" in self.args.data_folder and self.args.create_additional_analysis_data:
+            if self.args.regression:
+                pass  # Placeholder for regression case
+            else:
+                _, trn_feat_unnormalized, _, _, _, _, _ = create_synthetic_classification_data_sklearn(
+                    n_features=args.n_features, 
+                    n_informative=args.n_informative, 
+                    n_redundant=args.n_redundant, 
+                    n_repeated=args.n_repeated,
+                    n_classes=args.n_classes, 
+                    n_samples=args.n_samples,
+                    n_clusters_per_class=args.n_clusters_per_class, 
+                    class_sep=args.class_sep, 
+                    flip_y=args.flip_y, 
+                    random_seed=args.random_seed_synthetic_data, 
+                    data_folder=args.data_folder,
+                    hypercube = args.hypercube,
+                    test_size=args.test_size, 
+                    val_size=args.val_size)
+                X, _ = make_classification(
+                        n_samples=200000,
+                        n_features=self.args.n_features,
+                        n_informative=self.args.n_informative,
+                        n_redundant=self.args.n_redundant,
+                        n_repeated=self.args.n_repeated,
+                        n_classes=self.args.n_classes,
+                        n_clusters_per_class=self.args.n_clusters_per_class,
+                        class_sep=self.args.class_sep,
+                        flip_y=self.args.flip_y,
+                        hypercube=self.args.hypercube,
+                        random_state=self.args.random_seed_synthetic_data+1,
+                        shuffle=True  # Important for random sampling while maintaining balance
+                )
+                X_mean = np.mean(trn_feat_unnormalized, axis=0)
+                X_std = np.std(trn_feat_unnormalized, axis=0)
+                X_normalized = (X - X_mean) / X_std
+                if isinstance(analysis_feat, np.ndarray):
+                    analysis_feat = X_normalized
+                else:
+                    X_normalized = torch.tensor(X_normalized, dtype=torch.float32)
+                    analysis_feat = X_normalized
+                if self.args.downsample_analysis != 1.0:
+                    downsample_size = int(self.args.downsample_analysis * len(analysis_feat))
+                    analysis_feat = analysis_feat[:downsample_size] 
         tst_dataset = TabularDataset(tst_feat)
         analysis_dataset = TabularDataset(analysis_feat)
         print("Length of data set for analysis", len(analysis_dataset))

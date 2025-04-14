@@ -24,23 +24,66 @@ def apply_nonlinearity(X, y, regression_mode, n_informative):
                 interaction_terms += X_informative[:, i] * X_informative[:, j]
         y_nonlinear = y + 0.5 * interaction_terms
     
-    elif regression_mode == "periodic":
-        # Sinusoidal effects for all informative features (different frequencies)
-        periodic_terms = 0
+    elif regression_mode == "poly_interaction":
+        # Combination of polynomial and interaction terms
+        quadratic_terms = 0.2 * np.sum(X_informative**2, axis=1)
+        cubic_terms = -0.05 * np.sum(X_informative**3, axis=1)
+        
+        interaction_terms = 0
         for i in range(n_informative):
-            periodic_terms += (i + 1) * np.sin((i + 2) * X_informative[:, i])
-        y_nonlinear = y + periodic_terms
+            for j in range(i + 1, n_informative):
+                interaction_terms += X_informative[:, i] * X_informative[:, j]
+        
+        y_nonlinear = y + quadratic_terms + cubic_terms + 0.3 * interaction_terms
     
-    elif regression_mode == "hierarchical":
-        # Multiplicative hierarchy: x0 * (x1 + x2) + x3^2, etc.
-        hierarchical_term = (X_informative[:, 0] * (X_informative[:, 1] + X_informative[:, 2])) + 0.5 * X_informative[:, 3]**2
-        y_nonlinear = y + hierarchical_term
+    elif regression_mode == "poly_cross":
+        # Polynomial terms plus cross terms with first feature
+        poly_terms = 0.4 * np.sum(X_informative[:, 1:]**2, axis=1)
+        cross_terms = 0.7 * np.sum(X_informative[:, 0:1] * X_informative[:, 1:], axis=1)
+        y_nonlinear = y + poly_terms + cross_terms
     
-    elif regression_mode == "neural_like":
-        # Simulate a neuron-like activation: tanh weighted sum
-        weights = np.linspace(0.5, 1.5, n_informative)
-        activated = np.tanh(np.dot(X_informative, weights))
-        y_nonlinear = y + 2 * activated
+    elif regression_mode == "multiplicative_chain":
+        # Multiplicative chain: x0 * x1 + x1 * x2 + x2 * x3 + ...
+        chain_terms = 0
+        for i in range(n_informative - 1):
+            chain_terms += X_informative[:, i] * X_informative[:, i+1]
+        y_nonlinear = y + 0.6 * chain_terms + 0.1 * np.sum(X_informative**2, axis=1)
+    
+    elif regression_mode == "rational":
+        # Rational function terms (ratios of polynomials)
+        numerator = 0.5 * X_informative[:, 0] + 0.3 * X_informative[:, 1]**2
+        denominator = 1 + 0.2 * np.abs(X_informative[:, 2])
+        y_nonlinear = y + numerator / (denominator + 1e-6)  # Small constant to avoid division by zero
+    
+    elif regression_mode == "exponential_interaction":
+        # Exponential of interaction terms
+        interaction = 0
+        for i in range(min(3, n_informative)):  # Use first 3 features for main interaction
+            for j in range(i + 1, min(3, n_informative)):
+                interaction += X_informative[:, i] * X_informative[:, j]
+        y_nonlinear = y + 0.5 * np.exp(0.3 * interaction) + 0.2 * np.sum(X_informative, axis=1)
+    
+    elif regression_mode == "sigmoid_mix":
+        # Sigmoid of linear combination plus polynomial terms
+        weights = np.linspace(0.8, 1.2, n_informative)
+        sigmoid_term = 2 / (1 + np.exp(-0.5 * np.dot(X_informative, weights)))
+        poly_term = 0.1 * np.sum(X_informative**3, axis=1)
+        y_nonlinear = y + sigmoid_term + poly_term
+    
+    elif regression_mode == "complex_hierarchy":
+        # Complex hierarchical structure with polynomials and interactions
+        main_effect = 0.4 * X_informative[:, 0]**2
+        interaction_effect = 0.3 * X_informative[:, 0] * X_informative[:, 1]
+        sub_interaction = 0.2 * X_informative[:, 2] * (X_informative[:, 3] + X_informative[:, 4])
+        y_nonlinear = y + main_effect + interaction_effect + sub_interaction
+    
+    elif regression_mode == "piecewise":
+        # Piecewise linear/non-linear effects
+        term1 = np.where(X_informative[:, 0] > 0, 
+                        0.5 * X_informative[:, 0]**2, 
+                        -0.3 * X_informative[:, 0])
+        term2 = 0.4 * np.sin(X_informative[:, 1]) * X_informative[:, 2]
+        y_nonlinear = y + term1 + term2
     
     else:
         raise ValueError(f"Unknown regression_mode: {regression_mode}")
