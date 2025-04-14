@@ -16,11 +16,13 @@ def parse_arguments():
                         help='Add --skip_knn flag to commands')
     parser.add_argument('--skip_fraction', action='store_true',
                         help='Add --skip_fraction flag to commands')
+    parser.add_argument('--random_seed', type=int, default=42,)
+    parser.add_argument('--random_seed_synthetic_data', type=int, default=42,)
     return parser.parse_args()
 
 def create_command_file(output_dir, model, setting, method, distance_measure, kernel_width, num_lime_features,
                         is_synthetic, skip_training, force_training, skip_knn, skip_fraction, gradient_method=None,
-                        synthetic_params=None):
+                        synthetic_params=None, random_seed=42):
     """Create a file containing the Python command for a specific configuration"""
     
     # Create directory structure - organize by method first
@@ -47,7 +49,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     os.makedirs(model_dir, exist_ok=True)
     
     # Format args for the command
-    base_args = f"--model_type {model} --setting {setting} --method {method} --distance_measure {distance_measure}"
+    base_args = f"--model_type {model} --setting {setting} --method {method} --distance_measure {distance_measure} --random_seed {random_seed}"
     
     if is_synthetic:
         # Use the synthetic parameters directly instead of parsing them from the setting name
@@ -62,7 +64,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
             n_clusters_per_class = synthetic_params.get('n_clusters_per_class', 3)
             class_sep = synthetic_params.get('class_sep', 0.9)
             flip_y = synthetic_params.get('flip_y', 0.05)
-            random_seed = synthetic_params.get('random_seed', 42)
+            random_seed_synthetic_data = synthetic_params.get('random_seed_synthetic_data', 42)
             hypercube = synthetic_params.get('hypercube', False)
             
             # Add synthetic data parameters
@@ -75,7 +77,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
                              f" --n_clusters_per_class {n_clusters_per_class}"
                              f" --class_sep {class_sep}"
                              f" --flip_y {flip_y}"
-                             f" --random_seed {random_seed}"
+                             f" --random_seed_synthetic_data {random_seed_synthetic_data}"
                              )
             
             # Add hypercube flag ONLY if it's True
@@ -104,7 +106,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
                 elif param.startswith('flip_y'):
                     params['flip_y'] = param[6:]
                 elif param.startswith('random_state'):
-                    params['random_seed'] = param[12:]
+                    params['random_seed_synthetic_data'] = param[12:]
                 elif param.startswith('hypercube'):
                     params['hypercube'] = param[9:]
             
@@ -118,7 +120,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
                              f" --n_clusters_per_class {params.get('n_clusters_per_class', 3)}"
                              f" --class_sep {params.get('class_sep', 0.9)}"
                              f" --flip_y {params.get('flip_y', 0.05)}"
-                             f" --random_seed {params.get('random_seed', 42)}"
+                             f" --random_seed_synthetic_data {params.get('random_seed_synthetic_data', 42)}"
                              )
             
             if params.get('hypercube', "False").lower() == "true":
@@ -165,6 +167,8 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     file_name_add_on = "_skip_kNN" if skip_knn else ""
     file_name_add_on += "_skip_fraction" if skip_fraction else ""
     file_name_add_on += "_force_training" if force_training else ""
+    file_name_add_on += f"_random_seed_{random_seed}" if random_seed != 42 else ""
+    
     if method == "lime":
         filename = f"lime_{kernel_width}{distance_suffix}{file_name_add_on}.sh"
     elif method == "gradient_methods" and gradient_method:
@@ -205,7 +209,7 @@ def main():
             'n_clusters_per_class': 2, 
             'class_sep': 0.9, 
             'flip_y': 0.01, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': True
         },
         {
@@ -218,7 +222,7 @@ def main():
             'n_clusters_per_class': 3, 
             'class_sep': 0.9, 
             'flip_y': 0.01, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': True
         },
         {
@@ -231,7 +235,7 @@ def main():
             'n_clusters_per_class': 3, 
             'class_sep': 0.9, 
             'flip_y': 0.01, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': True
         },
         {
@@ -244,7 +248,7 @@ def main():
             'n_clusters_per_class': 4, 
             'class_sep': 0.8, 
             'flip_y': 0.05, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
         {
@@ -257,7 +261,7 @@ def main():
             'n_clusters_per_class': 4, 
             'class_sep': 0.8, 
             'flip_y': 0.05, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': True
         },
         {
@@ -270,7 +274,7 @@ def main():
             'n_clusters_per_class': 10, 
             'class_sep': 0.6, 
             'flip_y': 0.05, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
         {
@@ -283,7 +287,7 @@ def main():
             'n_clusters_per_class': 10, 
             'class_sep': 0.7, 
             'flip_y': 0.05, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': True
         },
         {
@@ -296,7 +300,7 @@ def main():
             'n_clusters_per_class': 5, 
             'class_sep': 0.8, 
             'flip_y': 0.05, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
         {
@@ -309,7 +313,7 @@ def main():
             'n_clusters_per_class': 10, 
             'class_sep': 0.7, 
             'flip_y': 0.05, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
         {
@@ -322,7 +326,7 @@ def main():
             'n_clusters_per_class': 10, 
             'class_sep': 0.7, 
             'flip_y': 0.05, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': True
         },
         {
@@ -335,7 +339,7 @@ def main():
             'n_clusters_per_class': 20, 
             'class_sep': 0.3, 
             'flip_y': 0.05, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
         {
@@ -348,7 +352,7 @@ def main():
             'n_clusters_per_class': 50, 
             'class_sep': 0.3, 
             'flip_y': 0.1, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
          {
@@ -361,7 +365,7 @@ def main():
             'n_clusters_per_class': 50, 
             'class_sep': 0.8, 
             'flip_y': 0.1, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
         {
@@ -374,7 +378,7 @@ def main():
             'n_clusters_per_class': 50, 
             'class_sep': 0.5, 
             'flip_y': 0.1, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
 
@@ -388,7 +392,7 @@ def main():
             'n_clusters_per_class': 20, 
             'class_sep': 0.2, 
             'flip_y': 0.1, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
 
@@ -402,7 +406,7 @@ def main():
             'n_clusters_per_class': 40, 
             'class_sep': 0.2, 
             'flip_y': 0.01, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
         {
@@ -415,7 +419,7 @@ def main():
             'n_clusters_per_class': 10, 
             'class_sep': 0.2, 
             'flip_y': 0.1, 
-            'random_seed': 42,
+            'random_seed_synthetic_data': 42,
             'hypercube': False
         },
     ]
@@ -432,7 +436,7 @@ def main():
                    f"n_clusters_per_class{config['n_clusters_per_class']}_"
                    f"class_sep{config['class_sep']}_"
                    f"flip_y{config['flip_y']}_"
-                   f"random_state{config['random_seed']}")
+                   f"random_state{config['random_seed_synthetic_data']}")
         if not config['hypercube']:
             setting += f"_hypercube{config['hypercube']}"
         synthetic_settings.append((setting, config))
@@ -468,7 +472,8 @@ def main():
                             force_training=args.force_training,
                             skip_knn=args.skip_knn,
                             skip_fraction=args.skip_fraction,
-                            gradient_method=gradient_method
+                            gradient_method=gradient_method,
+                            random_seed=args.random_seed,
                         )
                         created_files.append(file)
                 else:  # lime
@@ -487,7 +492,9 @@ def main():
                             skip_training=args.skip_training,
                             force_training=args.force_training,
                             skip_knn=args.skip_knn,
-                            skip_fraction=args.skip_fraction
+                            skip_fraction=args.skip_fraction,
+                            random_seed=args.random_seed,
+
                         )
                         created_files.append(file)
     
@@ -515,7 +522,8 @@ def main():
                             skip_knn=args.skip_knn,
                             skip_fraction=args.skip_fraction,
                             gradient_method=gradient_method,
-                            synthetic_params=config
+                            synthetic_params=config,
+                            random_seed=args.random_seed,
                         )
                         created_files.append(file)
                 else:  # lime
@@ -535,7 +543,8 @@ def main():
                             force_training=args.force_training,
                             skip_knn=args.skip_knn,
                             skip_fraction=args.skip_fraction,
-                            synthetic_params=config
+                            synthetic_params=config,
+                            random_seed=args.random_seed,
                         )
                         created_files.append(file)
     
@@ -573,145 +582,145 @@ def main():
                 os.chmod(method_run_all, 0o755)
                 print(f"Created method runner: {method_run_all}")
     
-    # Create model-specific run_all.sh files within each method
-    for method in methods:
-        if method == "gradient_methods":
-            gradient_dirs = ["integrated_gradient"]
-            for gradient_dir in gradient_dirs:
-                for model in models:
-                    model_dir = os.path.join(output_dir, method, gradient_dir, model)
-                    model_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/" in f]
+    # # Create model-specific run_all.sh files within each method
+    # for method in methods:
+    #     if method == "gradient_methods":
+    #         gradient_dirs = ["integrated_gradient"]
+    #         for gradient_dir in gradient_dirs:
+    #             for model in models:
+    #                 model_dir = os.path.join(output_dir, method, gradient_dir, model)
+    #                 model_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/" in f]
                     
-                    if not model_files:
-                        continue
+    #                 if not model_files:
+    #                     continue
                         
-                    model_run_all = os.path.join(model_dir, "run_all.sh")
-                    with open(model_run_all, "w") as f:
-                        f.write("#!/bin/bash\n\n")
-                        f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}\n\n")
-                        for file in model_files:
-                            f.write(f"{file}\n")
+    #                 model_run_all = os.path.join(model_dir, "run_all.sh")
+    #                 with open(model_run_all, "w") as f:
+    #                     f.write("#!/bin/bash\n\n")
+    #                     f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}\n\n")
+    #                     for file in model_files:
+    #                         f.write(f"{file}\n")
                     
-                    os.chmod(model_run_all, 0o755)
-                    print(f"Created model runner: {model_run_all}")
-        else:
-            for model in models:
-                model_dir = os.path.join(output_dir, method, model)
-                model_files = [f for f in created_files if f"{method}/{model}/" in f]
+    #                 os.chmod(model_run_all, 0o755)
+    #                 print(f"Created model runner: {model_run_all}")
+    #     else:
+    #         for model in models:
+    #             model_dir = os.path.join(output_dir, method, model)
+    #             model_files = [f for f in created_files if f"{method}/{model}/" in f]
                 
-                if not model_files:
-                    continue
+    #             if not model_files:
+    #                 continue
                     
-                model_run_all = os.path.join(model_dir, "run_all.sh")
-                with open(model_run_all, "w") as f:
-                    f.write("#!/bin/bash\n\n")
-                    f.write(f"# Run all experiments for {method}/{model}\n\n")
-                    for file in model_files:
-                        f.write(f"{file}\n")
+    #             model_run_all = os.path.join(model_dir, "run_all.sh")
+    #             with open(model_run_all, "w") as f:
+    #                 f.write("#!/bin/bash\n\n")
+    #                 f.write(f"# Run all experiments for {method}/{model}\n\n")
+    #                 for file in model_files:
+    #                     f.write(f"{file}\n")
                 
-                os.chmod(model_run_all, 0o755)
-                print(f"Created model runner: {model_run_all}")
+    #             os.chmod(model_run_all, 0o755)
+    #             print(f"Created model runner: {model_run_all}")
     
-    # Create dataset-specific run_all.sh files within each method/model
-    for method in methods:
-        if method == "gradient_methods":
-            gradient_dirs = ["integrated_gradient"]
-            for gradient_dir in gradient_dirs:
-                for model in models:
-                    # Standard datasets
-                    for dataset in standard_settings:
-                        dataset_dir = os.path.join(output_dir, method, gradient_dir, model, dataset)
-                        dataset_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/{dataset}/" in f]
+    # # Create dataset-specific run_all.sh files within each method/model
+    # for method in methods:
+    #     if method == "gradient_methods":
+    #         gradient_dirs = ["integrated_gradient"]
+    #         for gradient_dir in gradient_dirs:
+    #             for model in models:
+    #                 # Standard datasets
+    #                 for dataset in standard_settings:
+    #                     dataset_dir = os.path.join(output_dir, method, gradient_dir, model, dataset)
+    #                     dataset_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/{dataset}/" in f]
                         
-                        if dataset_files:
-                            dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
-                            with open(dataset_run_all, "w") as f:
-                                f.write("#!/bin/bash\n\n")
-                                f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}/{dataset}\n\n")
-                                for file in dataset_files:
-                                    f.write(f"{file}\n")
+    #                     if dataset_files:
+    #                         dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
+    #                         with open(dataset_run_all, "w") as f:
+    #                             f.write("#!/bin/bash\n\n")
+    #                             f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}/{dataset}\n\n")
+    #                             for file in dataset_files:
+    #                                 f.write(f"{file}\n")
                             
-                            os.chmod(dataset_run_all, 0o755)
-                            print(f"Created dataset runner: {dataset_run_all}")
+    #                         os.chmod(dataset_run_all, 0o755)
+    #                         print(f"Created dataset runner: {dataset_run_all}")
                     
-                    # Synthetic datasets
-                    for dataset, _ in synthetic_settings:
-                        dataset_dir = os.path.join(output_dir, method, gradient_dir, model, "synthetic_data", dataset)
-                        dataset_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/synthetic_data/{dataset}/" in f]
+    #                 # Synthetic datasets
+    #                 for dataset, _ in synthetic_settings:
+    #                     dataset_dir = os.path.join(output_dir, method, gradient_dir, model, "synthetic_data", dataset)
+    #                     dataset_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/synthetic_data/{dataset}/" in f]
                         
-                        if dataset_files:
-                            dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
-                            with open(dataset_run_all, "w") as f:
-                                f.write("#!/bin/bash\n\n")
-                                f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}/synthetic_data/{dataset}\n\n")
-                                for file in dataset_files:
-                                    f.write(f"{file}\n")
+    #                     if dataset_files:
+    #                         dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
+    #                         with open(dataset_run_all, "w") as f:
+    #                             f.write("#!/bin/bash\n\n")
+    #                             f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}/synthetic_data/{dataset}\n\n")
+    #                             for file in dataset_files:
+    #                                 f.write(f"{file}\n")
                             
-                            os.chmod(dataset_run_all, 0o755)
-                            print(f"Created dataset runner: {dataset_run_all}")
-        else:
-            for model in models:
-                # Standard datasets
-                for dataset in standard_settings:
-                    dataset_dir = os.path.join(output_dir, method, model, dataset)
-                    dataset_files = [f for f in created_files if f"{method}/{model}/{dataset}/" in f]
+    #                         os.chmod(dataset_run_all, 0o755)
+    #                         print(f"Created dataset runner: {dataset_run_all}")
+    #     else:
+    #         for model in models:
+    #             # Standard datasets
+    #             for dataset in standard_settings:
+    #                 dataset_dir = os.path.join(output_dir, method, model, dataset)
+    #                 dataset_files = [f for f in created_files if f"{method}/{model}/{dataset}/" in f]
                     
-                    if dataset_files:
-                        dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
-                        with open(dataset_run_all, "w") as f:
-                            f.write("#!/bin/bash\n\n")
-                            f.write(f"# Run all experiments for {method}/{model}/{dataset}\n\n")
-                            for file in dataset_files:
-                                f.write(f"{file}\n")
+    #                 if dataset_files:
+    #                     dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
+    #                     with open(dataset_run_all, "w") as f:
+    #                         f.write("#!/bin/bash\n\n")
+    #                         f.write(f"# Run all experiments for {method}/{model}/{dataset}\n\n")
+    #                         for file in dataset_files:
+    #                             f.write(f"{file}\n")
                         
-                        os.chmod(dataset_run_all, 0o755)
-                        print(f"Created dataset runner: {dataset_run_all}")
+    #                     os.chmod(dataset_run_all, 0o755)
+    #                     print(f"Created dataset runner: {dataset_run_all}")
                 
-                # Synthetic datasets
-                for dataset, _ in synthetic_settings:
-                    dataset_dir = os.path.join(output_dir, method, model, "synthetic_data", dataset)
-                    dataset_files = [f for f in created_files if f"{method}/{model}/synthetic_data/{dataset}/" in f]
+    #             # Synthetic datasets
+    #             for dataset, _ in synthetic_settings:
+    #                 dataset_dir = os.path.join(output_dir, method, model, "synthetic_data", dataset)
+    #                 dataset_files = [f for f in created_files if f"{method}/{model}/synthetic_data/{dataset}/" in f]
                     
-                    if dataset_files:
-                        dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
-                        with open(dataset_run_all, "w") as f:
-                            f.write("#!/bin/bash\n\n")
-                            f.write(f"# Run all experiments for {method}/{model}/synthetic_data/{dataset}\n\n")
-                            for file in dataset_files:
-                                f.write(f"{file}\n")
+    #                 if dataset_files:
+    #                     dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
+    #                     with open(dataset_run_all, "w") as f:
+    #                         f.write("#!/bin/bash\n\n")
+    #                         f.write(f"# Run all experiments for {method}/{model}/synthetic_data/{dataset}\n\n")
+    #                         for file in dataset_files:
+    #                             f.write(f"{file}\n")
                         
-                        os.chmod(dataset_run_all, 0o755)
-                        print(f"Created dataset runner: {dataset_run_all}")
+    #                     os.chmod(dataset_run_all, 0o755)
+    #                     print(f"Created dataset runner: {dataset_run_all}")
                         
-    # Create a master run_all.sh file
-    run_all_path = os.path.join(output_dir, "run_all.sh")
-    with open(run_all_path, "w") as f:
-        f.write("#!/bin/bash\n\n")
-        f.write("# This script runs all generated experiment commands\n\n")
+    # # Create a master run_all.sh file
+    # run_all_path = os.path.join(output_dir, "run_all.sh")
+    # with open(run_all_path, "w") as f:
+    #     f.write("#!/bin/bash\n\n")
+    #     f.write("# This script runs all generated experiment commands\n\n")
         
-        # Run each method's run_all.sh
-        for method in methods:
-            if method == "gradient_methods":
-                for gradient_dir in ["integrated_gradient"]:
-                    method_run_all = os.path.join(output_dir, method, gradient_dir, "run_all.sh")
-                    if os.path.exists(method_run_all):
-                        f.write(f"echo 'Running experiments for {method}/{gradient_dir}...'\n")
-                        f.write(f"{method_run_all}\n\n")
-            else:
-                method_run_all = os.path.join(output_dir, method, "run_all.sh")
-                if os.path.exists(method_run_all):
-                    f.write(f"echo 'Running experiments for {method}...'\n")
-                    f.write(f"{method_run_all}\n\n")
+    #     # Run each method's run_all.sh
+    #     for method in methods:
+    #         if method == "gradient_methods":
+    #             for gradient_dir in ["integrated_gradient"]:
+    #                 method_run_all = os.path.join(output_dir, method, gradient_dir, "run_all.sh")
+    #                 if os.path.exists(method_run_all):
+    #                     f.write(f"echo 'Running experiments for {method}/{gradient_dir}...'\n")
+    #                     f.write(f"{method_run_all}\n\n")
+    #         else:
+    #             method_run_all = os.path.join(output_dir, method, "run_all.sh")
+    #             if os.path.exists(method_run_all):
+    #                 f.write(f"echo 'Running experiments for {method}...'\n")
+    #                 f.write(f"{method_run_all}\n\n")
     
-    os.chmod(run_all_path, 0o755)
-    print(f"\nCreated master runner: {run_all_path}")
+    # os.chmod(run_all_path, 0o755)
+    # print(f"\nCreated master runner: {run_all_path}")
     
-    print(f"\nCreated {len(created_files)} command files in {output_dir}")
-    print("\nTo run all commands, you can use:")
-    print(f"{run_all_path}")
-    print("\nOr run experiments for a specific method:")
-    print(f"<method>/run_all.sh")
-    print("\nOr for a specific model within a method:")
-    print(f"<method>/<model>/run_all.sh")
+    # print(f"\nCreated {len(created_files)} command files in {output_dir}")
+    # print("\nTo run all commands, you can use:")
+    # print(f"{run_all_path}")
+    # print("\nOr run experiments for a specific method:")
+    # print(f"<method>/run_all.sh")
+    # print("\nOr for a specific model within a method:")
+    # print(f"<method>/<model>/run_all.sh")
 if __name__ == "__main__":
     main()

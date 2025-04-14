@@ -11,8 +11,8 @@ def determine_resources(script_content):
     resources = {
         "partition": "test",
         "cpus_per_task": "12",
-        "mem_per_cpu": "16G",
-        "gres": "gpu:1",
+        "mem_per_cpu": "8G",
+        "gres": "gpu:0",
         "time": "10:00"
     }
     
@@ -85,8 +85,6 @@ def extract_job_name(sh_file_path):
             job_name = f"{model}_{job_name}"
     return job_name
     
-    # Join the parts to create a meaningful job name
-    return "_".join(relevant_parts)
 
 def create_sbatch_wrapper(sh_file_path):
     """Create an sbatch wrapper script for the given shell script."""
@@ -159,7 +157,7 @@ def main():
     
     # Find the experiment_commands directory
     base_dir = Path(__file__).parent.parent  # xai_locality root
-    experiment_dir = os.path.join(base_dir, 'experiment_commands')
+    experiment_dir = os.path.join(base_dir, 'experiment_commands_experiments_synthetic')
     
     if not os.path.exists(experiment_dir):
         print(f"Directory {experiment_dir} not found")

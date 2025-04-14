@@ -13,25 +13,17 @@ def determine_resources(script_content):
         "cpus_per_task": "12",
         "mem_per_cpu": "16G",
         "gres": "gpu:1",
-        "time": "3:00:00"
+        "time": "3:30:00"
     }
     if "LightGBM" in script_content:
         resources["gres"] = "gpu:0"
-    if "TabTransformer" in script_content:
+    if ("TabTransformer" in script_content )or ("FTTransformer" in script_content):
         resources["time"] = "5:00:00"
-    # # Check for lightweight models
-    # lightweight_models = ["LinReg", "LightGBM"]
-    # for model in lightweight_models:
-    #     if model in script_content:
-    #         resources["partition"] = "test"
-    #         resources["time"] = "10:00"
-    #         resources["mem_per_cpu"] = "8G"
+    if "LinReg" in script_content:
+        resources["partition"] = "day"
+        resources["time"] = "20:00"
+        resources["mem_per_cpu"] = "8G"
             
-    #         if model == "LogReg" or model == "LightGBM":
-    #             resources["gres"] = "gpu:0"
-    #         # MLP still needs GPU so we keep gpu:1 for it
-            
-    #         return resources
     return resources
 
 def extract_job_name(sh_file_path):

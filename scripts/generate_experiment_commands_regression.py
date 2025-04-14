@@ -35,11 +35,13 @@ def parse_arguments():
                         help='Add --skip_knn flag to commands')
     parser.add_argument('--skip_fraction', action='store_true',
                         help='Add --skip_fraction flag to commands')
+    parser.add_argument('--random_seed_synthetic_data', type=int, default=42,)
+    parser.add_argument('--random_seed', type=int, default=42,)
     return parser.parse_args()
 
 def create_command_file(output_dir, model, setting, method, distance_measure, kernel_width, num_lime_features,
                         is_synthetic, skip_training, force_training, skip_knn, skip_fraction, gradient_method=None,
-                        synthetic_params=None):
+                        synthetic_params=None, random_seed=42):
     """Create a file containing the Python command for a specific configuration"""
     
     # Create directory structure - organize by method first
@@ -66,7 +68,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     os.makedirs(model_dir, exist_ok=True)
     epochs = 15 if model not in  ["TabTransformer", "FTTransformer"] else 10
     # Format args for the command
-    base_args = f"--model_type {model} --setting {setting} --method {method} --distance_measure {distance_measure} --regression --force"
+    base_args = f"--model_type {model} --setting {setting} --method {method} --distance_measure {distance_measure} --regression --force --random_seed {random_seed}"
     
     if is_synthetic:
         # Use the synthetic parameters directly instead of parsing them from the setting name
@@ -78,12 +80,12 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
             n_samples = synthetic_params.get('n_samples', 100000)
             noise = synthetic_params.get('noise', 0.0)
             bias = synthetic_params.get('bias', 0.0)
-            random_seed = synthetic_params.get('random_seed', 42)
             data_folder = synthetic_params.get('data_folder', 'data')
             test_size = synthetic_params.get('test_size', 0.4)
             val_size = synthetic_params.get('val_size', 0.1)
             tail_strength = synthetic_params.get('tail_strength', 0.5)
             effective_rank = synthetic_params.get('effective_rank', None)
+            random_seed_synthetic_data = synthetic_params.get('random_seed_synthetic_data', 42)
             
             # Add synthetic data parameters
             synthetic_args = (f" --regression_mode {regression_mode}"
@@ -92,10 +94,10 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
                              f" --n_samples {n_samples}"
                              f" --noise {noise}"
                              f" --bias {bias}"
-                             f" --random_seed {random_seed}"
                              f" --data_folder {data_folder}"
                              f" --test_size {test_size}"
                              f" --val_size {val_size}"
+                             f" --random_seed_synthetic_data {random_seed_synthetic_data}"
                              f" --epochs {epochs} --num_trials 5 --num_repeats 1 "
                              )
             if effective_rank is not None:
@@ -104,17 +106,19 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     else:
         # For benchmark datasets
         if setting == "airlines_DepDelay_1M":
-            base_args += " --use_benchmark --task_type regression --scale large --idx 0 --num_trials 5 --num_repeats 1 --epochs 25"
+            base_args += " --use_benchmark --task_type regression --scale large --idx 0 --num_trials 3 --num_repeats 1 --epochs 10"
         elif setting == "delays_zurich_transport":
-            base_args += " --use_benchmark --task_type regression --scale large --idx 1 --num_trials 5 --num_repeats 1 --epochs 25"
+            base_args += " --use_benchmark --task_type regression --scale large --idx 1 --num_trials 3 --num_repeats 1 --epochs 10"
         elif setting == "nyc-taxi-green-dec-2016":
-            base_args += " --use_benchmark --task_type regression --scale large --idx 2 --num_trials 5 --num_repeats 1 --epochs 25"
+            base_args += " --use_benchmark --task_type regression --scale large --idx 2 --num_trials 3 --num_repeats 1 --epochs 10"
         elif setting == "microsoft":
-            base_args += " --use_benchmark --task_type regression --scale large --idx 3 --num_trials 5 --num_repeats 1 --epochs 25"
+            base_args += " --use_benchmark --task_type regression --scale large --idx 3 --num_trials 3 --num_repeats 1 --epochs 10"
         elif setting == "yahoo":
-            base_args += " --use_benchmark --task_type regression --scale large --idx 4 --num_trials 5 --num_repeats 1 --epochs 25"
+            base_args += " --use_benchmark --task_type regression --scale large --idx 4 --num_trials 3 --num_repeats 1 --epochs 10"
         elif setting == "year":
-            base_args += " --use_benchmark --task_type regression --scale large --idx 5 --num_trials 5 --num_repeats 1 --epochs 25"
+            base_args += " --use_benchmark --task_type regression --scale large --idx 5 --num_trials 3 --num_repeats 1 --epochs 10"
+        elif setting == "medical_charges":
+            base_args += " --use_benchmark --task_type regression --scale medium --idx 3 --num_trials 5 --num_repeats 1 --epochs 25"
     
     if method == "lime":
         base_args += f" --kernel_width {kernel_width} --num_lime_features {num_lime_features}"
@@ -140,6 +144,8 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     file_name_add_on = "_skip_kNN" if skip_knn else ""
     file_name_add_on += "_skip_fraction" if skip_fraction else ""
     file_name_add_on += "_force_training" if force_training else ""
+    file_name_add_on += f"_random_seed_{random_seed}" if random_seed != 42 else ""
+    
     if method == "lime":
         filename = f"lime_{kernel_width}{distance_suffix}{file_name_add_on}.sh"
     elif method == "gradient_methods" and gradient_method:
@@ -170,57 +176,68 @@ def main():
     
     # Define synthetic configurations with explicit parameters
     synthetic_configs = [
-        {
-            'regression_mode': "polynomial",
-            'n_features': 100,
-            'n_informative': 50,
-            'n_samples': 100000,
-            'bias': 0,
-            'noise': 0.0,
-            'random_seed': 42,
-            'tail_strength': 0.5,
-            'effective_rank': 30, 
-        },
-         {
-            'regression_mode': "interaction",
-            'n_features': 50,
-            'n_informative': 30,
-            'n_samples': 100000,
-            'bias': 10.0,
-            'noise': 0.1,
-            'random_seed': 42,
-            'tail_strength': 0.5,
-            'effective_rank': 14, 
-        },
-         {
-            'regression_mode': "periodic",
-            'n_features': 100,
-            'n_informative': 60,
-            'n_samples': 100000,
-            'bias': 1.0,
-            'noise': 0.4,
-            'random_seed': 42,
-        },
-         {
-            'regression_mode': "hierarchical",
-            'n_features': 50,
-            'n_informative': 5,
-            'n_samples': 100000,
-            'bias': 0,
-            'noise': 0.01,
-            'random_seed': 42,
-        },
-         {
-            'regression_mode': "neural_like",
-            'n_features': 50,
-            'n_informative': 20,
-            'n_samples': 100000,
-            'bias': 0,
-            'noise': 0.01,
-            'random_seed': 42,
-        },
-
         
+          {
+        'regression_mode': "poly_interaction",
+        'n_features': 90,
+        'n_informative': 70,
+        'n_samples': 200000,
+        'bias': 0.5,
+        'noise': 0.1,
+        'random_seed_synthetic_data': 42, 
+        'tail_strength': 0.7,
+        'effective_rank': 50
+    },
+     # Large-scale with mixed effects
+    {
+        'regression_mode': "sigmoid_mix",
+        'n_features': 200,
+        'n_informative': 80,
+        'n_samples': 200000,
+        'bias': 0.1,
+        'noise': 0.15,
+        'random_seed_synthetic_data': 42, 
+        'tail_strength': 0.6,
+        'effective_rank': 40
+    },
+
+    {
+        'regression_mode': "exponential_interaction",
+        'n_features': 50,
+        'n_informative': 10,
+        'n_samples': 200000,
+        'bias': 0,
+        'noise': 0.2,
+        'random_seed_synthetic_data': 42, 
+        'tail_strength': 0.9,
+        'effective_rank': 5
+    },
+    # Sparse informative features
+    {
+        'regression_mode': "piecewise",
+        'n_features': 60,
+        'n_informative': 15,
+        'n_samples': 200000,
+        'bias': 0.3,
+        'noise': 0.25,
+        'random_seed_synthetic_data': 42, 
+        'tail_strength': 0.4,
+        'effective_rank': 60
+    },
+    
+    # High noise scenario
+    {
+        'regression_mode': "multiplicative_chain",
+        'n_features': 70,
+        'n_informative': 30,
+        'n_samples': 200000,
+        'bias': 0,
+        'noise': 0.5,
+        'random_seed_synthetic_data': 42, 
+        'tail_strength': 0.8,
+        'effective_rank': 20
+    }
+
     ]
     
     # Generate setting names from configurations
@@ -234,11 +251,11 @@ def main():
                                               bias=config['bias'],
                                               tail_strength=config.get('tail_strength', None),
                                               effective_rank=config.get('effective_rank', None),
-                                              random_seed=config['random_seed'])
+                                              random_seed=config['random_seed_synthetic_data'])
         synthetic_settings.append((setting, config))
     
     models = ["LightGBM", "MLP", "LinReg",  "TabNet", "FTTransformer", "ResNet", "TabTransformer"]
-    standard_settings = ["airlines_DepDelay_1M", "delays_zurich_transport", "nyc-taxi-green-dec-2016", "microsoft", "yahoo", "year"]
+    standard_settings = ["airlines_DepDelay_1M", "delays_zurich_transport", "nyc-taxi-green-dec-2016", "microsoft", "yahoo", "year", "medical_charges"]
     methods = ["lime", "gradient_methods"]
     distance_measures = ["euclidean"]
     
@@ -268,7 +285,8 @@ def main():
                             force_training=args.force_training,
                             skip_knn=args.skip_knn,
                             skip_fraction=args.skip_fraction,
-                            gradient_method=gradient_method
+                            gradient_method=gradient_method,
+                            random_seed=args.random_seed,
                         )
                         created_files.append(file)
                 else:  # lime
@@ -287,7 +305,8 @@ def main():
                             skip_training=args.skip_training,
                             force_training=args.force_training,
                             skip_knn=args.skip_knn,
-                            skip_fraction=args.skip_fraction
+                            skip_fraction=args.skip_fraction,
+                            random_seed=args.random_seed,
                         )
                         created_files.append(file)
     
@@ -295,7 +314,6 @@ def main():
     for model in models:
         for setting_info in synthetic_settings:
             setting, config = setting_info
-            
             for method in methods:
                 if method == "gradient_methods":
                     gradient_method = "IG"  # Integrated Gradient
@@ -315,12 +333,12 @@ def main():
                             skip_knn=args.skip_knn,
                             skip_fraction=args.skip_fraction,
                             gradient_method=gradient_method,
-                            synthetic_params=config
+                            synthetic_params=config,
+                            random_seed=args.random_seed,
                         )
                         created_files.append(file)
                 else:  # lime
                     kernel_width = "default"
-                    
                     for distance_measure in distance_measures:
                         file = create_command_file(
                             output_dir=output_dir,
@@ -335,7 +353,8 @@ def main():
                             force_training=args.force_training,
                             skip_knn=args.skip_knn,
                             skip_fraction=args.skip_fraction,
-                            synthetic_params=config
+                            synthetic_params=config,
+                            random_seed=args.random_seed,
                         )
                         created_files.append(file)
     
