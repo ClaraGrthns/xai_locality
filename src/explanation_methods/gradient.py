@@ -33,7 +33,7 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         else:
             saliency_map_file_path = osp.join(saliency_map_folder, f"saliency_map_{self.args.gradient_method}.h5")
         print("Looking for saliency maps in: ", saliency_map_file_path)
-        if osp.exists(saliency_map_file_path) and not self.args.force:
+        if osp.exists(saliency_map_file_path) and (not self.args.force or self.args.downsample_analysis != 1.0): # (not self.args.force or self.args.downsample_analysis != 1.0):
             print(f"Using precomputed saliency maps from: {saliency_map_file_path}")
             with h5py.File(saliency_map_file_path, "r") as f:
                 saliency_maps = f["saliency_map"][:]
@@ -48,10 +48,9 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         return saliency_maps
     
     def get_experiment_setting(self, fractions, max_radius):
-        if self.args.random_seed != 42: # not good style but too lazy to rename now.
-            setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
-        else:
-            setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"
+        setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
+        # else:
+        #     setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"
         if self.args.downsample_analysis != 1.0:
             setting = f"downsample-{np.round(self.args.downsample_analysis, 2)}_" + setting
         if self.args.sample_around_instance:

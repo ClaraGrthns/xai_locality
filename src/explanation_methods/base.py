@@ -269,7 +269,14 @@ class BaseExplanationMethodHandler:
             experiment_setting: Experiment setting identifier
             results: Results dictionary to save
         """
-        np.savez(os.path.join(results_path, experiment_setting), **results)
+        # np.savez(os.path.join(results_path, experiment_setting), **results)
+        if self.args.downsample_analysis != 1.0:
+           results_path = os.path.join(results_path, "downsampled")
+           if not os.path.exists(results_path):
+               os.makedirs(results_path)
+           np.savez(os.path.join(results_path, experiment_setting), **results)
+        else:
+           np.savez(os.path.join(results_path, experiment_setting), **results)
     
     def process_chunk(self, batch, tst_chunk_dist, df_feat_for_expl, explanations_chunk, predict_fn, n_points_in_ball, tree, chunk_start, chunk_end):
         """

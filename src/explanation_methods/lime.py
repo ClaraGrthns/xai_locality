@@ -52,7 +52,7 @@ class LimeHandler(BaseExplanationMethodHandler):
         if not osp.exists(explanations_dir):
             os.makedirs(explanations_dir)
         
-        if osp.exists(explanation_file_path+".npy") and not self.args.force:
+        if osp.exists(explanation_file_path+".npy") and (not self.args.force or self.args.downsample_analysis != 1.0):
             print(f"Using precomputed explanations from: {explanation_file_path}")
             explanations = np.load(explanation_file_path+".npy", allow_pickle=True)
             print(f"{len(explanations)} explanations loaded")
@@ -70,10 +70,9 @@ class LimeHandler(BaseExplanationMethodHandler):
     def get_experiment_setting(self, fractions, max_radius=None):
         args = self.args
         df_setting = "complete_df" if args.include_trn and args.include_val else "only_test"
-        if self.args.random_seed != 42: # not good style but too lazy to rename now.
-            experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
-        else:   
-            experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_accuracy_fraction"
+        experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
+        # else:   
+        #     experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_accuracy_fraction"
         if self.args.downsample_analysis != 1.0:
             experiment_setting = f"downsample-{np.round(args.downsample_analysis, 2)}_" + experiment_setting
         if self.args.sample_around_instance:
@@ -120,7 +119,7 @@ class LimeHandler(BaseExplanationMethodHandler):
                 N_per_center = self.args.n_samples_around_instance,
                 distance_measure = self.args.distance_measure,)
             dist = np.repeat(dist[None, :], tst_chunk.shape[0], axis=0)
-        else: 
+        else:
             dist, idx = tree.query(tst_chunk, k=n_points_in_ball, return_distance=True, sort_results=True)
             # 1. Get all the kNN samples from the analysis dataset
             samples_in_ball = [[df_feat_for_expl[idx] for idx in row] for row in idx]
