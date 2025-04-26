@@ -27,7 +27,7 @@ class TorchFrameHandler(BaseModelHandler):
         data_folder = os.path.dirname(data_path)
         print("loading col names and stats from", os.path.join(data_folder, file_name_wo_file_ending + "_col_names_dict.pt"))
         try:
-            checkpoint = torch.load(self.model_path, map_location=torch.device('cpu'))
+            checkpoint = torch.load(self.model_path, map_location=torch.device('cpu'), weights_only=False)
             best_model_cfg_dict = checkpoint['best_model_cfg']
         except (FileNotFoundError, ValueError, RuntimeError):
             model_dir = os.path.dirname(self.model_path)
@@ -78,4 +78,11 @@ class TorchFrameHandler(BaseModelHandler):
             else:
                 pred = transform_logit_to_class_proba(pred)
                 return pred.detach().numpy()
+        if self.args.method == "lime_captum":
+            with torch.no_grad():
+                pred = self.model(X)
+            if self.args.regression:
+                return pred.detach()
+            else:
+                return transform_logit_to_class_proba(pred)
         return self.model(X)

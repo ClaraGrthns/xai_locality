@@ -82,7 +82,7 @@ class BaseModelHandler:
                 - tst_y (numpy.ndarray): Testing labels.
         """
         if self.data_path.endswith(".pt"):
-            data = torch.load(self.data_path)
+            data = torch.load(self.data_path, weights_only=False)
             test_tensor_frame = data["test"]
             whole_tst_feat = tensorframe_to_tensor(test_tensor_frame).numpy()
             y = test_tensor_frame.y.numpy()

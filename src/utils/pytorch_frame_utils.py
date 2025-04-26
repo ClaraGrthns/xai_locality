@@ -40,7 +40,7 @@ def load_dataframes(data_path):
             - val_feat: Tensor containing the validation features.
             - tst_feat: Tensor containing the test features.
     """
-    data = torch.load(data_path)
+    data = torch.load(data_path, map_location=torch.device('cpu'), weights_only=False)
     train_tensor_frame, val_tensor_frame, test_tensor_frame = data["train"], data["val"], data["test"]
     trn_feat = tensorframe_to_tensor(train_tensor_frame)
     val_feat = tensorframe_to_tensor(val_tensor_frame)

@@ -48,7 +48,7 @@ class PytorchHandler(BaseModelHandler):
             X = torch.Tensor(X)
         if X.dtype == torch.double:
             X = X.float()
-        if self.args.method == "lime":
+        if self.args.method == "lime" or self.args.method == "lime_captum":
             if self.args.regression:
                 with torch.no_grad():
                     return self.model(X)

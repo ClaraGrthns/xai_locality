@@ -16,10 +16,10 @@ def compute_lime_preds_for_all_kNN(
                 top_labels,
                 pred_threshold=None,
                 proba_output=False):
-    intercept, coefficients = explanation
+    coefficients, intercept = explanation
     sample_dim = samples_in_ball.ndim
     samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) # kNN: (num_test_samples * num_kNN) x n_feat or R: (num_test_samples * num_kNN * n_samples_around_instance) x n_feat
-    
+    top_labels = torch.tensor(top_labels)
     if sample_dim == 3:
         n_test_points, n_closest_points, n_features = samples_in_ball.shape
     elif sample_dim == 4:
@@ -37,12 +37,12 @@ def compute_lime_preds_for_all_kNN(
 
     ## ii) Get label predictions, is prediction the same as the top label?
     labels_model_preds = np.argmax(model_preds, axis=-1) #shape: num_test_samples x num_kNN
-    model_binary_preds_top_label = (labels_model_preds == top_labels[:, None]).astype(int)
+    model_binary_preds_top_label = (labels_model_preds == top_labels[:, None]).int()
 
     # 3. Predict labels of the kNN samples with the LIME explanation
     ## i)+ii) Get probability for top label, if prob > threshold, predict as top label
     local_probs_top_label = linear_classifier(samples_in_ball, coefficients) # ∇fi(x)*x, i = argmax(f(x0)) if dim(f(x))>1 else: ∇f(x)*x
-    local_probs_top_label += intercept # ∇fi(x)*x + fi(0), i = argmax(f(x0)) if dim(f(x))>1 else: ∇f(x)*x + f(0)
+    local_probs_top_label += intercept[:, None] # ∇fi(x)*x + fi(0), i = argmax(f(x0)) if dim(f(x))>1 else: ∇f(x)*x + f(0)
     
     if pred_threshold is None:
         pred_threshold = 0.5
@@ -57,9 +57,8 @@ def compute_lime_regressionpreds_for_all_kNN(
                                         predict_fn, 
                                         samples_in_ball,
                                         ):
-    intercept, coefficients = explanation
-    if predictions_tst_feat.ndim == 1:
-        predictions_tst_feat = predictions_tst_feat.reshape(1, -1)#
+    coefficients, intercept = explanation
+    
     # samples in ball: kNN: (num_test_samples, num_closest_points,  num_feat) or R: (num_test_samples , num_closest_points , n_samples_around_instance, num_feat)
     # samples_reshaped: kNN: (num_test_samples * num_closest_points), num_feat or R: (num_test_samples * num_closest_points * n_samples_around_instance, num_feat)
     samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) 
@@ -70,7 +69,7 @@ def compute_lime_regressionpreds_for_all_kNN(
     # 2. Predict labels of the kNN samples with the model
     model_preds = model_preds.reshape(*list(samples_in_ball.shape[:-1]))  # kNN: (num_test_samples, num_closest_points) R: (num_test_samples, num_closest_points, n_samples_around_instance)
     local_preds = linear_classifier(samples_in_ball, coefficients)
-    local_preds += intercept
+    local_preds += intercept[:, None]
     return (model_preds.cpu().numpy(), local_preds.cpu().numpy())
 
 
@@ -84,10 +83,14 @@ def compute_feature_attributions(explainer, predict_fn, data_loader_tst, transfo
         Xs = batch#[0]
         preds = predict_fn(Xs)
         if preds.ndim == 2 and preds.shape[1] == 1:
-            bias_feature_attribution = explainer.attribute(Xs).float()
+            coefs, bias = explainer.attribute(Xs, return_input_shape=True)
+            coefs = coefs.float()
+            bias = bias.float()
         else:
             top_labels = torch.argmax(predict_fn(Xs), dim=1).tolist()
-            coefs, bias = explainer.attribute(Xs, target=top_labels, return_input_shape=True).float()
+            coefs, bias = explainer.attribute(Xs, target=top_labels, return_input_shape=True)
+            coefs = coefs.float()
+            bias = bias.float()
         bias_feature_attribution.append(bias)
         coefs_feature_attribution.append(coefs)
         print("computed the first stack of feature_attribution maps")

@@ -283,15 +283,19 @@ def main():
     if args.debug:  
         # Example debug configuration - can be overridden with command-line arguments
         args.model_type = "MLP" 
-        args.setting = "higgs"
+        args.setting = "houses"
+        args.include_val = True
+        args.include_trn = True
         args.method = "lime_captum"
+        args.epochs = 20
         # args.gradient_method = "IG+SmoothGrad"
         args.distance_measure = "euclidean"
         args.random_seed = 42
         args.use_benchmark = True
-        args.task_type = "binary_classification"
+        args.task_type = "regression"
         args.num_repeats = 1
         args.num_trials = 3
+        args.regression = True
 
     if args.model_type == "LightGBM":
         args.force_training = True

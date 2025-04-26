@@ -58,6 +58,7 @@ from src.utils.preprocessing import CatToOneHotTransform
 # Constants and configuration
 TRAIN_CONFIG_KEYS = ["batch_size", "gamma_rate", "base_lr"]
 GBDT_MODELS = ["XGBoost", "CatBoost", "LightGBM"]
+BASEDIR = str(Path(__file__).resolve().parent)
 
 # Lookup table for datasets
 dataset_lookup = {
@@ -630,7 +631,7 @@ def train_and_eval_with_cfg(
     dataset_name = config['dataset_name']
     
     # Set up TensorBoard logging
-    log_dir = f"/home/grotehans/xai_locality/src/train/tensorboard_logs/{args.model_type}/{dataset_name}/{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    log_dir = osp.join(BASEDIR, f"tensorboard_logs/{args.model_type}/{dataset_name}/{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}")
     writer = SummaryWriter(log_dir)
     print(f"TensorBoard logs will be saved to: {log_dir}")
     
