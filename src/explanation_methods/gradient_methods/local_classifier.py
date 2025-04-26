@@ -12,15 +12,18 @@ def linear_classifier(samples_in_ball, saliency_map):
     else:
         return torch.einsum('bc, bkc -> bk', saliency_map.float(), samples_in_ball) # (num_test_samples, num_closest_points)
 
-def compute_gradmethod_preds_for_all_kNN(tst_feat, 
-                                        predictions_baseline, 
-                                        saliency_map, 
-                                        predict_fn, 
-                                        samples_in_ball,
-                                        n_samples_around_instance,
-                                        top_labels,
-                                        pred_threshold=None,
-                                        proba_output=False):
+def compute_gradmethod_preds_for_all_kNN(
+                tst_feat, 
+                predictions_tst_feat, 
+                predictions_baseline, 
+                saliency_map, 
+                predict_fn, 
+                samples_in_ball,
+                n_samples_around_instance,
+                top_labels,
+                is_integrated_grad=True,  
+                pred_threshold=None,
+                proba_output=False):
     sample_dim = samples_in_ball.ndim
     samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) # kNN: (num_test_samples * num_kNN) x n_feat or R: (num_test_samples * num_kNN * n_samples_around_instance) x n_feat
 
@@ -60,10 +63,17 @@ def compute_gradmethod_preds_for_all_kNN(tst_feat,
     
     # 3. Predict labels of the kNN samples with the LIME explanation
     ## i)+ii) Get probability for top label, if prob > threshold, predict as top label
-    local_preds = linear_classifier(samples_in_ball, saliency_map) # ∇fi(x)*x, i = argmax(f(x0)) if dim(f(x))>1 else: ∇f(x)*x
+    if is_integrated_grad:
+        local_preds = linear_classifier(samples_in_ball, saliency_map) # ∇fi(x)*x, i = argmax(f(x0)) if dim(f(x))>1 else: ∇f(x)*x
+    else:
+        local_preds = linear_classifier(samples_in_ball - tst_feat[:, None, :], saliency_map) # ∇fi(x)*x, i = argmax(f(x0)) if dim(f(x))>1 else: ∇f(x)*x
 
+        
     if predictions_baseline.shape[-1] == 1:
-        local_preds += predictions_baseline # ∇f(x)*x + f(0) OR: ∇sig(f(x))*x + sig(f(0))
+        if is_integrated_grad:
+            local_preds += predictions_baseline # ∇f(x)*x + f(0) OR: ∇sig(f(x))*x + sig(f(0))
+        else:
+            local_preds += predictions_tst_feat
         if not proba_output:
             local_preds *= (torch.tensor(top_labels)*2-1)[:, None] # -f(x) if argmax(f(x0)) was 0, f(x) if argmax(f(x0)) was 1
             local_probs_top_label = torch.sigmoid(local_preds)
@@ -72,7 +82,10 @@ def compute_gradmethod_preds_for_all_kNN(tst_feat,
             local_probs_top_label = torch.stack([1-local_preds, local_preds], dim=-1)[torch.arange(len(top_labels)), :, top_labels] # f(x) for argmax(f(x0)), f(0) for argmax(f(0))
             local_preds_top_label = local_probs_top_label
     else:
-        local_preds += predictions_baseline[torch.arange(len(top_labels)), top_labels] # # ∇fi(x)*x + fi(0) OR: ∇sig(fi(x))*x + sig(fi(0)), i = argmax(f(x)
+        if is_integrated_grad:
+            local_preds += predictions_baseline[torch.arange(len(top_labels)), top_labels] # # ∇fi(x)*x + fi(0) OR: ∇sig(fi(x))*x + sig(fi(0)), i = argmax(f(x)
+        else:
+            local_preds += predictions_tst_feat[torch.arange(len(top_labels)), top_labels] 
         if not proba_output:
             local_probs_top_label = torch.sigmoid(local_preds)
             local_preds_top_label = local_preds
@@ -90,15 +103,18 @@ def compute_gradmethod_preds_for_all_kNN(tst_feat,
             local_preds_top_label.cpu().numpy(), local_binary_pred_top_labels, local_probs_top_label.cpu().numpy())
     
 
-def compute_gradmethod_regressionpreds_for_all_kNN(tst_feat, 
+def compute_gradmethod_regressionpreds_for_all_kNN(
+                                        tst_feat, 
+                                        predictions_tst_feat, 
                                         predictions_baseline, 
                                         saliency_map, 
                                         predict_fn, 
                                         samples_in_ball,
-                                        sample_around_instance,     
+                                        sample_around_instance, 
+                                        is_integrated_grad=True,  
                                         ):
-    if tst_feat.ndim == 1:
-        tst_set = tst_set.reshape(1, -1)#
+    if predictions_tst_feat.ndim == 1:
+        predictions_tst_feat = predictions_tst_feat.reshape(1, -1)#
     # samples in ball: kNN: (num_test_samples, num_closest_points,  num_feat) or R: (num_test_samples , num_closest_points , n_samples_around_instance, num_feat)
     # samples_reshaped: kNN: (num_test_samples * num_closest_points), num_feat or R: (num_test_samples * num_closest_points * n_samples_around_instance, num_feat)
     samples_reshaped = samples_in_ball.reshape(-1, samples_in_ball.shape[-1]) 
@@ -108,10 +124,14 @@ def compute_gradmethod_regressionpreds_for_all_kNN(tst_feat,
 
     # 2. Predict labels of the kNN samples with the model
     model_preds = model_preds.reshape(*list(samples_in_ball.shape[:-1]))  # kNN: (num_test_samples, num_closest_points) R: (num_test_samples, num_closest_points, n_samples_around_instance)
-    local_preds = linear_classifier(samples_in_ball, saliency_map) #  ∇f(x)*x, kNN: (num_test_samples, num_closest_points) R: (num_test_samples, num_closest_points, n_samples_around_instance)
-    if sample_around_instance:
-        predictions_baseline = predictions_baseline[:, :, None]
-    local_preds += predictions_baseline # ∇f(x)*x + f(0)
+    if is_integrated_grad:
+        local_preds = linear_classifier(samples_in_ball, saliency_map) #  ∇f(x)*x, kNN: (num_test_samples, num_closest_points) R: (num_test_samples, num_closest_points, n_samples_around_instance)
+        if sample_around_instance:
+            predictions_baseline = predictions_baseline[:, :, None]
+            local_preds += predictions_baseline # ∇f(x)*x + f(0)
+    else:
+        local_preds = linear_classifier(samples_in_ball - tst_feat[:, None, :], saliency_map)
+        local_preds += predictions_tst_feat
     return (model_preds.cpu().numpy(), local_preds.cpu().numpy())
 
 
