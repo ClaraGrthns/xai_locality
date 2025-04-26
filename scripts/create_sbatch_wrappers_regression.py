@@ -6,23 +6,33 @@ from pathlib import Path
 
 def determine_resources(script_content):
     """Determine resource requirements based on model type in the script."""
-    
-    # Default values
-    resources = {
-        "partition": "day",
-        "cpus_per_task": "12",
-        "mem_per_cpu": "16G",
-        "gres": "gpu:1",
-        "time": "3:30:00"
-    }
-    if "LightGBM" in script_content:
-        resources["gres"] = "gpu:0"
-    if ("TabTransformer" in script_content )or ("FTTransformer" in script_content):
-        resources["time"] = "5:00:00"
-    if "LinReg" in script_content:
-        resources["partition"] = "day"
-        resources["time"] = "20:00"
-        resources["mem_per_cpu"] = "8G"
+    if "force_training" in script_content:
+        # Default values
+        resources = {
+            "partition": "day",
+            "cpus_per_task": "12",
+            "mem_per_cpu": "16G",
+            "gres": "gpu:1",
+            "time": "5:00:00"
+        }
+        if "MLP" in script_content or "ResNet" in script_content:
+            resources["time"] = "5:00:00" if "--scale large" in script_content else "2:00:00"
+        if "LightGBM" in script_content:
+            resources["gres"] = "gpu:0"
+        if ("TabTransformer" in script_content )or ("FTTransformer" in script_content):
+            resources["time"] = "7:00:00"
+        if "LinReg" in script_content or "random_seed 42" not in script_content:
+            resources["partition"] = "day"
+            resources["time"] = "20:00"
+            resources["mem_per_cpu"] = "8G"
+    else:
+        resources = {
+            "partition": "day",
+            "cpus_per_task": "12",
+            "mem_per_cpu": "16G",
+            "gres": "gpu:1",
+            "time": "1:00:00"
+        }
             
     return resources
 
@@ -31,7 +41,7 @@ def extract_job_name(sh_file_path):
     job_name = os.path.splitext(base_name)[0]
     path_parts = sh_file_path.split(os.sep)
 
-    for model in ["TabNet", "FTTransformer", "MLP", "LogReg", "LinReg", "ResNet", "TabTransformer"]:
+    for model in  ["TabNet", "FTTransformer", "MLP", "LogReg", "LinReg", "ResNet", "TabTransformer"]:
         if model in path_parts:
             job_name = f"{model}_{job_name}"
     return job_name
@@ -109,7 +119,7 @@ def main():
     
     # Find the experiment_commands directory
     base_dir = Path(__file__).parent.parent  # xai_locality root
-    experiment_dir = os.path.join(base_dir, 'experiment_commands_regression')
+    experiment_dir = os.path.join(base_dir, 'commands_sbach_files', 'experiment_commands_regression')
     
     if not os.path.exists(experiment_dir):
         print(f"Directory {experiment_dir} not found")

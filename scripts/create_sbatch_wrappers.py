@@ -9,25 +9,32 @@ def determine_resources(script_content):
     
     # Default values
     resources = {
-        "partition": "test",
-        "cpus_per_task": "12",
+        "partition": "day",
+        "cpus_per_task": "8",
         "mem_per_cpu": "8G",
         "gres": "gpu:0",
-        "time": "10:00"
+        "time": "1:00:00"
     }
+    if "force_training" in script_content:
+        resources["gres"] = "gpu:1"
+        resources["time"] = "2:00:00"
+        for model in ["TabNet", "FTTransformer", "TabTransformer"]:
+            if model in script_content:
+                resources["time"] = "5:00:00" if "higgs" in script_content else "4:00:00"
+                break
+
     
     # Check for lightweight models
     lightweight_models = ["LogReg", "MLP", "LightGBM"]
     for model in lightweight_models:
         if model in script_content:
-            resources["partition"] = "test"
-            resources["time"] = "10:00"
+            resources["partition"] = "day"
+            resources["time"] = "1:00:00"
             resources["mem_per_cpu"] = "8G"
             
             if model == "LogReg" or model == "LightGBM":
                 resources["gres"] = "gpu:0"
             # MLP still needs GPU so we keep gpu:1 for it
-            
             return resources
     
     return resources
@@ -112,6 +119,7 @@ def create_sbatch_wrapper(sh_file_path):
     os.makedirs(log_dir, exist_ok=True)
     
     output_path = os.path.join(sbatch_dir, f"{job_name}.sbatch")
+
     
     # Create sbatch content with the format specified
     sbatch_content = f"""#!/bin/bash
@@ -157,7 +165,7 @@ def main():
     
     # Find the experiment_commands directory
     base_dir = Path(__file__).parent.parent  # xai_locality root
-    experiment_dir = os.path.join(base_dir, 'experiment_commands_experiments_synthetic')
+    experiment_dir = os.path.join(base_dir, 'commands_sbach_files', 'experiment_commands')
     
     if not os.path.exists(experiment_dir):
         print(f"Directory {experiment_dir} not found")
@@ -165,7 +173,7 @@ def main():
     
     # Find all .sh files but exclude run_all.sh files
     all_sh_files = glob.glob(os.path.join(experiment_dir, "**/*.sh"), recursive=True)
-    sh_files = [f for f in all_sh_files if (os.path.basename(f) != "run_all.sh" or "force_training" not in f)]
+    sh_files = [f for f in all_sh_files if (os.path.basename(f) != "run_all.sh")]
     
     if not sh_files:
         print(f"No individual experiment shell scripts found in {experiment_dir}")

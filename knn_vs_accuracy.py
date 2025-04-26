@@ -92,7 +92,7 @@ def main(args):
     print("Max radius: ", max_radius)
     print("Max distance: ", max_distance)
 
-    n_points_in_ball = 200
+    n_points_in_ball = 500
     n_points_in_ball = np.min([n_points_in_ball, len(analysis_dataset)])
     if args.sample_around_instance:
         n_points_in_ball = 25

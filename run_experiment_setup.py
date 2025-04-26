@@ -26,8 +26,8 @@ def parse_args():
     # Basic configuration
     parser.add_argument("--random_seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--random_seed_synthetic_data", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--downsample_analysis", action="store_true", help="Downsample size for analysis (single float or multiple floats)")    
-    parser.add_argument("--create_additional_analysis_data", action="store_true", help="Experiment: create_additional_analysis_data and then Downsample size for analysis (single float or multiple floats)")    
+    parser.add_argument("--downsample_analysis", action="store_true", help="Enable downsampling for analysis")    
+    parser.add_argument("--create_additional_analysis_data", action="store_true", help="Create additional analysis data")    
     parser.add_argument("--data_folder", type=str,  
                         help="Path to the data folder")
     parser.add_argument("--model_folder", type=str, default=BASEDIR + "/pretrained_models",
@@ -95,7 +95,7 @@ def parse_args():
     parser.add_argument("--distance_measures", nargs='+', default=["euclidean", "manhattan", "cosine"], 
                         help="List of distance measures to use")
     parser.add_argument("--min_k", type=int, default=1, help="Minimum k for KNN")
-    parser.add_argument("--max_k", type=int, default=25, help="Maximum k for KNN")
+    parser.add_argument("--max_k", type=int, default=40, help="Maximum k for KNN")
     parser.add_argument("--k_step", type=int, default=1, help="Step size for k in KNN")
     parser.add_argument("--chunk_size", type=int, default=200, help="Chunk size for processing")
     parser.add_argument("--max_test_points", type=int, default=200, help="Maximum number of test points")
@@ -123,6 +123,10 @@ def parse_args():
     parser.add_argument("--skip_knn", action="store_true", help="Skip KNN analysis")
     parser.add_argument("--skip_fraction", action="store_true", help="Skip fraction vs accuracy analysis")
     parser.add_argument("--force", action="store_true", help="Force overwrite existing results")
+    
+    # Add flag to choose whether to use custom or sklearn-based data generation
+    parser.add_argument("--use_custom_generator", action="store_true", 
+                        help="Use custom data generator instead of sklearn's make_regression")
     
     return parser.parse_args()
 
@@ -222,16 +226,6 @@ def get_results_path(args, step):
                       method_subdir, args.model_type, sub_directory, args.setting)
     return None
 
-def get_dataset_specific_settings(args):
-    """Get dataset-specific settings like include_trn and include_val."""
-    include_trn = False
-    include_val = False
-    if args.setting == "jannis":
-        include_trn = True
-        include_val = True
-    elif args.setting == "MiniBooNE":
-        include_val = True
-    return include_trn, include_val
 
 def train_model(args):
     """Train model based on model type and dataset choice."""
@@ -284,33 +278,24 @@ def main():
     args.seed = args.random_seed_synthetic_data
     args.force = True #TODO: Delete
     args.force_overwrite = True #TODO: Delete
+    args.use_custom_generator = True  # Default to using custom generator in debug mode
     
     if args.debug:  
-        args.model_type = "ResNet"
-        args.setting = "regression_piecewise_n_feat60_n_informative15_n_samples200000_noise0.25_bias0.3_random_state42_effective_rank60_tail_strength0.4"
+        # Example debug configuration - can be overridden with command-line arguments
+        args.model_type = "LightGBM" 
+        args.setting = "mushroom"
         args.method = "lime"
+        # args.gradient_method = "IG+SmoothGrad"
         args.distance_measure = "euclidean"
-        args.regression = True
-        args.force = True
-        args.regression_mode = "piecewise"
-        args.n_features = 60
-        args.n_informative = 15
-        args.n_samples = 200000
-        args.noise = 0.25
-        args.bias = 0.3
         args.random_seed = 42
-        args.data_folder = "data"
-        args.test_size = 0.4
-        args.val_size = 0.1
-        args.epochs = 15
-        args.num_trials = 5
+        args.use_benchmark = True
+        args.task_type = "binary_classification"
         args.num_repeats = 1
-        args.effective_rank = 60
-        args.tail_strength = 0.4
-        args.kernel_width = "default"
-        args.num_lime_features = 10
+        args.num_trials = 3
 
-    
+    if args.model_type == "LightGBM":
+        args.force_training = True
+
     if args.force_training:
         args.force_overwrite = True
         args.force = True
@@ -330,9 +315,6 @@ def main():
     model_exists, model_path = check_model_exists(args)
     args.model_path = model_path
     args.data_path = get_data_path(args)
-    include_trn, include_val = get_dataset_specific_settings(args)
-    args.include_trn = include_trn
-    args.include_val = include_val
     args.coef = False
     print(args)
 

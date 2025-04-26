@@ -2,9 +2,43 @@ import os
 import argparse
 from pathlib import Path
 
+dataset_lookup = {
+        "small": {
+            0: "adult_census_income",
+            1: "mushroom",
+            2: "bank_marketing",
+            3: "magic_telescope",
+            4: "bank_marketing",
+            5: "california",
+            6: "credit",
+            7: "default_of_credit_card_clients",
+            8: "electricity",
+            9: "eye_movements",
+            10: "heloc",
+            11: "house_16H",
+            12: "pol",
+            13: "adult",
+        },
+        "medium": {
+            0: "dota2",
+            1: "kdd_census_income",
+            2: "diabetes130us",
+            3: "MiniBooNE",
+            4: "albert",
+            5: "covertype",
+            6: "jannis",
+            7: "road_safety",
+            8: "higgs_small",
+        },
+        "large": {
+            0: "higgs",
+        },
+    }
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Generate Python commands for running experiments")
-    parser.add_argument('--output_dir', type=str, default='experiment_commands',
+    parser.add_argument('--output_dir', type=str, default='commands_sbach_files/experiment_commands',
                         help='Directory to save the generated command files')
     parser.add_argument('--base_dir', type=str, default=str(Path(__file__).resolve().parent.parent),
                         help='Base directory for the experiment')
@@ -18,6 +52,8 @@ def parse_arguments():
                         help='Add --skip_fraction flag to commands')
     parser.add_argument('--random_seed', type=int, default=42,)
     parser.add_argument('--random_seed_synthetic_data', type=int, default=42,)
+    parser.add_argument('--gradient_method', type=str, default="IG",
+                        help='Gradient method to use (IG or IG+SmoothGrad)')
     return parser.parse_args()
 
 def create_command_file(output_dir, model, setting, method, distance_measure, kernel_width, num_lime_features,
@@ -129,19 +165,21 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
         base_args += synthetic_args
         base_args += " --num_trials 15 --num_repeats 1 --epochs 10 --optimize"
     else:
-        # For benchmark datasets
-        if setting == "jannis":
-            base_args += " --include_trn --include_val  --scale medium --idx 6"
-        elif setting == "MiniBooNE":
-            base_args += " --include_val --scale medium --idx 3"
-        elif setting == "higgs":
-            base_args += " --use_benchmark --task_type binary_classification --scale large --idx 0"
-        if setting == "higgs":
-            base_args += " --epochs 10"
+        # Determine dataset size scale from the dataset_lookup dictionary
+        dataset_scale = None
+        for scale, datasets in dataset_lookup.items():
+            if setting in [d for d in datasets.values()]:
+                dataset_scale = scale
+                break
+        base_args += f" --scale {dataset_scale}"  # Default to small if not found or explicitly small
+        base_args += " --use_benchmark --task_type binary_classification --num_repeats 1 "
+        if "medium" in base_args:
+            base_args += " --epochs 25 --include_val --num_trials 5 "
+        elif "large" in base_args:
+            base_args += " --epochs 10 --num_trials 3 "
         else:
-            base_args += " --epochs 25"
-        base_args += " --use_benchmark --task_type binary_classification --num_trials 5 --num_repeats 1 "
-    
+            base_args += " --epochs 40 --include_val --include_trn --num_trials 10 "
+
     # Method-specific parameters
     if method == "lime":
         base_args += f" --kernel_width {kernel_width} --num_lime_features {num_lime_features}"
@@ -167,7 +205,7 @@ def create_command_file(output_dir, model, setting, method, distance_measure, ke
     file_name_add_on = "_skip_kNN" if skip_knn else ""
     file_name_add_on += "_skip_fraction" if skip_fraction else ""
     file_name_add_on += "_force_training" if force_training else ""
-    file_name_add_on += f"_random_seed_{random_seed}" if random_seed != 42 else ""
+    file_name_add_on += f"_random_seed_{random_seed}"
     
     if method == "lime":
         filename = f"lime_{kernel_width}{distance_suffix}{file_name_add_on}.sh"
@@ -443,6 +481,8 @@ def main():
     
     models = ["LightGBM", "MLP", "LogReg",  "TabNet", "FTTransformer", "ResNet", "TabTransformer"]
     standard_settings = ["diabetes130us", "MiniBooNE", "credit", "california", "magic_telescope",  "house_16H", "higgs_small", "higgs", "jannis"]#["higgs", "jannis"] # "bank_marketing"
+    standard_categorical = ['albert', 'road_safety', 'kdd_census_income', "electricity", "adult_census_income", "adult", "bank_marketing", "mushroom"]
+    standard_settings += standard_categorical
     methods = ["lime", "gradient_methods"]
     distance_measures = ["euclidean", "manhattan", "cosine"]
     
@@ -456,7 +496,7 @@ def main():
                 if method == "gradient_methods":
                     if model =="LightGBM":
                         continue
-                    gradient_method = "IG"  # Integrated Gradient
+                    gradient_method = args.gradient_method  # Integrated Gradient
                     
                     for distance_measure in distance_measures:
                         file = create_command_file(
@@ -505,7 +545,7 @@ def main():
             
             for method in methods:
                 if method == "gradient_methods":
-                    gradient_method = "IG"  # Integrated Gradient
+                    gradient_method = args.gradient_method  # Integrated Gradient
                     
                     for distance_measure in distance_measures:
                         file = create_command_file(
@@ -548,179 +588,6 @@ def main():
                         )
                         created_files.append(file)
     
-    # Create method-specific run_all.sh files
-    for method in methods:
-        method_dir = os.path.join(output_dir, method)
-        
-        # Special handling for gradient_methods with subdirectories
-        if method == "gradient_methods":
-            gradient_dirs = ["integrated_gradient"]
-            for gradient_dir in gradient_dirs:
-                gradient_method_dir = os.path.join(method_dir, gradient_dir)
-                gradient_files = [f for f in created_files if f"{method}/{gradient_dir}/" in f]
-                
-                if gradient_files:
-                    gradient_run_all = os.path.join(gradient_method_dir, "run_all.sh")
-                    with open(gradient_run_all, "w") as f:
-                        f.write("#!/bin/bash\n\n")
-                        f.write(f"# Run all experiments for {method}/{gradient_dir}\n\n")
-                        for file in gradient_files:
-                            f.write(f"{file}\n")
-                    
-                    os.chmod(gradient_run_all, 0o755)
-                    print(f"Created method runner: {gradient_run_all}")
-        else:
-            method_files = [f for f in created_files if f"/{method}/" in f]
-            if method_files:
-                method_run_all = os.path.join(method_dir, "run_all.sh")
-                with open(method_run_all, "w") as f:
-                    f.write("#!/bin/bash\n\n")
-                    f.write(f"# Run all experiments for method: {method}\n\n")
-                    for file in method_files:
-                        f.write(f"{file}\n")
-                
-                os.chmod(method_run_all, 0o755)
-                print(f"Created method runner: {method_run_all}")
     
-    # # Create model-specific run_all.sh files within each method
-    # for method in methods:
-    #     if method == "gradient_methods":
-    #         gradient_dirs = ["integrated_gradient"]
-    #         for gradient_dir in gradient_dirs:
-    #             for model in models:
-    #                 model_dir = os.path.join(output_dir, method, gradient_dir, model)
-    #                 model_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/" in f]
-                    
-    #                 if not model_files:
-    #                     continue
-                        
-    #                 model_run_all = os.path.join(model_dir, "run_all.sh")
-    #                 with open(model_run_all, "w") as f:
-    #                     f.write("#!/bin/bash\n\n")
-    #                     f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}\n\n")
-    #                     for file in model_files:
-    #                         f.write(f"{file}\n")
-                    
-    #                 os.chmod(model_run_all, 0o755)
-    #                 print(f"Created model runner: {model_run_all}")
-    #     else:
-    #         for model in models:
-    #             model_dir = os.path.join(output_dir, method, model)
-    #             model_files = [f for f in created_files if f"{method}/{model}/" in f]
-                
-    #             if not model_files:
-    #                 continue
-                    
-    #             model_run_all = os.path.join(model_dir, "run_all.sh")
-    #             with open(model_run_all, "w") as f:
-    #                 f.write("#!/bin/bash\n\n")
-    #                 f.write(f"# Run all experiments for {method}/{model}\n\n")
-    #                 for file in model_files:
-    #                     f.write(f"{file}\n")
-                
-    #             os.chmod(model_run_all, 0o755)
-    #             print(f"Created model runner: {model_run_all}")
-    
-    # # Create dataset-specific run_all.sh files within each method/model
-    # for method in methods:
-    #     if method == "gradient_methods":
-    #         gradient_dirs = ["integrated_gradient"]
-    #         for gradient_dir in gradient_dirs:
-    #             for model in models:
-    #                 # Standard datasets
-    #                 for dataset in standard_settings:
-    #                     dataset_dir = os.path.join(output_dir, method, gradient_dir, model, dataset)
-    #                     dataset_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/{dataset}/" in f]
-                        
-    #                     if dataset_files:
-    #                         dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
-    #                         with open(dataset_run_all, "w") as f:
-    #                             f.write("#!/bin/bash\n\n")
-    #                             f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}/{dataset}\n\n")
-    #                             for file in dataset_files:
-    #                                 f.write(f"{file}\n")
-                            
-    #                         os.chmod(dataset_run_all, 0o755)
-    #                         print(f"Created dataset runner: {dataset_run_all}")
-                    
-    #                 # Synthetic datasets
-    #                 for dataset, _ in synthetic_settings:
-    #                     dataset_dir = os.path.join(output_dir, method, gradient_dir, model, "synthetic_data", dataset)
-    #                     dataset_files = [f for f in created_files if f"{method}/{gradient_dir}/{model}/synthetic_data/{dataset}/" in f]
-                        
-    #                     if dataset_files:
-    #                         dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
-    #                         with open(dataset_run_all, "w") as f:
-    #                             f.write("#!/bin/bash\n\n")
-    #                             f.write(f"# Run all experiments for {method}/{gradient_dir}/{model}/synthetic_data/{dataset}\n\n")
-    #                             for file in dataset_files:
-    #                                 f.write(f"{file}\n")
-                            
-    #                         os.chmod(dataset_run_all, 0o755)
-    #                         print(f"Created dataset runner: {dataset_run_all}")
-    #     else:
-    #         for model in models:
-    #             # Standard datasets
-    #             for dataset in standard_settings:
-    #                 dataset_dir = os.path.join(output_dir, method, model, dataset)
-    #                 dataset_files = [f for f in created_files if f"{method}/{model}/{dataset}/" in f]
-                    
-    #                 if dataset_files:
-    #                     dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
-    #                     with open(dataset_run_all, "w") as f:
-    #                         f.write("#!/bin/bash\n\n")
-    #                         f.write(f"# Run all experiments for {method}/{model}/{dataset}\n\n")
-    #                         for file in dataset_files:
-    #                             f.write(f"{file}\n")
-                        
-    #                     os.chmod(dataset_run_all, 0o755)
-    #                     print(f"Created dataset runner: {dataset_run_all}")
-                
-    #             # Synthetic datasets
-    #             for dataset, _ in synthetic_settings:
-    #                 dataset_dir = os.path.join(output_dir, method, model, "synthetic_data", dataset)
-    #                 dataset_files = [f for f in created_files if f"{method}/{model}/synthetic_data/{dataset}/" in f]
-                    
-    #                 if dataset_files:
-    #                     dataset_run_all = os.path.join(dataset_dir, "run_all.sh")
-    #                     with open(dataset_run_all, "w") as f:
-    #                         f.write("#!/bin/bash\n\n")
-    #                         f.write(f"# Run all experiments for {method}/{model}/synthetic_data/{dataset}\n\n")
-    #                         for file in dataset_files:
-    #                             f.write(f"{file}\n")
-                        
-    #                     os.chmod(dataset_run_all, 0o755)
-    #                     print(f"Created dataset runner: {dataset_run_all}")
-                        
-    # # Create a master run_all.sh file
-    # run_all_path = os.path.join(output_dir, "run_all.sh")
-    # with open(run_all_path, "w") as f:
-    #     f.write("#!/bin/bash\n\n")
-    #     f.write("# This script runs all generated experiment commands\n\n")
-        
-    #     # Run each method's run_all.sh
-    #     for method in methods:
-    #         if method == "gradient_methods":
-    #             for gradient_dir in ["integrated_gradient"]:
-    #                 method_run_all = os.path.join(output_dir, method, gradient_dir, "run_all.sh")
-    #                 if os.path.exists(method_run_all):
-    #                     f.write(f"echo 'Running experiments for {method}/{gradient_dir}...'\n")
-    #                     f.write(f"{method_run_all}\n\n")
-    #         else:
-    #             method_run_all = os.path.join(output_dir, method, "run_all.sh")
-    #             if os.path.exists(method_run_all):
-    #                 f.write(f"echo 'Running experiments for {method}...'\n")
-    #                 f.write(f"{method_run_all}\n\n")
-    
-    # os.chmod(run_all_path, 0o755)
-    # print(f"\nCreated master runner: {run_all_path}")
-    
-    # print(f"\nCreated {len(created_files)} command files in {output_dir}")
-    # print("\nTo run all commands, you can use:")
-    # print(f"{run_all_path}")
-    # print("\nOr run experiments for a specific method:")
-    # print(f"<method>/run_all.sh")
-    # print("\nOr for a specific model within a method:")
-    # print(f"<method>/<model>/run_all.sh")
 if __name__ == "__main__":
     main()
