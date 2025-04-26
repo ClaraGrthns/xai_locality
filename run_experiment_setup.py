@@ -102,10 +102,10 @@ def parse_args():
     parser.add_argument("--force_overwrite", action="store_true", help="Force overwrite existing results")
     
     # Explanation method parameters
-    parser.add_argument("--method", type=str, choices=["lime", "gradient_methods"], 
+    parser.add_argument("--method", type=str, choices=["lime", "gradient_methods", "lime_captum"], 
                         help="Explanation method to use")
     parser.add_argument("--gradient_method", type=str,
-                        choices=["IG", "IG+SmoothGrad"], 
+                        choices=["IG", "IG+SmoothGrad", "GuidedBackprob", "Deconv", "GuidedGradCam", "Saliency"], 
                         help="Gradient-based explanation method")
     parser.add_argument("--kernel_width", type=str, default="default", 
                         choices=["default", "double", "half"], 
@@ -282,9 +282,9 @@ def main():
     
     if args.debug:  
         # Example debug configuration - can be overridden with command-line arguments
-        args.model_type = "LightGBM" 
-        args.setting = "mushroom"
-        args.method = "lime"
+        args.model_type = "MLP" 
+        args.setting = "higgs"
+        args.method = "lime_captum"
         # args.gradient_method = "IG+SmoothGrad"
         args.distance_measure = "euclidean"
         args.random_seed = 42

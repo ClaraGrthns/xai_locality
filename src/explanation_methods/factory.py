@@ -5,6 +5,7 @@ from src.explanation_methods.gradient import (IntegratedGradientsHandler,
                                               SaliencyHandler,
                                               SmoothGradHandler)
 from src.explanation_methods.lime import LimeHandler
+from src.explanation_methods.lime_captum import LimeCaptumHandler
 class ExplanationMethodHandlerFactory:
     METHOD_HANDLERS = {
         "IG": IntegratedGradientsHandler,
@@ -13,7 +14,8 @@ class ExplanationMethodHandlerFactory:
         "GuidedGradCam": GuidedGradCamHandler,
         "Saliency": SaliencyHandler,
         "IG+SmoothGrad": SmoothGradHandler,
-        "lime": LimeHandler
+        "lime": LimeHandler,
+        "lime_captum": LimeCaptumHandler, 
     }
 
     @staticmethod
