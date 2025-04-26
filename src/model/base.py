@@ -11,7 +11,7 @@ from src.utils.pytorch_frame_utils import (
     tensorframe_to_tensor,
     load_dataframes, 
     ) 
-from src.dataset.synthetic_data import create_synthetic_classification_data_sklearn, create_synthetic_regression_data_sklearn
+from src.dataset.synthetic_data import create_synthetic_classification_data_sklearn
 from torch_frame.data import Dataset
 import torch_frame
 import pandas as pd
@@ -95,14 +95,41 @@ class BaseModelHandler:
             y = data['y_test']
             trn_feat = data['X_train']
             y_trn = data['y_train']
-        tst_feat, analysis_feat, tst_y, analysis_y = self._get_tst_feat_label_forKNN(whole_tst_feat, y)
+        tst_feat, analysis_feat, tst_y, analysis_y = self._get_tst_feat_label_forKNN(whole_tst_feat, y) 
         return trn_feat, analysis_feat, tst_feat, y_trn, analysis_y, tst_y 
     
+    def _check_for_dublicates(self, dataset):
+        if isinstance(dataset, np.ndarray):
+            # For numpy arrays
+            unique_rows, unique_indices, counts = np.unique(dataset, axis=0, return_index=True, return_counts=True)
+            duplicate_mask = counts > 1
+            if np.any(duplicate_mask):
+                duplicate_count = np.sum(counts[duplicate_mask] - 1)
+                print(f"WARNING: {duplicate_count} duplicate samples found in test data and removed.")
+                # Keep only unique rows by using unique indices
+                dataset = dataset[unique_indices]
+        else:
+            # For torch tensors
+            whole_tst_feat_np = dataset.cpu().numpy()
+            unique_rows, unique_indices, counts = np.unique(whole_tst_feat_np, axis=0, return_index=True, return_counts=True)
+            duplicate_mask = counts > 1
+            if np.any(duplicate_mask):
+                duplicate_count = np.sum(counts[duplicate_mask] - 1)
+                print(f"WARNING: {duplicate_count} duplicate samples found in test data and removed.")
+                # Keep only unique rows
+                dataset = dataset[torch.tensor(unique_indices)]
+        return dataset
+    
+
     def _split_data_in_tst_analysis(self, whole_tst_feat, val_feat, trn_feat):
         args = self.args
+        # Check for duplicates in whole_tst_feat
+        
         tst_indices, analysis_indices = self._get_split_indices(whole_tst_feat)
         analysis_feat = whole_tst_feat[analysis_indices]
+        analysis_feat = self._check_for_dublicates(analysis_feat)
         tst_feat = whole_tst_feat[tst_indices]
+        # tst_feat = self._check_for_dublicates(tst_feat)
         if self.args.include_trn:
             if isinstance(trn_feat, np.ndarray):
                 analysis_feat = np.concatenate([analysis_feat, trn_feat], axis=0)
