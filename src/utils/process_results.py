@@ -54,7 +54,7 @@ def get_synthetic_dataset_friendly_name(dataset_name, pattern=None):
         c = match.group(3)       # clusters per class
         s = match.group(4)       # class separation
         hypercube_param = "hc: ×" if "hypercubeFalse" in dataset_name else "hc: ✓"
-        return f"syn (d:{d}, if:{i}, c:{c}, s:{s}, {hypercube_param})"
+        return f"syn \n(d:{d}, inf f.:{i}, clust.:{c}, sep.:{s}, {hypercube_param})"
     return dataset_name
 
 def get_synthetic_dataset_friendly_name_regression(dataset_name, pattern=None):
@@ -63,20 +63,35 @@ def get_synthetic_dataset_friendly_name_regression(dataset_name, pattern=None):
         pattern = r'regression_(\w+)_n_feat(\d+)_n_informative(\d+)_n_samples(\d+)_noise([\d\.]+)_bias([\d\.]+)(?:_random_state(\d+))?(?:_effective_rank(\d+)_tail_strength([\d\.]+))?'
     match = re.search(pattern, dataset_name.split("/")[-1])
     if match:
-        mode = match.group(1)    # regression mode (e.g., 'linear', 'friedman')
+        mode = match.group(1)    # regression mode (e.g., 'linear', 'polynomial')
         d = match.group(2)       # number of features
         i = match.group(3)       # number of informative features
         n = match.group(4)       # number of samples
         noise = match.group(5)   # noise level
         bias = match.group(6)    # bias
-        # Check for additional parameters
+        
+        # Create a more readable version of the regression mode
+        mode_display = {
+            "polynomial": "polynomial",
+            "interaction": "interaction",
+            "poly_interaction": "poly_interaction",
+            "multiplicative_chain": "multiplicative_chain",
+            "exponential_interaction": "exponential_interaction",
+            "sigmoid_mix": "sigmoid_mix",
+            "hierarchical": "hierarchical",
+            "piecewise": "piecewise",
+            "advanced_polynomial": "adv_polynomial"
+        }.get(mode, mode)
+        
+        # Extract additional parameters
         additional = ""
         # Extract effective rank number if present
         effective_rank_match = re.search(r'effective_rank(\d+)', dataset_name)
         if effective_rank_match:
             rank_num = effective_rank_match.group(1)
             additional += f", er:{rank_num}"
-        return f"syn-reg {mode} \n(d:{d}, if:{i}, b: {bias}, ns:{noise}{additional})"
+        
+        return f"syn {mode_display} \n(d:{d}, inf f.:{i}, noise:{noise}{additional})"
     return dataset_name
 
 def get_results_files_dict(explanation_method: str,
@@ -85,7 +100,7 @@ def get_results_files_dict(explanation_method: str,
                         distance_measure: str = "euclidean", 
                         lime_features=10, 
                         sampled_around_instance=False, 
-                        random_seed=42,
+                        random_seed=False,
                         downsampled=False) -> dict:
     results_folder = f"/home/grotehans/xai_locality/results/{explanation_method}"
     results_files_dict = {}
@@ -115,7 +130,7 @@ def get_results_files_dict(explanation_method: str,
                         condition = lambda x: (x.startswith("fractions") or x.startswith("regression")) and x.endswith("fraction.npz")
                 else:
                     condition = lambda x: (x.startswith("fractions") or x.startswith("regression")) and x.endswith("fraction.npz")
-            
+                
             def random_seed_condition(file):
                 if random_seed:
                     return f"random_seed" in file
@@ -123,12 +138,21 @@ def get_results_files_dict(explanation_method: str,
             # Combine conditions
             combined_condition = lambda x: file_matching(x, distance_measure, condition=condition) and random_seed_condition(x)
             files = [os.path.join(path_to_results, f) for f in os.listdir(path_to_results) if combined_condition(f)]
+            if len(files) > 0 and not (isinstance(random_seed, int) and downsampled):
+                upper_limits = []
+                for f in files:
+                    match = re.search(r'fractions-0-(\d+\.?\d*)_dataset', str(f))
+                    if match:
+                        upper_limits.append(float(match.group(1)))
+                if len(upper_limits) > 0:
+                    min_upper = min(upper_limits)
+                    files = [f for f in files if f"{min_upper}_dataset" in f]
             # Filter files with random_seed-42
             seed42_files = [f for f in files if "random_seed-42" in f or ("random_seed" not in f)]
-            if explanation_method == "lime" and seed42_files and random_seed and not downsampled:
+            if explanation_method == "lime" and len(seed42_files)>0 and random_seed and not downsampled:
                 kernel_widths = get_kernel_widths_to_filepaths(seed42_files)
                 kernel_widths = [kw for kw in kernel_widths if kw[0] is not None]  # Filter out None kernel widths
-                if kernel_widths:
+                if len(kernel_widths) > 0 :
                     median_idx = len(kernel_widths) // 2
                     res = kernel_widths[median_idx][1]
                 else:
@@ -137,6 +161,8 @@ def get_results_files_dict(explanation_method: str,
                     res = list(set(files)-set(seed42_files)| {res})
             else:
                 res = files
+            if isinstance(res, list) and len(res) == 0:
+                continue
             if explanation_method == "lime":
                 results_files_dict[model][dataset] = res
             elif downsampled or random_seed:
@@ -262,7 +288,7 @@ def load_results_regression(data_path):
     r2 = results['r2']
     mse_constant_clf = results['mse_constant_clf']
     mae_constant_clf = results['mae_constant_clf']
-    variance_logit = results.get('variance_logit', None)
+    variance_logit = results['variance_logit']
     if variance_logit is not None:
         variance_logit = variance_logit
     radius = results['radius']
@@ -272,24 +298,33 @@ def load_results_regression(data_path):
             variance_logit, radius), n_points_in_ball
 
 
-def load_knn_results(model, dataset, synthetic=False, distance_measure="euclidean", regression=False, random_seed=42, downsample_analysis=1.0):
+def load_complexity_results(model, 
+                     dataset, 
+                     synthetic=False, 
+                     distance_measure="euclidean", 
+                     regression=False, 
+                     random_seed=42, 
+                    complexity_regression=False,
+                     downsample_analysis=1.0):
     distance_measure = distance_measure.lower()
     suffix = "_regression" if regression else ""
     prefix = "regression_" if regression else ""
     if synthetic:
         # Get dataset name without synthetic_data/ prefix
         dataset_name = dataset.split('/')[-1]
-        file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"{prefix}synthetic_data/{dataset_name}/kNN{suffix}_on_model_preds_{model}_{dataset_name}_"
-                    f"normalized_tensor_frame_dist_measure-{distance_measure}_random_seed-{random_seed}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}.npz")
-    else:
-        if model == "LogReg" or model == "LinReg":
+        if complexity_regression:
             file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"{dataset}/kNN{suffix}_on_model_preds_{model}_LightGBM_{dataset}_normalized_data_"
+                    f"{prefix}synthetic_data/{dataset_name}/lr_on_model_preds{model}_random_seed-42.npz")
+        else:
+            file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
+                    f"{prefix}synthetic_data/{dataset_name}/kNN{suffix}_on_model_preds_{model}_"
                     f"dist_measure-{distance_measure}_random_seed-{random_seed}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}.npz")
-        else: 
-            file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"{dataset}/kNN{suffix}_on_model_preds_{model}_{model}_{dataset}_normalized_data_"
+    elif complexity_regression:
+        file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
+                    f"{dataset}/lr_on_model_preds{model}_random_seed-42.npz")
+    else:
+        file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
+                    f"{dataset}/kNN{suffix}_on_model_preds_{model}_"
                     f"dist_measure-{distance_measure}_random_seed-{random_seed}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}.npz")
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
@@ -349,7 +384,13 @@ def get_performance_metrics_model(model, dataset, metric_str, synthetic=False, r
         return float(res['classification_model'][metric_str_to_key_pair[metric_str]])
 
 
-def get_best_metrics_of_knn_clf(model, dataset, metric_sr_ls, synthetic=False, distance_measure="euclidean", random_seed=42):
+def get_best_metrics_of_complexity_of_f_clf(model, 
+                                dataset, 
+                                metric_sr_ls, 
+                                synthetic=False, 
+                                distance_measure="euclidean", 
+                                complexity_regression=False,
+                                random_seed=42):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
         "Accuracy $g_x$": ("classification", 0),
@@ -360,20 +401,22 @@ def get_best_metrics_of_knn_clf(model, dataset, metric_sr_ls, synthetic=False, d
         "MAE prob.": ("proba_regression", 1),
         "R2  prob.": ("proba_regression", 2),
         "MSE logit": ("logit_regression", 0),
-        "MAE logit": ("logit_regression", 1),
+        "MAE logit": ("logit_regresasion", 1),
         "R2 logit": ("logit_regression", 2),
         "Accuracy true labels": ("classification_true_labels", 0),
         "Precision true labels": ("classification_true_labels", 1),
         "Recall true labels": ("classification_true_labels", 2),
         "F1 true labels": ("classification_true_labels", 3),
+        "Accuracy Log Reg" : ("log_regression_res", 1)
     }
     if type(metric_sr_ls) == str:
         metric_sr_ls = [metric_sr_ls]
-    res = load_knn_results(model = model, 
+    res = load_complexity_results(model = model, 
                            dataset = dataset, 
                            synthetic = synthetic, 
                            distance_measure= distance_measure, 
                            random_seed = random_seed, 
+                           complexity_regression=complexity_regression,
                            regression=False)
     if res is None:
         return None
@@ -383,12 +426,27 @@ def get_best_metrics_of_knn_clf(model, dataset, metric_sr_ls, synthetic=False, d
             metrics_res.append((np.nan, np.nan))
             continue
         metric_key_pair = metric_str_to_key_pair[metric_sr]
-        best_metric = np.max(res[metric_key_pair[0]][:, metric_key_pair[1]])
-        best_idx = np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
+        if complexity_regression:
+            best_metric = res[metric_key_pair[0]][metric_key_pair[1]]
+            best_idx = 0
+            metrics_res.append((best_metric, best_idx))
+            continue
+        if "MSE" in metric_sr or "MAE" in metric_sr:
+            best_metric = np.min(res[metric_key_pair[0]][:, metric_key_pair[1]])
+            best_idx = np.argmin(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
+        else:
+            best_metric = np.max(res[metric_key_pair[0]][:, metric_key_pair[1]])
+            best_idx = np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
         metrics_res.append((best_metric, best_idx))
     return metrics_res if len(metrics_res) > 1 else metrics_res[0]
 
-def get_best_metrics_of_knn_regression(model, dataset, metric_sr_ls, synthetic=False, distance_measure="euclidean", random_seed=42):
+def get_best_metrics_of_complexity_of_f_regression(model, 
+                                       dataset, 
+                                       metric_sr_ls, 
+                                       synthetic=False, 
+                                       distance_measure="euclidean", 
+                                       complexity_regression=False,
+                                       random_seed=42):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
         "MSE $g_x$": ("res_regression", 0),
@@ -398,15 +456,19 @@ def get_best_metrics_of_knn_regression(model, dataset, metric_sr_ls, synthetic=F
         "MSE true labels": ("res_regression_true_y", 0),
         "MAE true labels": ("res_regression_true_y", 1),
         "R2 true labels": ("res_regression_true_y", 2),
+        "MSE Lin Reg": ("linear_regression_res", 0),
+        "MAE Lin Reg": ("linear_regression_res", 1),
+        "R2 Lin Reg": ("linear_regression_res", 2),
     }
     if type(metric_sr_ls) == str:
         metric_sr_ls = [metric_sr_ls]
 
-    res = load_knn_results(model=model, 
+    res = load_complexity_results(model=model, 
                            dataset=dataset, synthetic = synthetic, 
                            distance_measure= distance_measure, 
                            random_seed = random_seed,  
                            regression = True,
+                           complexity_regression=complexity_regression
                         )
     if res is None:
         return None
@@ -416,10 +478,21 @@ def get_best_metrics_of_knn_regression(model, dataset, metric_sr_ls, synthetic=F
             metrics_res.append((np.nan, np.nan))
             continue
         metric_key_pair = metric_str_to_key_pair[metric_sr]
-        best_metric = np.max(res[metric_key_pair[0]][:, metric_key_pair[1]])
-        if metric_sr == "RMSE $g_x$":
-            best_metric = np.sqrt(best_metric)
-        best_idx = np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
+        
+        if complexity_regression:
+            best_metric = res[metric_key_pair[0]][metric_key_pair[1]]
+            best_idx = 0
+            metrics_res.append((best_metric, best_idx))
+            continue
+
+        if "R2" in metric_sr:
+            best_metric = np.max(res[metric_key_pair[0]][:, metric_key_pair[1]])
+            best_idx = np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
+        else:
+            best_metric = np.min(res[metric_key_pair[0]][:, metric_key_pair[1]])
+            if metric_sr == "RMSE $g_x$":
+                best_metric = np.sqrt(best_metric)
+            best_idx = np.argmin(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
         metrics_res.append((best_metric, best_idx))
     return metrics_res if len(metrics_res) > 1 else metrics_res[0]
 
