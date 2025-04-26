@@ -113,27 +113,36 @@ class BaseExplanationMethodHandler:
         max_distances = np.zeros((dist.shape[0], n_points_in_ball))
         for idx in range(n_points_in_ball):
             max_distances[:, idx] = np.max(dist[:, :idx+1], axis=1)
-        
+
+        # append y_test as the first column of model and local preds to obtain stable variance 
         kNNs = (np.arange(1, n_points_in_ball + 1))
-        mean_model_preds = np.cumsum(model_preds, axis=1)/kNNs
+        if type(y_preds) == torch.Tensor:
+                y_preds = y_preds.cpu().numpy()
+        
+        if y_preds.ndim == 1:
+            y_preds = y_preds[:, None]
+        elif y_preds.shape[1] == 2:
+            y_preds = np.max(y_preds, axis=1).reshape(-1, 1)
+        model_preds_for_mean = np.concatenate((y_preds, model_preds), axis=1)
+        kNNs_for_mean = np.arange(1, n_points_in_ball + 2)
+        mean_model_preds = np.cumsum(model_preds_for_mean, axis=1)/kNNs_for_mean
+        var_model_preds = np.cumsum(np.square(model_preds_for_mean - mean_model_preds), axis=1) / kNNs_for_mean
         
         mse = np.cumsum(np.square(model_preds - local_preds), axis=1) / kNNs
         mae = np.cumsum(np.abs(model_preds - local_preds), axis=1) / kNNs
-        var_model_preds = np.cumsum(np.square(model_preds - mean_model_preds), axis=1) / kNNs
-        r2 = 1 - (mse / var_model_preds)
+        r2 = 1 - (mse / (var_model_preds[:, 1:] + 1e-10))
+        # Replace the first value along axis 1 with nan
+        if r2.shape[1] > 0:
+            r2[:, 0] = np.nan
         
         res_dict_regression = {
             "mse": mse.T,
             "mae": mae.T,
             "r2": r2.T,
-            "variance_logit": var_model_preds.T,
+            "variance_logit": var_model_preds[:, 1:].T,
             "radius": max_distances.T,
         }
         if self.args.regression:
-            if type(y_preds) == torch.Tensor:
-                y_preds = y_preds.cpu().numpy()
-            if y_preds.ndim == 1:
-                y_preds = y_preds[:, None]
             mse_constant_clf = np.cumsum(np.square(model_preds - y_preds), axis=1) / kNNs #(num test samples,  num closest points)-(num test samples,1)
             mae_constant_clf = np.cumsum(np.abs(model_preds - y_preds), axis=1) / kNNs #(num test samples,  num closest points)-(num test samples,1)
             return {**res_dict_regression,
@@ -150,7 +159,7 @@ class BaseExplanationMethodHandler:
             mse_proba = np.cumsum(np.square(model_probs - local_probs), axis=1) / kNNs
             mae_proba = np.cumsum(np.abs(model_probs - local_probs), axis=1) / kNNs
 
-            var_model_preds_probs = np.cumsum(np.square(model_probs - mean_model_preds_probs), axis=1) / kNNs
+            var_model_preds_probs = (np.cumsum(np.square(model_probs - mean_model_preds_probs), axis=1) / kNNs)
             r2_proba = 1 - (mse_proba / var_model_preds_probs)
 
             ratio_of_ones = np.cumsum(model_binary_preds, axis=1)/kNNs
