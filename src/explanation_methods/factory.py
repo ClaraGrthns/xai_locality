@@ -1,8 +1,17 @@
-from src.explanation_methods.gradient import IntegratedGradientsHandler, SmoothGradHandler
+from src.explanation_methods.gradient import (IntegratedGradientsHandler,
+                                              GuidedBackpropHandler, 
+                                              GuidedGradCamHandler,  
+                                              DeconvHandler,
+                                              SaliencyHandler,
+                                              SmoothGradHandler)
 from src.explanation_methods.lime import LimeHandler
 class ExplanationMethodHandlerFactory:
     METHOD_HANDLERS = {
         "IG": IntegratedGradientsHandler,
+        "GuidedBackprob": GuidedBackpropHandler,
+        "Deconv": DeconvHandler,
+        "GuidedGradCam": GuidedGradCamHandler,
+        "Saliency": SaliencyHandler,
         "IG+SmoothGrad": SmoothGradHandler,
         "lime": LimeHandler
     }

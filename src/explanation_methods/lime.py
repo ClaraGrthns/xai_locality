@@ -69,7 +69,9 @@ class LimeHandler(BaseExplanationMethodHandler):
     
     def get_experiment_setting(self, fractions, max_radius=None):
         args = self.args
-        df_setting = "complete_df" if args.include_trn and args.include_val else "only_test"
+        df_setting = "dataset_test"
+        df_setting += "_val" if args.include_val else ""
+        df_setting += "_trn" if args.include_trn else ""
         experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
         # else:   
         #     experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_accuracy_fraction"

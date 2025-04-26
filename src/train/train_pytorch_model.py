@@ -88,15 +88,37 @@ def objective_classification(trial, X, y, X_val, y_val, input_size, epochs, verb
 
 
 def objective_regression(trial, X, y, X_val, y_val, input_size, epochs, verbose):
-    lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
-    optimizer_name = trial.suggest_categorical("optimizer", ["SGD", "Adam"])
+    # Learning rate with wider range
+    lr = trial.suggest_float("lr", 1e-6, 1e-1, log=True)
+    
+    # More optimizer options
+    optimizer_name = trial.suggest_categorical("optimizer", ["SGD", "Adam", "AdamW", "RMSprop"])
+    
+    # Regularization strength
     weight_decay = trial.suggest_float("weight_decay", 1e-8, 1e-1, log=True)
+    
+    # Try different momentum values for SGD
+    momentum = trial.suggest_float("momentum", 0.0, 0.99) if optimizer_name == "SGD" else 0.0
+    
+    # Try different beta values for Adam-based optimizers
+    beta1 = trial.suggest_float("beta1", 0.8, 0.99) if optimizer_name in ["Adam", "AdamW"] else 0.9
+    beta2 = trial.suggest_float("beta2", 0.8, 0.999) if optimizer_name in ["Adam", "AdamW"] else 0.999
+    
+    # Try different batch sizes if using mini-batch training
+    # batch_size = trial.suggest_categorical("batch_size", [8, 16, 32, 64, 128, 256])
+    
     model = LinReg(input_size=input_size)
     criterion = nn.MSELoss()
+    
     if optimizer_name == "SGD":
-        optimizer = optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     elif optimizer_name == "Adam":
-        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = optim.Adam(model.parameters(), lr=lr, betas=(beta1, beta2), weight_decay=weight_decay)
+    elif optimizer_name == "AdamW":
+        optimizer = optim.AdamW(model.parameters(), lr=lr, betas=(beta1, beta2), weight_decay=weight_decay)
+    elif optimizer_name == "RMSprop":
+        optimizer = optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay)
+    
     _, val_loss = train_model(X, y, X_val, y_val, model, optimizer, criterion, epochs, verbose=verbose)
     return val_loss
 

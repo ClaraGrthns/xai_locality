@@ -56,7 +56,7 @@ sys.path.append(osp.join(os.getcwd(), '..'))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.dataset.synthetic_data import create_synthetic_classification_data_sklearn, create_synthetic_regression_data_sklearn
+from src.dataset.synthetic_data import create_synthetic_classification_data_sklearn, create_custom_synthetic_regression_data #create_synthetic_regression_data_sklearn
 
 def set_random_seeds(seed=42):
     random.seed(seed)
@@ -80,7 +80,19 @@ def normalize_features(train_features, val_features, test_features):
     # Save scaler for later use
     return train_features_norm, val_features_norm, test_features_norm, scaler
 
-# After the dataset splits and before model setup, add:
+def normalize_target(train_y, val_y, test_y):
+    """Normalize target values."""
+    # Fit scaler on training data only
+    scaler = StandardScaler()
+    scaler.fit(train_y.reshape(-1, 1))
+    
+    # Transform all datasets
+    train_y_norm = scaler.transform(train_y.reshape(-1, 1)).flatten()
+    val_y_norm = scaler.transform(val_y.reshape(-1, 1)).flatten()
+    test_y_norm = scaler.transform(test_y.reshape(-1, 1)).flatten()
+    
+    return train_y_norm, val_y_norm, test_y_norm
+
 def normalize_tensor_frame(train_tf, val_tf, test_tf):
     """Normalize numerical features and return normalized TensorFrames."""
     if stype.numerical not in train_tf.feat_dict:
@@ -181,7 +193,7 @@ def prepare_data_and_models(args):
         tst_feat, val_feat, trn_feat = data['X_test'], data['X_val'], data['X_train'] 
         y_test, y_val, y_train = data['y_test'], data['y_val'], data['y_train']
     elif args.regression:
-        data_path_wo_file_ending, trn_feat, val_feat, tst_feat, y_train, y_val, y_test = create_synthetic_regression_data_sklearn(
+        data_path_wo_file_ending, trn_feat, val_feat, tst_feat, y_train, y_val, y_test = create_custom_synthetic_regression_data(
             regression_mode = args.regression_mode,
             n_features=args.n_features,
             n_informative=args.n_informative,
@@ -193,7 +205,6 @@ def prepare_data_and_models(args):
             test_size=args.test_size,
             val_size=args.val_size,
             tail_strength=args.tail_strength,
-            coef=args.coef,
             effective_rank=args.effective_rank,
             )
         data_folder = args.data_folder
@@ -216,6 +227,7 @@ def prepare_data_and_models(args):
         data_folder = args.data_folder
         
     trn_feat_norm, val_feat_norm, tst_feat_norm, scaler = normalize_features(trn_feat, val_feat, tst_feat)
+    y_train, y_val, y_test = normalize_target(y_train, y_val, y_test)
 
     df_trn = pd.DataFrame(trn_feat_norm)
     df_trn['y'] = y_train
