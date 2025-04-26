@@ -1,5 +1,5 @@
 from src.explanation_methods.base import BaseExplanationMethodHandler
-from captum.attr import IntegratedGradients, NoiseTunnel
+from captum.attr import IntegratedGradients, NoiseTunnel, GuidedGradCam, Deconvolution, Saliency, GuidedBackprop
 import torch
 from src.explanation_methods.gradient_methods.local_classifier import (compute_gradmethod_preds_for_all_kNN, 
                                                                        compute_gradmethod_regressionpreds_for_all_kNN, 
@@ -14,7 +14,8 @@ import time
 from src.utils.sampling import uniform_ball_sample
 from src.utils.metrics import binary_classification_metrics_per_row, regression_metrics_per_row, impurity_metrics_per_row
 
-class IntegratedGradientsHandler(BaseExplanationMethodHandler):
+
+class GradientMethodHandler(BaseExplanationMethodHandler):
     def set_explainer(self, **kwargs):
         model = kwargs.get("model")
         self.explainer = IntegratedGradients(model, multiply_by_inputs=False)
@@ -48,7 +49,10 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
         return saliency_maps
     
     def get_experiment_setting(self, fractions, max_radius):
-        setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
+        df_setting = "dataset_test"
+        df_setting += "_val" if self.args.include_val else ""
+        df_setting += "_trn" if self.args.include_trn else ""
+        setting = f"{df_setting}_grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
         # else:
         #     setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"
         if self.args.downsample_analysis != 1.0:
@@ -100,7 +104,8 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
 
         if self.args.regression:
             model_preds, local_preds = compute_gradmethod_regressionpreds_for_all_kNN(
-                tst_feat = tst_chunk_dist,
+                tst_feat = tst_chunk, 
+                predictions_tst_feat= predictions,
                 predictions_baseline = predictions_baseline,
                 saliency_map = explanations_chunk, 
                 predict_fn = predict_fn, 
@@ -122,7 +127,8 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
                     predictions_sm = predictions
             top_labels = torch.argmax(predictions_sm, dim=1).tolist()
             model_preds, model_binary_preds, model_probs, local_preds, local_binary_preds, local_probs = compute_gradmethod_preds_for_all_kNN(
-                tst_feat = tst_chunk_dist,
+                tst_feat = tst_chunk, 
+                predictions_tst_feat = predictions,
                 predictions_baseline = predictions_baseline,
                 saliency_map = explanations_chunk, 
                 predict_fn = predict_fn, 
@@ -140,8 +146,49 @@ class IntegratedGradientsHandler(BaseExplanationMethodHandler):
                 local_probs = local_probs.reshape(*list(samples_in_ball.shape[:-1]))
             return model_preds, model_binary_preds, model_probs, local_preds, local_binary_preds, local_probs, dist
         
-class SmoothGradHandler(IntegratedGradientsHandler):
+class SmoothGradHandler(GradientMethodHandler):
     def set_explainer(self, **kwargs):
         model = kwargs.get("model")
-        multiply_by_inputs = kwargs.get("multiply_by_inputs")
-        self.explainer = NoiseTunnel(IntegratedGradients(model, multiply_by_inputs=multiply_by_inputs))
+        self.explainer = NoiseTunnel(IntegratedGradients(model, multiply_by_inputs=False))
+        
+    def explain_instance(self, **kwargs):
+        return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
+    
+class IntegratedGradientsHandler(GradientMethodHandler):
+    def set_explainer(self, **kwargs):
+        model = kwargs.get("model")
+        self.explainer = IntegratedGradients(model, multiply_by_inputs=False)
+        
+    def explain_instance(self, **kwargs):
+        return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
+
+class GuidedGradCamHandler(GradientMethodHandler):
+    def set_explainer(self, **kwargs):
+        model = kwargs.get("model")
+        self.explainer = GuidedGradCam(model, model.layer4[-1], model.layer4[-1])
+        
+    def explain_instance(self, **kwargs):
+        return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
+
+class DeconvHandler(GradientMethodHandler):
+    def set_explainer(self, **kwargs):
+        model = kwargs.get("model")
+        self.explainer = Deconvolution(model, model.layer4[-1], model.layer4[-1])
+        
+    def explain_instance(self, **kwargs):
+        return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
+    
+class SaliencyHandler(GradientMethodHandler):
+    def set_explainer(self, **kwargs):
+        model = kwargs.get("model")
+        self.explainer = Saliency(model)
+        
+    def explain_instance(self, **kwargs):
+        return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
+class GuidedBackpropHandler(GradientMethodHandler):
+    def set_explainer(self, **kwargs):
+        model = kwargs.get("model")
+        self.explainer = GuidedBackprop(model)
+        
+    def explain_instance(self, **kwargs):
+        return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
