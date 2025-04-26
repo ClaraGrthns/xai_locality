@@ -6,6 +6,9 @@ import torch
 import numpy as np
 from pathlib import Path
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.linear_model import LinearRegression, LogisticRegression# logistic regression
+
+
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 sys.path.append(osp.join(os.getcwd(), '..'))
@@ -40,28 +43,24 @@ def train_knn_regressors(X_trn, ys_trn, X_tst, k_neighbors, distance_measure):
     
     return regressors, predictions
 
-def load_or_compute_predictions(model_handler, data, loader, save_path, prefix="train", debug=False):
+def compute_predictions(model_handler, data, loader, save_path, prefix="train", debug=False):
     """Load predictions from file or compute them."""
-    if osp.exists(save_path):
-        print(f"Loading existing {prefix} predictions from {save_path}")
-        predictions = np.load(save_path)
-    else:
-        predictions = []
-        print(f"Computing model predictions on {prefix} data")
-        with torch.no_grad(): 
-            if loader:
-                for i, batch in enumerate(tqdm(loader, desc=f"Computing {prefix} predictions")):
-                    preds = model_handler.predict_fn(batch)
-                    if isinstance(preds, torch.Tensor):
-                        preds = preds.numpy()
-                    predictions.append(preds)
-                predictions = np.concatenate(predictions, axis=0)
-            else:
-                predictions = model_handler.predict_fn(data)
-                if isinstance(predictions, torch.Tensor):
-                    predictions = predictions.numpy()
-        np.save(save_path, predictions)
-        print(f"{prefix.capitalize()} predictions saved to {save_path}")
+    predictions = []
+    print(f"Computing model predictions on {prefix} data")
+    with torch.no_grad(): 
+        if loader:
+            for i, batch in enumerate(tqdm(loader, desc=f"Computing {prefix} predictions")):
+                preds = model_handler.predict_fn(batch)
+                if isinstance(preds, torch.Tensor):
+                    preds = preds.numpy()
+                predictions.append(preds)
+            predictions = np.concatenate(predictions, axis=0)
+        else:
+            predictions = model_handler.predict_fn(data)
+            if isinstance(predictions, torch.Tensor):
+                predictions = predictions.numpy()
+    np.save(save_path, predictions)
+    print(f"{prefix.capitalize()} predictions saved to {save_path}")
     return predictions
 
 def process_classification_predictions(preds, proba_output=False):
@@ -97,7 +96,7 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
         print(f"\nProcessing with distance measure: {distance_measure}")
         
         
-        experiment_setting = f"kNN_on_model_preds_{args.model_type}_{file_name_wo_file_ending}_dist_measure-{distance_measure}_random_seed-{args.random_seed}"
+        experiment_setting = f"kNN_on_model_preds_{args.model_type}_dist_measure-{distance_measure}_random_seed-{args.random_seed}"
         if osp.exists(osp.join(results_path, experiment_setting + ".npz")) and not args.force_overwrite:
             print(f"Results for the experiment setting {experiment_setting} already exist. Skipping.")
             continue
@@ -128,7 +127,7 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
             else:
                 regressor_preds_top_label = regressor_preds
                 
-            mse, mae, r2 = regression_metrics(y_tst_proba_top_label, regressor_preds_top_label)   
+            mse, mae, r2 = regression_metrics(y_tst_proba_top_label.flatten(), regressor_preds_top_label.flatten())   
             res_proba_regression[i] = [mse, mae, r2]
             
             # Regression on logits (if not using probability output)
@@ -142,7 +141,7 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
                     regressor_logit_top_label = regressor_logit[
                         np.arange(len(ys_tst_predicted_labels)), ys_tst_predicted_labels]
                 
-                mse, mae, r2 = regression_metrics(y_tst_logit_top_label, regressor_logit_top_label)   
+                mse, mae, r2 = regression_metrics(y_tst_logit_top_label.flatten(), regressor_logit_top_label.flatten())   
                 res_logit_regression[i] = [mse, mae, r2]
         
             # Classification on true labels
@@ -162,6 +161,16 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
         }
         np.savez(osp.join(results_path, experiment_setting), **res_dict)
         print(f"Results saved to {osp.join(results_path, experiment_setting)}")
+    print("Results for kNN classification on model predictions:")
+    print(res_classification)
+    print("Computing metrics for regression on model predictions")
+    reg = LogisticRegression().fit(X_trn, ys_trn_predicted_labels)
+    lr_preds = reg.predict(X_tst)
+    auroc, accuracy, precision, recall, f1 = binary_classification_metrics(
+        ys_tst_predicted_labels.flatten(), lr_preds.flatten(), None)
+    print(f"Results for LogisticRegression on model predictions: AUROC={auroc}, Accuracy={accuracy}, Precision={precision}, Recall={recall}, F1={f1}")
+    np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}_random_seed-{args.random_seed}"),
+             **{"log_regression_res": np.array([auroc, accuracy, precision, recall, f1])})
 
     # Save model performance metrics
     print("Computing metrics for the actual model")
@@ -171,7 +180,7 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
     res_model = np.array([auroc, accuracy, precision, recall, f1])
     
     model_res = {"classification_model": res_model}
-    model_experiment_setting = f"model_performance_{args.model_type}_{file_name_wo_file_ending}_random_seed-{args.random_seed}"
+    model_experiment_setting = f"model_performance_{args.model_type}_random_seed-{args.random_seed}"
     
     np.savez(osp.join(results_path, model_experiment_setting), **model_res)
     print(f"Model performance results saved to {osp.join(results_path, model_experiment_setting)}")
@@ -181,7 +190,7 @@ def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn
     """Run KNN analysis for regression tasks."""
     for distance_measure in distance_measures:
         print(f"\nProcessing with distance measure: {distance_measure}")
-        experiment_setting = f"kNN_regression_on_model_preds_{args.model_type}_{file_name_wo_file_ending}_dist_measure-{distance_measure}_random_seed-{args.random_seed}"
+        experiment_setting = f"kNN_regression_on_model_preds_{args.model_type}_dist_measure-{distance_measure}_random_seed-{args.random_seed}"
         
         if osp.exists(osp.join(results_path, experiment_setting + ".npz")) and not args.force_overwrite:
             print(f"Results for the experiment setting {experiment_setting} already exist. Skipping.")
@@ -198,14 +207,14 @@ def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn
             kNN_regressor = KNeighborsRegressor(n_neighbors=k_neighbors, metric=distance_measure)
             kNN_regressor.fit(X_trn, ys_trn_preds)
             classifier_preds = kNN_regressor.predict(X_tst)
-            mse, mae, r2 = regression_metrics(y_tst_preds, classifier_preds)            
+            mse, mae, r2 = regression_metrics(y_tst_preds.flatten(), classifier_preds.flatten())            
             res_regression[i] = [mse, mae, r2]
             
             # Regression on true labels
             kNN_regressor_truey = KNeighborsRegressor(n_neighbors=k_neighbors, metric=distance_measure)
             kNN_regressor_truey.fit(X_trn, y_trn)
-            classifier_preds = kNN_regressor_truey.predict(X_tst)
-            mse, mae, r2 = regression_metrics(y_tst, classifier_preds)         
+            classifier_preds_true = kNN_regressor_truey.predict(X_tst)
+            mse, mae, r2 = regression_metrics(y_tst.flatten(), classifier_preds_true.flatten())         
             res_regression_true_y[i] = [mse, mae, r2]   
     
         res_dict = {
@@ -213,16 +222,30 @@ def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn
             "res_regression": res_regression,
             "res_regression_true_y": res_regression_true_y,
         }
+        print("Results for kNN regression on model predictions:")
+        print(res_dict["res_regression"])
+
+        print("Results for kNN regression on true labels:")
+        print(res_dict["res_regression_true_y"])
         np.savez(osp.join(results_path, experiment_setting), **res_dict)
         print(f"Results saved to {osp.join(results_path, experiment_setting)}")
 
+    print("Compute metrics for regression on model predictions")
+    reg = LinearRegression().fit(X_trn, ys_trn_preds)
+    regression_preds = reg.predict(X_tst)
+    mse, mae, r2 = regression_metrics(y_tst_preds.flatten(), regression_preds.flatten())
+    print(f"Results for LinearRegression on model predictions: MSE={mse}, MAE={mae}, R2={r2}")
+    np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}_random_seed-{args.random_seed}"),
+             **{"linear_regression_res": np.array([mse, mae, r2])})
+
+
     # Save model performance metrics
     print("Computing metrics for the actual model")
-    mse, mae, r2 = regression_metrics(y_tst, y_tst_preds)
+    mse, mae, r2 = regression_metrics(y_tst.flatten(), y_tst_preds.flatten())
     print(f"Model performance: MSE={mse}, MAE={mae}, R2={r2}")
     res_model = np.array([mse, mae, r2])
     model_res = {"regression_model": res_model}
-    model_experiment_setting = f"model_regression_performance_{args.model_type}_{file_name_wo_file_ending}_random_seed-{args.random_seed}"
+    model_experiment_setting = f"model_regression_performance_{args.model_type}_random_seed-{args.random_seed}"
     np.savez(osp.join(results_path, model_experiment_setting), **model_res)
     print(f"Model performance results saved to {osp.join(results_path, model_experiment_setting)}")
 
@@ -239,17 +262,36 @@ def main(args):
     model_handler = ModelHandlerFactory.get_handler(args)
     trn_feat, analysis_feat, tst_feat, y_trn, analysis_y, y_tst = model_handler.load_data_for_kNN()
 
+    # Convert features to numpy arrays
     X_trn = trn_feat.numpy() if isinstance(trn_feat, torch.Tensor) else trn_feat
     X_tst = tst_feat.numpy() if isinstance(tst_feat, torch.Tensor) else tst_feat
+    y_trn = y_trn.numpy() if isinstance(y_trn, torch.Tensor) else y_trn
+    y_tst = y_tst.numpy() if isinstance(y_tst, torch.Tensor) else y_tst
+
+    # Check for NaNs in training data
+    nan_mask_trn = np.isnan(X_trn).any(axis=1)
+    if np.any(nan_mask_trn):
+        num_nan_trn = np.sum(nan_mask_trn)
+        print(f"Warning: Found {num_nan_trn} rows with NaN values in the training features. Removing these rows.")
+        X_trn = X_trn[~nan_mask_trn]
+        y_trn = y_trn[~nan_mask_trn]
+
+    # Check for NaNs in test data
+    nan_mask_tst = np.isnan(X_tst).any(axis=1)
+    if np.any(nan_mask_tst):
+        num_nan_tst = np.sum(nan_mask_tst)
+        print(f"Warning: Found {num_nan_tst} rows with NaN values in the test features. Removing these rows.")
+        X_tst = X_tst[~nan_mask_tst]
+        y_tst = y_tst[~nan_mask_tst]
 
     df_loader = DataLoader(trn_feat, shuffle=False, batch_size=args.chunk_size)
     
     ys_trn_preds_path = osp.join(results_path, "ys_trn_preds.npy")
-    ys_trn_preds = load_or_compute_predictions(
+    ys_trn_preds = compute_predictions(
         model_handler, trn_feat, df_loader, ys_trn_preds_path, "training", args.debug)
     
     ys_tst_preds_path = osp.join(results_path, "ys_tst_preds.npy")
-    y_tst_preds = load_or_compute_predictions(
+    y_tst_preds = compute_predictions(
         model_handler, tst_feat, None, ys_tst_preds_path, "test", args.debug)
     
     k_nns = np.arange(args.min_k, args.max_k + 1, args.k_step)
@@ -265,8 +307,7 @@ def main(args):
     if args.distance_measure and args.distance_measure not in distance_measures:
         distance_measures.append(args.distance_measure)
     
-    if not distance_measures:
-        distance_measures = ["euclidean"]
+    distance_measures = ["euclidean"]
     
     print(f"Processing with distance measures: {distance_measures}")
     
@@ -320,7 +361,7 @@ if __name__ == "__main__":
     parser.add_argument("--chunk_size", type=int, default=200, help="Chunk size of test set computed at once")
     parser.add_argument("--debug", action="store_true", help="Debug")
     parser.add_argument("--min_k", type=int, default=1)
-    parser.add_argument("--max_k", type=int, default=25)
+    parser.add_argument("--max_k", type=int, default=50)
     parser.add_argument("--k_step", type=int, default=1)
     
     args = parser.parse_args()
