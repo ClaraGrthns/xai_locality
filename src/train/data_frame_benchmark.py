@@ -15,6 +15,7 @@ from torch_frame import Metric
 # Add this import near the top of the file
 from torch.utils.tensorboard import SummaryWriter
 import datetime
+from torch_frame.data.stats import StatType, compute_col_stats
 
 import argparse
 import math
@@ -50,6 +51,9 @@ from torch_frame.nn.models import (
 )
 from torch_frame.typing import TaskType
 import random 
+
+from src.utils.preprocessing import CatToOneHotTransform
+
 
 # Constants and configuration
 TRAIN_CONFIG_KEYS = ["batch_size", "gamma_rate", "base_lr"]
@@ -90,6 +94,9 @@ dataset_lookup = {
         },
     },
     "multiclass_classification": {
+        "small": {
+            # Added small section for multiclass classification
+        },
         "medium": {
             0: "aloi",
             1: "helena",
@@ -102,6 +109,29 @@ dataset_lookup = {
         },
     },
     "regression": {
+        "small": {
+            0: "bike_sharing_demand",
+            1: "brazilian_houses",
+            2: "cpu_act",
+            3: "elevators",
+            4: "house_sales",
+            5: "houses",
+            6: "sulfur",
+            7: "superconduct",
+            8: "topo_2_1",
+            9: "visualizing_soil",
+            10: "wine_quality",
+            11: "yprop_4_1",
+            12: "california_housing",
+        },
+        "medium": {
+            0: "allstate_claims_severity",
+            1: "sgemm_gpu_kernel_performance",
+            2: "diamonds",
+            3: "medical_charges",
+            4: "particulate_matter_ukair_2017",
+            5: "seattlecrime6",
+        },
         "large": {
             0: "airlines_DepDelay_1M",
             1: "delays_zurich_transport",
@@ -110,9 +140,6 @@ dataset_lookup = {
             4: "yahoo",
             5: "year",
         },
-        "medium": {
-            3: "medical_charges",
-        }
     },
 }
 
@@ -201,8 +228,26 @@ def normalize_tensor_frame(train_tf, val_tf, test_tf):
     train_tf.feat_dict[stype.numerical] = train_num_norm
     val_tf.feat_dict[stype.numerical] = val_num_norm
     test_tf.feat_dict[stype.numerical] = test_num_norm
-    
-    return train_tf, val_tf, test_tf
+
+    transformed_col_stats = dict()
+    transformed_df = pd.DataFrame(
+            train_tf.feat_dict[stype.numerical].detach().cpu().numpy(),
+            columns=train_tf.col_names_dict[stype.numerical],
+        )
+    for col in train_tf.col_names_dict[stype.numerical]:
+        transformed_col_stats[col] = compute_col_stats(
+            transformed_df[col], stype.numerical)
+        
+    return train_tf, val_tf, test_tf, transformed_col_stats
+
+def normalize_target(train_y, val_y, test_y):
+    """Normalize target values."""
+    train_y_mean = torch.mean(train_y)
+    train_y_std = torch.std(train_y)
+    train_y = (train_y - train_y_mean) / train_y_std
+    val_y = (val_y - train_y_mean) / train_y_std
+    test_y = (test_y - train_y_mean) / train_y_std
+    return train_y, val_y, test_y
 
 def prepare_data_and_models(args):
     """Prepare data and initialize model configurations based on provided arguments."""
@@ -232,18 +277,54 @@ def prepare_data_and_models(args):
 
     print(f"Train: {len(train_tensor_frame)}, Val: {len(val_tensor_frame)}, "
           f"Test: {len(test_tensor_frame)}")
-    # Apply normalization
-    train_tensor_frame, val_tensor_frame, test_tensor_frame = normalize_tensor_frame(
+    
+    if stype.categorical in train_tensor_frame.col_names_dict:
+        unique_cat_per_col = (torch.unique(train_tensor_frame.feat_dict[stype.categorical], dim = 0).sum(axis=0) != 0)
+        train_tensor_frame.feat_dict[stype.categorical] = train_tensor_frame.feat_dict[stype.categorical][:, unique_cat_per_col]
+        val_tensor_frame.feat_dict[stype.categorical] = val_tensor_frame.feat_dict[stype.categorical][:, unique_cat_per_col]
+        test_tensor_frame.feat_dict[stype.categorical] = test_tensor_frame.feat_dict[stype.categorical][:, unique_cat_per_col]
+        col_names_dict_train = train_tensor_frame.col_names_dict[stype.categorical]
+        cols_names_updated = [col for col, keep in zip(col_names_dict_train, unique_cat_per_col) if keep]
+        train_tensor_frame.col_names_dict[stype.categorical] = cols_names_updated
+        val_tensor_frame.col_names_dict[stype.categorical] = cols_names_updated
+        test_tensor_frame.col_names_dict[stype.categorical] = cols_names_updated
+
+        print(train_tensor_frame, "before transform")
+        categorical_transform = CatToOneHotTransform()
+        categorical_transform.fit(train_tensor_frame,
+                                train_dataset.col_stats)
+        train_tensor_frame = categorical_transform(train_tensor_frame)
+        print(train_tensor_frame, "after transform")
+        val_tensor_frame = categorical_transform(val_tensor_frame)
+        test_tensor_frame = categorical_transform(test_tensor_frame)
+        col_stats = categorical_transform.transformed_stats
+    else:
+        col_stats = dataset.col_stats
+
+    train_tensor_frame, val_tensor_frame, test_tensor_frame, col_stats = normalize_tensor_frame(
         train_tensor_frame, val_tensor_frame, test_tensor_frame
     )
+
+    if args.task_type == 'regression':
+        # Normalize target values
+        train_tensor_frame.y, val_tensor_frame.y, test_tensor_frame.y = normalize_target(
+            train_tensor_frame.y, val_tensor_frame.y, test_tensor_frame.y
+        )
+        
+    col_names_dict = train_tensor_frame.col_names_dict
+    print(f"save data under: {os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt')}")
+    torch.save(col_names_dict, 
+            os.path.join(args.data_folder, f"{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt"))
+    torch.save(col_stats, 
+            os.path.join(args.data_folder,f"{args.model_type}_{dataset_name}_normalized_data_col_stats.pt"))
+    
     normalized_data = {
-            'train': train_tensor_frame,
-            'val': val_tensor_frame,
-            'test': test_tensor_frame
-        }
+        'train': train_tensor_frame,
+        'val': val_tensor_frame,
+        'test': test_tensor_frame
+    }
     norm_path = os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data.pt')
     torch.save(normalized_data, norm_path)
-    
 
     # Initialize model classes based on model type
     if args.model_type in GBDT_MODELS:
@@ -287,7 +368,7 @@ def prepare_data_and_models(args):
             
         # Initialize model-specific configurations
         model_cls = None
-        col_stats = None
+        # col_stats = None
         model_search_space = {}
         train_search_space = {}
 
@@ -305,7 +386,7 @@ def prepare_data_and_models(args):
                 'gamma_rate': [0.9, 0.95, 1.],
             }
             model_cls = TabNet
-            col_stats = dataset.col_stats
+            col_stats = col_stats
         elif args.model_type == 'FTTransformer':
             model_search_space = {
                 'channels': [64, 128, 256],
@@ -317,7 +398,7 @@ def prepare_data_and_models(args):
                 'gamma_rate': [0.9, 0.95, 1.],
             }
             model_cls = FTTransformer
-            col_stats = dataset.col_stats
+            col_stats = col_stats
         elif args.model_type == 'FTTransformerBucket':
             model_search_space = {
                 'channels': [64, 128, 256],
@@ -329,7 +410,7 @@ def prepare_data_and_models(args):
                 'gamma_rate': [0.9, 0.95, 1.],
             }
             model_cls = FTTransformer
-            col_stats = dataset.col_stats
+            col_stats = col_stats
         elif args.model_type == 'ResNet':
             model_search_space = {
                 'channels': [64, 128, 256],
@@ -341,7 +422,7 @@ def prepare_data_and_models(args):
                 'gamma_rate': [0.9, 0.95, 1.],
             }
             model_cls = ResNet
-            col_stats = dataset.col_stats
+            col_stats = col_stats
         elif args.model_type == 'MLP':
             model_search_space = {
                 'channels': [64, 128, 256],
@@ -353,7 +434,7 @@ def prepare_data_and_models(args):
                 'gamma_rate': [0.9, 0.95, 1.],
             }
             model_cls = MLP
-            col_stats = dataset.col_stats
+            col_stats = col_stats
         elif args.model_type == 'TabTransformer':
             model_search_space = {
                 'channels': [16, 32, 64, 128],
@@ -369,7 +450,7 @@ def prepare_data_and_models(args):
                 'gamma_rate': [0.9, 0.95, 1.],
             }
             model_cls = TabTransformer
-            col_stats = dataset.col_stats
+            col_stats = col_stats
         elif args.model_type == 'Trompt':
             model_search_space = {
                 'channels': [64, 128, 192],
@@ -389,7 +470,7 @@ def prepare_data_and_models(args):
                 model_search_space['channels'] = [64]
                 model_search_space['num_prompts'] = [64]
             model_cls = Trompt
-            col_stats = dataset.col_stats
+            col_stats = col_stats
         elif args.model_type == 'ExcelFormer':
             from torch_frame.transforms import (
                 CatToNumTransform,
@@ -432,20 +513,7 @@ def prepare_data_and_models(args):
         assert model_cls is not None
         assert col_stats is not None
         assert set(train_search_space.keys()) == set(TRAIN_CONFIG_KEYS)
-        col_names_dict = train_tensor_frame.col_names_dict
-        print(f"save data under: {os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt')}")
-        torch.save(col_names_dict, 
-                os.path.join(args.data_folder, f"{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt"))
-        torch.save(col_stats, 
-                os.path.join(args.data_folder,f"{args.model_type}_{dataset_name}_normalized_data_col_stats.pt"))
         
-        normalized_data = {
-            'train': train_tensor_frame,
-            'val': val_tensor_frame,
-            'test': test_tensor_frame
-        }
-        norm_path = os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data.pt')
-        torch.save(normalized_data, norm_path)
         
         return {
             'model_cls': model_cls,
@@ -760,9 +828,9 @@ def main_gbdt(args=None):
     
     # Extract needed variables from config
     model_cls = config['model_cls']
-    train_dataset = config['train_dataset']
-    val_dataset = config['val_dataset']
-    test_dataset = config['test_dataset']
+    train_tensor_frame = config['train_tensor_frame']
+    val_tensor_frame = config['val_tensor_frame']
+    test_tensor_frame = config['test_tensor_frame']
     dataset = config['dataset']
     dataset_name = config['dataset_name']
     
@@ -776,12 +844,12 @@ def main_gbdt(args=None):
     
     import time
     start_time = time.time()
-    model.tune(tf_train=train_dataset.tensor_frame,
-               tf_val=val_dataset.tensor_frame, num_trials=args.num_trials)
-    val_pred = model.predict(tf_test=val_dataset.tensor_frame)
-    val_metric = model.compute_metric(val_dataset.tensor_frame.y, val_pred)
-    test_pred = model.predict(tf_test=test_dataset.tensor_frame)
-    test_metric = model.compute_metric(test_dataset.tensor_frame.y, test_pred)
+    model.tune(tf_train=train_tensor_frame,
+               tf_val=val_tensor_frame, num_trials=args.num_trials)
+    val_pred = model.predict(tf_test=val_tensor_frame)
+    val_metric = model.compute_metric(val_tensor_frame.y, val_pred)
+    test_pred = model.predict(tf_test=test_tensor_frame)
+    test_metric = model.compute_metric(test_tensor_frame.y, test_pred)
     end_time = time.time()
     result_dict = {
         'args': args.__dict__,
@@ -816,3 +884,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
