@@ -529,7 +529,7 @@ def plot_knn_metrics_vs_metric(models,
         ax = plt.subplots(figsize=(9, 7))[1]
     markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*']
     cmap = COLOR_TO_CLF_DATASET if not regression else COLOR_TO_REG_DATASET
-    res_dict = get_results_files_dict(method, models, datasets, distance, random_seed=False)
+    res_dict = get_results_files_dict(method, models, datasets, distance, random_seed=random_seed)
     is_diff = "-" in metric
     is_ratio = "/" in metric    
     all_results = defaultdict(list)
@@ -766,6 +766,7 @@ def plot_local_metrics_vs_constant_metric(models,
                                regression=False, 
                                summarizing_statistics=None,
                                average_over_n_neighbors=200,
+                               random_seed=42,
                                save=False):
     """Main plotting function comparing model complexity vs performance difference."""
     
@@ -774,7 +775,7 @@ def plot_local_metrics_vs_constant_metric(models,
         ax = plt.subplots(figsize=(9, 7))[1]
     markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*']
     cmap = COLOR_TO_REG_DATASET if regression else COLOR_TO_CLF_DATASET
-    res_dict = get_results_files_dict(method, models, datasets, distance, random_seed=False)
+    res_dict = get_results_files_dict(method, models, datasets, distance, random_seed=random_seed)
     is_diff = "-" in metric
     is_ratio = "/" in metric    
     cut_off = 0.5 if "Accuracy" in metric else 3

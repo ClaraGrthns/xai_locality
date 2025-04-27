@@ -6,6 +6,7 @@ import matplotlib.lines as mlines
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import os.path as osp
+from pathlib import Path
 
 DATASET_TO_NUM_FEATURES = {"higgs": 24,
                            "jannis": 54,
@@ -17,6 +18,7 @@ DATASET_TO_NUM_FEATURES = {"higgs": 24,
 
 def file_matching(file, distance_measure, condition=lambda x: True):
         return condition(file) and distance_measure in file
+BASEDIR = str(Path(__file__).resolve().parent.parent.parent)
 
 
 def get_kernel_widths_to_filepaths(files):
@@ -100,9 +102,11 @@ def get_results_files_dict(explanation_method: str,
                         distance_measure: str = "euclidean", 
                         lime_features=10, 
                         sampled_around_instance=False, 
-                        random_seed=False,
+                        random_seed=42,
                         downsampled=False) -> dict:
-    results_folder = f"/home/grotehans/xai_locality/results/{explanation_method}"
+    from pathlib import Path
+    BASEDIR = str(Path(__file__).resolve().parent.parent.parent)
+    results_folder = f"{BASEDIR}/results/{explanation_method}"
     results_files_dict = {}
     if type(models) == str:
         models = [models]
@@ -132,7 +136,9 @@ def get_results_files_dict(explanation_method: str,
                     condition = lambda x: (x.startswith("fractions") or x.startswith("regression")) and x.endswith("fraction.npz")
                 
             def random_seed_condition(file):
-                if random_seed:
+                if type(random_seed) == int:
+                    return f"random_seed-{random_seed}" in file
+                elif type(random_seed) == bool:
                     return f"random_seed" in file
                 return f"random_seed-42" in file
             # Combine conditions
@@ -149,7 +155,7 @@ def get_results_files_dict(explanation_method: str,
                     files = [f for f in files if f"{min_upper}_dataset" in f]
             # Filter files with random_seed-42
             seed42_files = [f for f in files if "random_seed-42" in f or ("random_seed" not in f)]
-            if explanation_method == "lime" and len(seed42_files)>0 and random_seed and not downsampled:
+            if explanation_method == "lime" and len(seed42_files)>0 and (type(random_seed) == bool) and not downsampled:
                 kernel_widths = get_kernel_widths_to_filepaths(seed42_files)
                 kernel_widths = [kw for kw in kernel_widths if kw[0] is not None]  # Filter out None kernel widths
                 if len(kernel_widths) > 0 :
@@ -163,12 +169,12 @@ def get_results_files_dict(explanation_method: str,
                 res = files
             if isinstance(res, list) and len(res) == 0:
                 continue
-            if explanation_method == "lime":
+            # if explanation_method == "lime":
+            #     results_files_dict[model][dataset] = res
+            # elif downsampled or type(random_seed)== int:
+            #     results_files_dict[model][dataset] = res
+            if len(res) > 0:
                 results_files_dict[model][dataset] = res
-            elif downsampled or random_seed:
-                results_files_dict[model][dataset] = res
-            elif len(res) > 0:
-                results_files_dict[model][dataset] = res[0]
 
     # Rename synthetic dataset keys
     for model in results_files_dict:
@@ -309,21 +315,22 @@ def load_complexity_results(model,
     distance_measure = distance_measure.lower()
     suffix = "_regression" if regression else ""
     prefix = "regression_" if regression else ""
+    results_folder = f"{BASEDIR}/results"
     if synthetic:
         # Get dataset name without synthetic_data/ prefix
         dataset_name = dataset.split('/')[-1]
         if complexity_regression:
-            file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"{prefix}synthetic_data/{dataset_name}/lr_on_model_preds{model}_random_seed-42.npz")
+            file_path = (f"{results_folder}/knn_model_preds/{model}/"
+                    f"{prefix}synthetic_data/{dataset_name}/lr_on_model_preds{model}_random_seed-{random_seed}.npz")
         else:
-            file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
+            file_path = (f"{results_folder}/knn_model_preds/{model}/"
                     f"{prefix}synthetic_data/{dataset_name}/kNN{suffix}_on_model_preds_{model}_"
                     f"dist_measure-{distance_measure}_random_seed-{random_seed}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}.npz")
     elif complexity_regression:
-        file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
-                    f"{dataset}/lr_on_model_preds{model}_random_seed-42.npz")
+        file_path = (f"{results_folder}/knn_model_preds/{model}/"
+                    f"{dataset}/lr_on_model_preds{model}_random_seed-{random_seed}.npz")
     else:
-        file_path = (f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/"
+        file_path = (f"{results_folder}/knn_model_preds/{model}/"
                     f"{dataset}/kNN{suffix}_on_model_preds_{model}_"
                     f"dist_measure-{distance_measure}_random_seed-{random_seed}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}.npz")
     if not os.path.exists(file_path):
@@ -354,20 +361,32 @@ def load_model_performance(model, dataset, synthetic=False, random_seed=42):
         NPZ file containing model performance metrics with key 'classification_model',
         where the array contains [accuracy, precision, recall, f1] scores
     """
+    results_folder = f"{BASEDIR}/results"
     if synthetic:
         dataset_name = dataset.split('/')[-1]
-        file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/synthetic_data/{dataset_name}/model_performance_{model}_{dataset_name}_normalized_tensor_frame_random_seed-{random_seed}.npz"
+        file_path = f"{results_folder}/knn_model_preds/{model}/synthetic_data/{dataset_name}/model_performance_{model}_random_seed-{random_seed}.npz"
     else:
-        if model == "LogReg":
-            file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_LightGBM_{dataset}_normalized_data_random_seed-{random_seed}.npz"
-        else:
-            file_path = f"/home/grotehans/xai_locality/results/knn_model_preds/{model}/{dataset}/model_performance_{model}_{model}_{dataset}_normalized_data_random_seed-{random_seed}.npz"
+        file_path = f"{results_folder}/knn_model_preds/{model}/{dataset}/model_performance_{model}_random_seed-{random_seed}.npz"
     try:
         res = np.load(file_path, allow_pickle=True)
         return res
     except Exception as e:
         print(f"Error loading {file_path}: {e}")
         return None
+    
+def get_performance_metrics_models(model, dataset, synthetic=False, regression=False, random_seed=42):
+    """Loads model performance metrics from a .npz file.
+    classification output: auroc, accuracy, precision, recall, f1
+    regression output: mse, mae, r2
+    """
+    res = load_model_performance(model, dataset, synthetic, random_seed)
+    if res is None:
+        return np.nan
+    else:
+        if regression:
+            return float(res['regression_model'][0]), float(res['regression_model'][1]), float(res['regression_model'][2])
+        else:
+            return float(res['classification_model'][0]), float(res['classification_model'][1]), float(res['classification_model'][2]), float(res['classification_model'][3])
     
 def get_performance_metrics_model(model, dataset, metric_str, synthetic=False, random_seed=42):
     res = load_model_performance(model, dataset, synthetic, random_seed)
