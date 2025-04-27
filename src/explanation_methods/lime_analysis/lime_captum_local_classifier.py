@@ -82,7 +82,7 @@ def compute_feature_attributions(explainer, predict_fn, data_loader_tst, transfo
     for i, batch in enumerate(data_loader_tst):
         Xs = batch#[0]
         preds = predict_fn(Xs)
-        if preds.ndim == 2 and preds.shape[1] == 1:
+        if preds.ndim == 1 or preds.shape[1] == 1:
             coefs, bias = explainer.attribute(Xs, return_input_shape=True)
             coefs = coefs.float()
             bias = bias.float()

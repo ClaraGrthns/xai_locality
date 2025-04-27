@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 class PTFrame_LightGBMHandler(BaseModelHandler):
     def load_model(self):
-        train_tensor_frame = torch.load(self.data_path)["train"]
+        train_tensor_frame = torch.load(self.data_path, weights_only=False)["train"]
         y = train_tensor_frame.y.numpy()
         num_classes = len(np.unique(y))
         if self.args.regression:
@@ -22,7 +22,7 @@ class PTFrame_LightGBMHandler(BaseModelHandler):
         return model
 
     def load_data(self):
-        data = torch.load(self.data_path)
+        data = torch.load(self.data_path, weights_only=False)
         train_tensor_frame, val_tensor_frame, test_tensor_frame = data["train"], data["val"], data["test"]
         tst_feat, _ , _ = self.model._to_lightgbm_input(test_tensor_frame)
         val_feat, _, _ = self.model._to_lightgbm_input(val_tensor_frame)
@@ -37,8 +37,8 @@ class PTFrame_LightGBMHandler(BaseModelHandler):
   
     def predict_fn(self, X):
         pred = self.model.model.predict(X)
-        if self.args.regression:
-            return pred
-        if self.model.task_type == TaskType.BINARY_CLASSIFICATION:
+        if not self.args.regression:
             pred = np.column_stack((1 - pred, pred))
+        if self.args.method == "lime_captum":
+            pred = torch.tensor(pred)
         return pred

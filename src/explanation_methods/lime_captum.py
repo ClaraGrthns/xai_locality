@@ -197,7 +197,8 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
         dist = np.array(dist)
         # 1. Get all the kNN samples from the analysis dataset
         samples_in_ball = [[df_feat_for_expl[idx] for idx in row] for row in idx]
-        samples_in_ball = torch.stack([torch.stack(row, dim=0) for row in samples_in_ball], dim=0)  
+        samples_in_ball = np.array(samples_in_ball)
+        samples_in_ball = torch.tensor(samples_in_ball)
 
         if self.args.regression:
             model_preds, local_preds = compute_lime_regressionpreds_for_all_kNN(

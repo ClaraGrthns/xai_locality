@@ -49,12 +49,14 @@ class PytorchHandler(BaseModelHandler):
         if X.dtype == torch.double:
             X = X.float()
         if self.args.method == "lime" or self.args.method == "lime_captum":
+            with torch.no_grad():
+                preds = self.model(X)
             if self.args.regression:
-                with torch.no_grad():
-                    return self.model(X)
-            else:
-                with torch.no_grad():
-                    preds = self.model(X).numpy()
-                    return np.column_stack((1 - preds, preds)) if preds.shape[1] == 1 else preds
+                return preds 
+            elif self.args.method == "lime": 
+                preds = preds.numpy()
+                return np.column_stack((1 - preds, preds)) if preds.shape[1] == 1 else preds
+            elif self.args.method == "lime_captum":
+                return torch.cat((1 - preds, preds), dim=1) if preds.shape[1] == 1 else preds
         else:
-            return self.model(X)
+            return self.model(X) # gradient methods with torch grad 

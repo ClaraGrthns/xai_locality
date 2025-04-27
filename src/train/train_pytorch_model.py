@@ -141,7 +141,7 @@ def main(args=None):
     if not osp.exists(os.path.dirname(model_path)):
         os.makedirs(os.path.dirname(model_path))
     
-    data = torch.load(data_path)
+    data = torch.load(data_path, weights_only=False)
     train_tensor_frame, val_tensor_frame, test_tensor_frame = data["train"], data["val"], data["test"]
     X = tensorframe_to_tensor(train_tensor_frame)  # All training features
     y = train_tensor_frame.y.float()  # All training labels as float
