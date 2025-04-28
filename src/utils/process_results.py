@@ -343,7 +343,7 @@ def load_complexity_results(model,
         print(f"Error loading {file_path}: {e}")
         return None   
 
-def load_model_performance(model, dataset, synthetic=False, random_seed=42):
+def load_model_performance(model, dataset, synthetic=False, regression=False, random_seed=42):
     """Loads model performance metrics from a .npz file.
 
     Parameters
@@ -361,12 +361,13 @@ def load_model_performance(model, dataset, synthetic=False, random_seed=42):
         NPZ file containing model performance metrics with key 'classification_model',
         where the array contains [accuracy, precision, recall, f1] scores
     """
+    regression_str = "_regression" if regression else ""
     results_folder = f"{BASEDIR}/results"
     if synthetic:
         dataset_name = dataset.split('/')[-1]
-        file_path = f"{results_folder}/knn_model_preds/{model}/synthetic_data/{dataset_name}/model_performance_{model}_random_seed-{random_seed}.npz"
+        file_path = f"{results_folder}/knn_model_preds/{model}/synthetic_data/{dataset_name}/model{regression_str}_performance_{model}_random_seed-{random_seed}.npz"
     else:
-        file_path = f"{results_folder}/knn_model_preds/{model}/{dataset}/model_performance_{model}_random_seed-{random_seed}.npz"
+        file_path = f"{results_folder}/knn_model_preds/{model}/{dataset}/model{regression_str}_performance_{model}_random_seed-{random_seed}.npz"
     try:
         res = np.load(file_path, allow_pickle=True)
         return res
@@ -379,7 +380,7 @@ def get_performance_metrics_models(model, dataset, synthetic=False, regression=F
     classification output: auroc, accuracy, precision, recall, f1
     regression output: mse, mae, r2
     """
-    res = load_model_performance(model, dataset, synthetic, random_seed)
+    res = load_model_performance(model, dataset, synthetic, regression, random_seed)
     if res is None:
         return np.nan
     else:
@@ -388,8 +389,8 @@ def get_performance_metrics_models(model, dataset, synthetic=False, regression=F
         else:
             return float(res['classification_model'][0]), float(res['classification_model'][1]), float(res['classification_model'][2]), float(res['classification_model'][3])
     
-def get_performance_metrics_model(model, dataset, metric_str, synthetic=False, random_seed=42):
-    res = load_model_performance(model, dataset, synthetic, random_seed)
+def get_performance_metrics_model(model, dataset, metric_str, synthetic=False, regression=False, random_seed=42):
+    res = load_model_performance(model, dataset, synthetic, regression,  random_seed)
     if res is None:
         return np.nan
     else:
@@ -402,6 +403,81 @@ def get_performance_metrics_model(model, dataset, metric_str, synthetic=False, r
         }
         return float(res['classification_model'][metric_str_to_key_pair[metric_str]])
 
+def get_performance_metrics_smpl_complex_models(model,
+                                                dataset,
+                                                distance="euclidean",
+                                                regression=False,
+                                                synthetic=False,
+                                                random_seed=42,
+                                                complexity_regression=False):
+    """Get performance metrics for the model and dataset."""  
+    if regression:
+        from src.utils.process_results import get_best_metrics_of_complexity_of_f_regression as get_best_metrics
+    else:
+        from src.utils.process_results import get_best_metrics_of_complexity_of_f_clf as get_best_metrics
+
+    if regression:
+        if complexity_regression:
+            complexity_metrics = "R2 Lin Reg"
+        else:
+            complexity_metrics = "R2 $g_x$"
+    else:
+        if complexity_regression:
+            complexity_metrics = "Accuracy Log Reg"
+        else:
+            complexity_metrics = "Accuracy $g_x$"
+
+    performance_smple_model_model_preds = get_best_metrics(model, 
+                                    dataset, 
+                                    complexity_metrics, 
+                                    synthetic=synthetic, 
+                                    distance_measure=distance,
+                                    complexity_regression=complexity_regression,
+                                    random_seed=random_seed)[0]
+    if regression:
+        if complexity_regression:
+            smple_model_true_labels = "R2 Lin Reg true labels"
+        else:
+            smple_model_true_labels = "R2 true labels"
+    else:
+        if complexity_regression:
+            smple_model_true_labels = "Accuracy Log Reg true labels"
+        else:
+            smple_model_true_labels = "Accuracy true labels"
+
+    performance_smpl_model_true_labels = get_best_metrics(model,
+                                    dataset, 
+                                    smple_model_true_labels, 
+                                    synthetic=synthetic, 
+                                    distance_measure=distance,
+                                    complexity_regression=False,
+                                    random_seed=random_seed)[0]
+
+    res = get_performance_metrics_models(model,
+                                dataset,
+                                synthetic=synthetic,
+                                regression=regression,
+                                random_seed=random_seed,)
+
+    if regression:
+        performance_model = res[2]
+    else:
+        performance_model = res[1]
+    return performance_smple_model_model_preds, performance_smpl_model_true_labels, performance_model
+
+def get_knn_vs_diff_model_performance(model,
+                                    dataset,
+                                    distance="euclidean",
+                                    regression=False,
+                                    synthetic=False,
+                                    random_seed=42,
+                                    complexity_regression=False):
+    performance_smple_model_model_preds, performance_smpl_model_true_labels, performance_model = get_performance_metrics_smpl_complex_models(
+            model, dataset, distance=distance, regression=regression,
+            synthetic=synthetic, random_seed=random_seed, complexity_regression=complexity_regression
+        )
+    diff = performance_model - performance_smpl_model_true_labels
+    return performance_smple_model_model_preds, diff
 
 def get_best_metrics_of_complexity_of_f_clf(model, 
                                 dataset, 
@@ -426,7 +502,8 @@ def get_best_metrics_of_complexity_of_f_clf(model,
         "Precision true labels": ("classification_true_labels", 1),
         "Recall true labels": ("classification_true_labels", 2),
         "F1 true labels": ("classification_true_labels", 3),
-        "Accuracy Log Reg" : ("log_regression_res", 1)
+        "Accuracy Log Reg" : ("log_regression_res", 1),
+        "Accuracy Log Reg true labels" : ("log_regression_true_y_res", 1)
     }
     if type(metric_sr_ls) == str:
         metric_sr_ls = [metric_sr_ls]
@@ -478,6 +555,7 @@ def get_best_metrics_of_complexity_of_f_regression(model,
         "MSE Lin Reg": ("linear_regression_res", 0),
         "MAE Lin Reg": ("linear_regression_res", 1),
         "R2 Lin Reg": ("linear_regression_res", 2),
+        "R2 Lin Reg true labels": ("linear_regression_res_true_y", 2),
     }
     if type(metric_sr_ls) == str:
         metric_sr_ls = [metric_sr_ls]
