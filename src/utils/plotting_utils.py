@@ -28,14 +28,14 @@ plt.rcParams['axes.axisbelow'] = True
 # plt.rcParams['xtick.labelsize'] = 10
 # plt.rcParams['ytick.labelsize'] = 10
 # plt.rcParams['legend.fontsize'] = 10
-MARKERS = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', ]
+MARKERS = ['o', 's', '^', 'D', 'v', '<', 'p', '*','>'  ]
 MODELS = [
 "LogReg",
 "MLP",
 "LightGBM",
 "TabTransformer",
 "TabNet",
-"ResNet"
+"ResNet",
 "FTTransformer",
 ]
 MODEL_TO_MARKER = {model: marker for model, marker in zip(MODELS, MARKERS)}
@@ -629,7 +629,7 @@ def plot_knn_metrics_vs_metric(models,
         ax.get_position().height
     ])
     if create_legend_to_ax:
-        create_dual_legend(ax, unique_datasets, colors, models_plotted, list(markers_to_models.values()), bbox_to_anchor=(1.02, 0.5))
+        create_dual_legend(ax, unique_datasets, colors, models_plotted, markers_to_models, bbox_to_anchor=(1.02, 0.5))
 
     if save:
         plt.savefig(
@@ -779,7 +779,6 @@ def plot_local_metrics_vs_constant_metric(models,
     create_legend_to_ax = ax is None
     if ax is None:
         ax = plt.subplots(figsize=(9, 7))[1]
-    markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*']
     cmap = COLOR_TO_REG_DATASET if regression else COLOR_TO_CLF_DATASET
     res_dict = get_results_files_dict(method, models, datasets, distance, random_seed=False)
     is_diff = "-" in metric
@@ -808,7 +807,7 @@ def plot_local_metrics_vs_constant_metric(models,
     unique_datasets = sorted({d for m in all_results for d, _, _ in all_results[m]}, key=lambda x: extract_sort_keys(x, regression))
     colors = {d: cmap[d] for i, d in enumerate(unique_datasets)}
     models_plotted = list(all_results.keys())
-    markers_to_models = {m: markers[i % len(markers)] for i, m in enumerate(models_plotted)}
+    markers_to_models = {m: MODEL_TO_MARKER[m] for i, m in enumerate(models_plotted)}
     current_min_x_y = np.inf
     current_max_x_y = 0
     for i, model in enumerate(models_plotted):
@@ -881,7 +880,7 @@ def plot_local_metrics_vs_constant_metric(models,
         ax.get_position().height
     ])
     if create_legend_to_ax:
-        create_dual_legend(ax, unique_datasets, colors, models_plotted, list(markers_to_models.values()))
+        create_dual_legend(ax, unique_datasets, colors, models_plotted, markers_to_models)
 
     if save:
         plt.savefig(
