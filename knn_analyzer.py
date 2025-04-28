@@ -169,8 +169,16 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
     auroc, accuracy, precision, recall, f1 = binary_classification_metrics(
         ys_tst_predicted_labels.flatten(), lr_preds.flatten(), None)
     print(f"Results for LogisticRegression on model predictions: AUROC={auroc}, Accuracy={accuracy}, Precision={precision}, Recall={recall}, F1={f1}")
+    
+    reg = LogisticRegression().fit(X_trn, y_trn)
+    lr_preds = reg.predict(X_tst)
+    auroc_true_y, accuracy_true_y, precision_true_y, recall_true_y, f1_true_y = binary_classification_metrics(
+        y_tst.flatten(), lr_preds.flatten(), None)
+    print(f"Results for LogisticRegression on true labels: AUROC={auroc_true_y}, Accuracy={accuracy_true_y}, Precision={precision_true_y}, Recall={recall_true_y}, F1={f1_true_y}")
+    
     np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}_random_seed-{args.random_seed}"),
-             **{"log_regression_res": np.array([auroc, accuracy, precision, recall, f1])})
+             **{"log_regression_res": np.array([auroc, accuracy, precision, recall, f1]),
+                "log_regression_true_y_res": np.array([auroc_true_y, accuracy_true_y, precision_true_y, recall_true_y, f1_true_y ])})
 
     # Save model performance metrics
     print("Computing metrics for the actual model")
@@ -235,10 +243,15 @@ def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn
     regression_preds = reg.predict(X_tst)
     mse, mae, r2 = regression_metrics(y_tst_preds.flatten(), regression_preds.flatten())
     print(f"Results for LinearRegression on model predictions: MSE={mse}, MAE={mae}, R2={r2}")
+
+    reg = LinearRegression().fit(X_trn, y_trn)
+    regression_preds = reg.predict(X_tst)
+    mse_true_y, mae_true_y, r2_true_y = regression_metrics(y_tst.flatten(), regression_preds.flatten())
+    print(f"Results for LinearRegression on true labels: MSE={mse_true_y}, MAE={mae_true_y}, R2={r2_true_y}")
     np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}_random_seed-{args.random_seed}"),
-             **{"linear_regression_res": np.array([mse, mae, r2])})
-
-
+             **{"linear_regression_res_true_y": np.array([mse_true_y, mae_true_y, r2_true_y]),
+                "linear_regression_res": np.array([mse, mae, r2])})
+    
     # Save model performance metrics
     print("Computing metrics for the actual model")
     mse, mae, r2 = regression_metrics(y_tst.flatten(), y_tst_preds.flatten())
