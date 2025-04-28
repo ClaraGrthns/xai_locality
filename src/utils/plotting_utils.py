@@ -7,7 +7,7 @@ import time
 import colorcet as cc
 from src.utils.process_results import get_knn_vs_diff_model_performance
 
-from src.utils.process_results import get_results_files_dict, get_kernel_widths_to_filepaths, get_synthetic_dataset_mapping
+from src.utils.process_results import get_results_files_dict, get_kernel_widths_to_filepaths, get_random_seed_to_filepaths, get_synthetic_dataset_mapping
 # Set global matplotlib style for all plotting functions
 plt.style.use('seaborn-v0_8-ticks')
 plt.rcParams['axes.spines.top'] = False
@@ -60,7 +60,7 @@ categorical_datasets_clf = [
     "adult_census_income",
     "adult",
 ]
-real_world_clf = list(set(datasets_clf + categorical_datasets_clf))
+real_world_clf = sorted(list(set(datasets_clf + categorical_datasets_clf)))
 
 CLF_DATASETS = real_world_clf + ['syn \n(d:50, inf f.:2, clust.:2, sep.:0.9, hc: ✓)',
  'syn \n(d:50, inf f.:10, clust.:3, sep.:0.9, hc: ✓)',
@@ -204,11 +204,8 @@ def create_legend(models, colors, method, unique_kw_lines_idx=[]):
     return handles, labels
 
 def get_default_kernel_width_path(files):
-    kernel_widths_fp = get_kernel_widths_to_filepaths(files)
-    file_paths = [path for width, path in kernel_widths_fp]
-    kernel_widths = np.array([kw[0] for kw in kernel_widths_fp])
-    default_kw = np.median(kernel_widths)
-    return file_paths[np.where(kernel_widths == default_kw)[0][0]]
+    kw_files = get_kernel_widths_to_filepaths(files)
+    return kw_files[int(np.median(range(len(kw_files))))][1]
 
 def get_fraction(metr0, metr1):
     metr1 = np.round(metr1, decimals=5)
@@ -382,7 +379,7 @@ def get_metrics(res, metric, regression=False):
         }
     return metric_map.get(metric, (None, None))
 
-def calculate_diff(metrics_gx, metrics_const, metric, regression):
+def calculate_diff(metrics_gx, metrics_const, metric, regression, ):
     """Calculate performance difference with direction handling for R2."""
     diff = metrics_gx - metrics_const
     if regression:
@@ -411,6 +408,35 @@ def edit_ticks(ticks, val, label):
     ticks_labels = [label if np.isclose(t, val) else str(round(t, 2)) for t in ticks]
     return ticks, ticks_labels
 
+def filter_best_performance_local_model(filepath, 
+                                        metric, 
+                                        summarizing_statistics, 
+                                        average_over_n_neighbors,
+                                        filter,  
+                                        regression=False):
+    if regression:
+        from src.utils.process_results import load_results_regression as load_results
+        metrics_map = METRICS_MAP_REG
+    else:
+        from src.utils.process_results import load_results_clf as load_results
+        metrics_map = METRICS_TO_IDX_CLF
+    data, _ = load_results(filepath)
+    metric_idx = metrics_map[metric]
+    is_diff = "-" in metric
+    is_ratio = "/" in metric
+    if is_ratio:
+        vals = get_fraction(data[metric_idx[0]], data[metric_idx[1]])
+        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
+    elif is_diff:
+        vals = data[metric_idx[0]] - data[metric_idx[1]]
+        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
+    else:
+        vals = data[metric_idx]
+        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
+    filtered_res = get_filter(summary_vals, filter)
+    return filtered_res
+
+
 def get_knn_vs_metric_data(res_model, 
                            model_name, 
                            mapping, 
@@ -436,28 +462,24 @@ def get_knn_vs_metric_data(res_model,
     if summarizing_statistics is None:
         summarizing_statistics = lambda x, axis: np.nanmedian(x, axis=axis)
     for dataset, files in res_model.items():
-        kw_files = get_kernel_widths_to_filepaths(files)
-        if len(kw_files)==0: continue
-        data, _ = load_results(kw_files[int(np.median(range(len(kw_files))))][1])
-        metric_idx = metrics_map[metric]
-        is_diff = "-" in metric
-        is_ratio = "/" in metric
-        if is_ratio:
-            vals = get_fraction(data[metric_idx[0]], data[metric_idx[1]])
-            summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
-            if difference_to_constant_model:
-                metric_constant = metric.replace("$g_x$", "const. local model")
-                metric_idx_constant = metrics_map[metric_constant]
-                vals_constant = get_fraction(data[metric_idx_constant[0]], data[metric_idx_constant[1]])
-                summary_vals_constant = summarizing_statistics(vals_constant, axis=1)[:average_over_n_neighbors]
-                summary_vals = summary_vals - summary_vals_constant
-        elif is_diff:
-            vals = data[metric_idx[0]] - data[metric_idx[1]]
-            summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
-        else:
-            vals = data[metric_idx]
-            summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
-        filtered_res = get_filter(summary_vals, filter)
+        rs_files = [rs_fp for rs_fp in get_random_seed_to_filepaths(files)]
+        if len(rs_files) == 0: continue
+        random_seeds = np.array([int(rs[0])for rs in rs_files])
+        files_sorted_with_rs = [str(rs[1]) for rs in rs_files]
+        try: 
+            files_random_seed = files_sorted_with_rs[np.where(random_seeds==random_seed)[0][0]]
+        except IndexError:
+            print(f"Random seed {random_seed} not found in {dataset}.")
+            continue
+        file_path = get_default_kernel_width_path(files_random_seed)
+        filtered_res = filter_best_performance_local_model(
+            filepath=file_path,
+            metric=metric,
+            summarizing_statistics=summarizing_statistics,
+            average_over_n_neighbors=average_over_n_neighbors,
+            filter = filter, 
+            regression=regression
+        )
         synthetic = "syn" in dataset
         dataset_name = dataset if not synthetic else mapping.get(dataset, dataset)
         if regression:
@@ -480,7 +502,7 @@ def get_knn_vs_metric_data(res_model,
         if res_complexity is None: continue
         compl_metr = np.min(res_complexity[0], 0)
         knn_result_metric = compl_metr
-        results.append((dataset,knn_result_metric, filtered_res))
+        results.append((dataset, knn_result_metric, filtered_res))
     return results
 
 def get_y_axis_label(filter, metric_axis_label, is_diff, is_ratio, summary):
@@ -529,6 +551,7 @@ def plot_knn_metrics_vs_metric(models,
                                regression=False, 
                                summarizing_statistics=None,
                                random_seed=42,
+                               plot_individual_random_seed=True,
                                complexity_regression = False,
                                average_over_n_neighbors=200,
                                save=False):
@@ -542,6 +565,7 @@ def plot_knn_metrics_vs_metric(models,
     is_diff = "-" in metric
     is_ratio = "/" in metric    
     all_results = defaultdict(list)
+    all_results_std = defaultdict(list)
     cutoff_at = 0 if (regression and is_ratio) else 0.5
     cutoff_value_replaced = -0.05 if regression and is_ratio else 0.45
     cutoff_label = f"<{cutoff_at}"
@@ -552,21 +576,46 @@ def plot_knn_metrics_vs_metric(models,
         if model_results is None or len(model_results) == 0:
             print(f"No results found for {model}.")
             continue
-        mapping = get_synthetic_dataset_mapping(datasets, regression)
-        points = get_knn_vs_metric_data(model_results, 
-                                        model, 
-                                        mapping, 
-                                        filter, 
-                                        metric, 
-                                        distance, 
-                                        regression, 
-                                        summarizing_statistics=summarizing_statistics,
-                                        average_over_n_neighbors=average_over_n_neighbors,
-                                        difference_to_constant_model=difference_to_constant_model,
-                                        complexity_regression=complexity_regression,)
-        for dataset, knn_metric_res, filtered_res in points:
+        if type(random_seed) == int:
+            random_seeds = [random_seed]
+        else: 
+            all_random_seeds = set()
+            for dataset in datasets:
+                files = model_results.get(dataset, None)
+                if files is None or len(files) == 0: continue
+                random_seed_to_fp = get_random_seed_to_filepaths(model_results.get(dataset, None))
+                random_seeds = [int(rs_fp[0]) for rs_fp in random_seed_to_fp]
+                all_random_seeds.update(random_seeds)
+            random_seeds = sorted(list(all_random_seeds))
+        gather_res_per_dataset = defaultdict(list)
+        
+        for rs in random_seeds: 
+            mapping = get_synthetic_dataset_mapping(datasets, regression)
+            points = get_knn_vs_metric_data(model_results, 
+                                            model, 
+                                            mapping, 
+                                            filter, 
+                                            metric, 
+                                            distance, 
+                                            regression, 
+                                            summarizing_statistics=summarizing_statistics,
+                                            average_over_n_neighbors=average_over_n_neighbors,
+                                            difference_to_constant_model=difference_to_constant_model,
+                                            random_seed=rs,
+                                            complexity_regression=complexity_regression,)
+            if type(random_seed) == int or plot_individual_random_seed:
+                for dataset, knn_metric_res, filtered_res in points:
+                    all_results[model].append((dataset, knn_metric_res, filtered_res))
+            else:
+                for dataset, knn_metric_res, filtered_res in points:
+                    gather_res_per_dataset[dataset].append((knn_metric_res, filtered_res))
+        for dataset, knn_metric_res_list in gather_res_per_dataset.items():
+            knn_metric_res = np.nanmean([res[0] for res in knn_metric_res_list])
+            filtered_res = np.nanmean([res[1] for res in knn_metric_res_list])
+            knn_metric_res_std = np.nanstd([res[0] for res in knn_metric_res_list])
+            filtered_res_std = np.nanstd([res[1] for res in knn_metric_res_list])
             all_results[model].append((dataset, knn_metric_res, filtered_res))
-
+            all_results_std[model].append((dataset, knn_metric_res_std, filtered_res_std))
     unique_datasets = sorted({d for m in all_results for d, _, _ in all_results[m]}, key=lambda x: extract_sort_keys(x, regression))
     colors = {d: cmap[d] for i, d in enumerate(unique_datasets)}
     models_plotted = list(all_results.keys())
@@ -581,6 +630,17 @@ def plot_knn_metrics_vs_metric(models,
         current_min_x_y = min(current_min_x_y, min(x_vals), min(y_vals))
         ax.scatter(x_vals, y_vals, c=colors_list, marker=markers_to_models[model], 
                    s=80, alpha=0.8)
+        if not(type(random_seed)==int or plot_individual_random_seed):
+            x_vals_std, y_vals_std = [], []
+            for dataset, knn_metric_res_std, filtered_res_std in all_results_std[model]:
+                x_vals_std.append(np.round(knn_metric_res_std, 4))
+                y_vals_std.append(np.round(filtered_res_std, 4))
+            for xv, yv, xv_std, yv_std in zip(x_vals, y_vals, x_vals_std, y_vals_std):
+                ellipse = plt.matplotlib.patches.Ellipse(
+                (xv, yv), width=2*xv_std, height=2*yv_std,
+                edgecolor='none', facecolor=colors_list[x_vals.index(xv)], alpha=0.15, zorder=1
+                )
+                ax.add_patch(ellipse)
 
     # === Handle axes ===
     if is_diff or "R2" in metric:
@@ -588,7 +648,7 @@ def plot_knn_metrics_vs_metric(models,
     elif is_ratio:
         ax.axhline(0, color='black', linestyle='--', alpha=0.7)
         ax.plot([0, 1], [0, 1], linestyle='--', color='gray', alpha=0.7)
-        ax.set_ylim((0, 1.1))
+        ax.set_ylim((cutoff_value_replaced, 1))
         yticks = ax.get_yticks()
         yticks, ytick_labels = edit_ticks(yticks, cutoff_value_replaced, cutoff_label)
         ax.set_yticks(yticks)
@@ -603,6 +663,7 @@ def plot_knn_metrics_vs_metric(models,
         yticks, ytick_labels = edit_ticks(yticks, cutoff_value_replaced, cutoff_label)
         ax.set_yticks(yticks)
         ax.set_yticklabels(ytick_labels)
+        ax.set_ylim((cutoff_value_replaced, 1))
     # === Labels ===
     metric_axis_label = "$R^2$" if regression else "Accuracy"
     if complexity_regression:
@@ -629,7 +690,7 @@ def plot_knn_metrics_vs_metric(models,
         ax.get_position().height
     ])
     if create_legend_to_ax:
-        create_dual_legend(ax, unique_datasets, colors, models_plotted, markers_to_models, bbox_to_anchor=(1.02, 0.5))
+        create_dual_legend(ax, unique_datasets, colors, models_plotted,markers_to_models, bbox_to_anchor=(1.02, 0.5))
 
     if save:
         plt.savefig(
@@ -638,8 +699,7 @@ def plot_knn_metrics_vs_metric(models,
             dpi=100,
             metadata={'CreationDate': None}
         )
-    return ax, unique_datasets, colors, models_plotted, list(markers_to_models.values())
-
+    return ax, unique_datasets, colors, models_plotted, markers_to_models
 
 def extract_random_seed(file_path):
     match = re.search(r'random_seed-(\d+)', file_path)

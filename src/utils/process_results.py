@@ -21,15 +21,20 @@ def file_matching(file, distance_measure, condition=lambda x: True):
 BASEDIR = str(Path(__file__).resolve().parent.parent.parent)
 
 
-def get_kernel_widths_to_filepaths(files):
+def get_str_cond_to_filepaths(str_cond, files):
     """Extract kernel widths from file paths."""
     if not isinstance(files, list):
         files = [files]
     widths = []
     for f in files:
-        match = re.search(r'kernel_width-(\d+\.?\d*)', str(f))
+        match = re.search(rf'{str_cond}-(\d+\.?\d*)', str(f))
         widths.append((float(match.group(1)), f) if match else (np.inf, f))
     return sorted(widths, key=lambda x: x[0])
+
+def get_kernel_widths_to_filepaths(files):
+    return get_str_cond_to_filepaths("kernel_width", files)
+def get_random_seed_to_filepaths(files):
+    return get_str_cond_to_filepaths("random_seed", files)
 
 def get_synthetic_dataset_mapping(datasets, regression=False):
     """Generate a mapping between user-friendly names and full synthetic dataset names"""
