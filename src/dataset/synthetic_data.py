@@ -13,11 +13,9 @@ def apply_nonlinearity(X, y, regression_mode, n_informative):
         return y
     
     elif regression_mode == "polynomial":
-        # Quadratic and cubic terms for all informative features
         y_nonlinear = y + 0.3 * np.sum(X_informative**2, axis=1) - 0.1 * np.sum(X_informative**3, axis=1)
     
     elif regression_mode == "interaction":
-        # All pairwise interactions between informative features
         interaction_terms = 0
         for i in range(n_informative):
             for j in range(i + 1, n_informative):
@@ -25,7 +23,6 @@ def apply_nonlinearity(X, y, regression_mode, n_informative):
         y_nonlinear = y + 0.5 * interaction_terms
     
     elif regression_mode == "poly_interaction":
-        # Combination of polynomial and interaction terms
         quadratic_terms = 0.2 * np.sum(X_informative**2, axis=1)
         cubic_terms = -0.05 * np.sum(X_informative**3, axis=1)
         
@@ -37,7 +34,6 @@ def apply_nonlinearity(X, y, regression_mode, n_informative):
         y_nonlinear = y + quadratic_terms + cubic_terms + 0.3 * interaction_terms
     
     elif regression_mode == "poly_cross":
-        # Polynomial terms plus cross terms with first feature
         poly_terms = 0.4 * np.sum(X_informative[:, 1:]**2, axis=1)
         cross_terms = 0.7 * np.sum(X_informative[:, 0:1] * X_informative[:, 1:], axis=1)
         y_nonlinear = y + poly_terms + cross_terms
@@ -56,7 +52,6 @@ def apply_nonlinearity(X, y, regression_mode, n_informative):
         y_nonlinear = y + numerator / (denominator + 1e-6)  # Small constant to avoid division by zero
     
     elif regression_mode == "exponential_interaction":
-        # Exponential of interaction terms
         interaction = 0
         for i in range(min(3, n_informative)):  # Use first 3 features for main interaction
             for j in range(i + 1, min(3, n_informative)):
@@ -362,45 +357,29 @@ def create_custom_synthetic_regression_data(regression_mode,
         y_val = data['y_val']
         y_test = data['y_test']
     else:
-        # Set random seed for reproducibility
         rng = np.random.RandomState(random_seed)
-        
-        # Generate random features from a normal distribution
         X = rng.randn(n_samples, n_features)
-        
-        # If effective_rank is specified, introduce correlation between features
         if effective_rank is not None:
             # Create a low-rank covariance matrix to introduce correlations
             v = rng.uniform(0, 1, size=effective_rank)
             v = np.sort(v)[::-1]  # Sort decreasing
             v = v / np.sum(v) * effective_rank  # Normalize
-            
-            # Generate random orthogonal vectors
             U = rng.randn(n_features, effective_rank)
             U, _ = np.linalg.qr(U)  # Orthogonalize
-            
-            # Create covariance matrix and transform features
             cov = np.dot(U * v, U.T)
             cholesky = np.linalg.cholesky(cov + 1e-6 * np.eye(n_features))
             X = np.dot(X, cholesky)
         
-        # Create target values based on the selected regression mode
         y = generate_target(X, regression_mode, n_informative, bias, tail_strength, rng)
-        
-        # Add noise to the target
         if noise > 0:
             y += rng.normal(0, noise, size=n_samples)
-        
-        # Mix up the features (randomize column order)
+
         col_indices = np.arange(n_features)
         rng.shuffle(col_indices)
         X = X[:, col_indices]
-        
-        # Split into train, validation, and test sets
         X, X_test, y, y_test = train_test_split(X, y, test_size=test_size, random_state=random_seed)
         X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_size, random_state=random_seed)
         
-        # Save the generated data
         if not os.path.exists(data_folder):
             os.makedirs(data_folder)
         np.savez(file_path, 
@@ -429,12 +408,10 @@ def generate_target(X, regression_mode, n_informative, bias, tail_strength, rng)
     X_informative = X[:, :n_informative]
     
     if regression_mode == "linear":
-        # Simple linear function with random coefficients
         coeffs = rng.uniform(-1, 1, size=n_informative)
         y = np.dot(X_informative, coeffs)
         
     elif regression_mode == "polynomial":
-        # Polynomial function of varying degrees
         degrees = np.arange(1, min(5, n_informative) + 1)
         terms = [np.power(X_informative[:, i % n_informative], degrees[i % len(degrees)]) 
                 for i in range(n_informative)]
@@ -442,7 +419,6 @@ def generate_target(X, regression_mode, n_informative, bias, tail_strength, rng)
         y = np.sum([c * term for c, term in zip(coeffs, terms)], axis=0)
         
     elif regression_mode == "trigonometric":
-        # Mixture of sine and cosine functions
         freqs = rng.uniform(0.1, 2.0, size=n_informative)
         phases = rng.uniform(0, 2*np.pi, size=n_informative)
         amplitudes = rng.uniform(0.5, 2.0, size=n_informative)
@@ -455,7 +431,6 @@ def generate_target(X, regression_mode, n_informative, bias, tail_strength, rng)
         y = np.sum(sin_terms + cos_terms, axis=0)
         
     elif regression_mode == "exponential":
-        # Exponential functions
         bases = rng.uniform(1.1, 1.5, size=min(3, n_informative))
         coeffs = rng.uniform(-0.5, 0.5, size=min(3, n_informative))
         
@@ -466,7 +441,6 @@ def generate_target(X, regression_mode, n_informative, bias, tail_strength, rng)
         y = np.sum(exp_terms + linear_terms, axis=0)
         
     elif regression_mode == "logistic":
-        # Logistic/sigmoid functions
         slopes = rng.uniform(1.0, 3.0, size=min(5, n_informative))
         midpoints = rng.uniform(-0.5, 0.5, size=min(5, n_informative))
         
@@ -477,23 +451,15 @@ def generate_target(X, regression_mode, n_informative, bias, tail_strength, rng)
         y = np.sum(sigmoid_terms + linear_terms, axis=0)
         
     elif regression_mode == "periodic":
-        # Complex periodic patterns
-        # Main frequency component
         main_freq = 2.0 * np.pi * rng.uniform(1.5, 2.5)
         primary_signal = np.sin(main_freq * X_informative[:, 0])
-        
-        # Amplitude modulation using other features
         if n_informative > 1:
             mod_signal = 0.5 + 0.5 * np.tanh(2 * X_informative[:, 1])
             primary_signal *= mod_signal
-        
-        # Frequency modulation using additional features
         if n_informative > 2:
             freq_mod = 0.2 * X_informative[:, 2]
             secondary_signal = 0.3 * np.sin(main_freq * (1 + freq_mod) * X_informative[:, 0])
             primary_signal += secondary_signal
-        
-        # Add contributions from remaining features
         additional_terms = [0.1 * np.sin(rng.uniform(1, 5) * X_informative[:, i]) 
                            for i in range(3, n_informative)]
         y = primary_signal + np.sum(additional_terms, axis=0) if additional_terms else primary_signal
@@ -523,7 +489,6 @@ def generate_target(X, regression_mode, n_informative, bias, tail_strength, rng)
                 segment3 * (slope3 * feature + offset2)
             )
     else:
-        # Default to the existing nonlinear functions from apply_nonlinearity
         y = np.zeros(n_samples)
         y = apply_nonlinearity(X, y, regression_mode, n_informative)
         return y

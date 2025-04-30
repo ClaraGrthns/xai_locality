@@ -455,7 +455,7 @@ def get_performance_metrics_smpl_complex_models(model,
                                     smple_model_true_labels, 
                                     synthetic=synthetic, 
                                     distance_measure=distance,
-                                    complexity_regression=False,
+                                    complexity_regression=complexity_regression,
                                     random_seed=random_seed)[0]
 
     res = get_performance_metrics_models(model,
