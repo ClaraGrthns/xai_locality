@@ -193,7 +193,7 @@ def prepare_data_and_models(args):
         tst_feat, val_feat, trn_feat = data['X_test'], data['X_val'], data['X_train'] 
         y_test, y_val, y_train = data['y_test'], data['y_val'], data['y_train']
     elif args.regression:
-        data_path_wo_file_ending, trn_feat, val_feat, tst_feat, y_train, y_val, y_test = create_custom_synthetic_regression_data(
+        data_path_wo_file_ending, trn_feat, val_feat, tst_feat, y_train, y_val, y_test, col_indices = create_custom_synthetic_regression_data(
             regression_mode = args.regression_mode,
             n_features=args.n_features,
             n_informative=args.n_informative,

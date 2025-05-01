@@ -375,7 +375,9 @@ def create_custom_synthetic_regression_data(regression_mode,
             y += rng.normal(0, noise, size=n_samples)
 
         col_indices = np.arange(n_features)
+        print("Original column indices: ", col_indices)
         rng.shuffle(col_indices)
+        print("Shuffled column indices: ", col_indices)
         X = X[:, col_indices]
         X, X_test, y, y_test = train_test_split(X, y, test_size=test_size, random_state=random_seed)
         X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_size, random_state=random_seed)
@@ -386,7 +388,7 @@ def create_custom_synthetic_regression_data(regression_mode,
                 X_train=X_train, X_val=X_val, X_test=X_test, 
                 y_train=y_train, y_val=y_val, y_test=y_test)
     
-    return setting_name, X_train, X_val, X_test, y_train, y_val, y_test
+    return setting_name, X_train, X_val, X_test, y_train, y_val, y_test, col_indices
 
 def generate_target(X, regression_mode, n_informative, bias, tail_strength, rng):
     """

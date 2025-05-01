@@ -11,7 +11,7 @@ from src.utils.pytorch_frame_utils import (
     tensorframe_to_tensor,
     load_dataframes, 
     ) 
-from src.dataset.synthetic_data import create_synthetic_classification_data_sklearn
+from src.dataset.synthetic_data import create_synthetic_classification_data_sklearn, create_custom_synthetic_regression_data
 from torch_frame.data import Dataset
 import torch_frame
 import pandas as pd
@@ -63,6 +63,28 @@ class BaseModelHandler:
         dataset.materialize()
         tensorframe = dataset.tensor_frame
         return tensorframe_to_tensor(tensorframe)
+    
+    def get_col_indices_informative_features(self):
+        args = self.args
+        if args.regression:
+            # For regression, we need to create synthetic data
+            _, _, _, _, _, _, _, col_indices = create_custom_synthetic_regression_data(
+                regression_mode = args.regression_mode,
+                n_features=args.n_features,
+                n_informative=args.n_informative,
+                n_samples=args.n_samples, 
+                noise=args.noise,
+                bias=args.bias,
+                random_seed=args.seed,
+                data_folder=args.data_folder,
+                test_size=args.test_size,
+                val_size=args.val_size,
+                tail_strength=args.tail_strength,
+                effective_rank=args.effective_rank,
+            )
+        else:
+            col_indices = np.arange(args.n_features)
+        return col_indices
     
     def load_data_for_kNN(self):
         """

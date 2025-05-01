@@ -274,6 +274,15 @@ def main(args):
     
     model_handler = ModelHandlerFactory.get_handler(args)
     trn_feat, analysis_feat, tst_feat, y_trn, analysis_y, y_tst = model_handler.load_data_for_kNN()
+    if args.regression and not args.use_benchmark:
+        col_indices = model_handler.get_col_indices_informative_features()
+        original_inf_idx = np.arange(args.informative_features)
+        shuffled_positions = {orig_idx: np.where(col_indices == orig_idx)[0][0] 
+                      for orig_idx in original_inf_idx}
+        indices_informative_shuffled = [shuffled_positions[orig_idx] for orig_idx in col_indices]
+        trn_feat = trn_feat[:, indices_informative_shuffled]
+        tst_feat = tst_feat[:, indices_informative_shuffled]
+       
 
     # Convert features to numpy arrays
     X_trn = trn_feat.numpy() if isinstance(trn_feat, torch.Tensor) else trn_feat
