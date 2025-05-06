@@ -281,30 +281,22 @@ def main():
     args.use_custom_generator = True  # Default to using custom generator in debug mode
     
     if args.debug:
-        # Debug configuration based on user provided arguments
         # Debug configuration based on user provided command line example:
-        # --model_type LogReg --setting adult --method lime_captum --distance_measure euclidean --random_seed 42 --scale small --use_benchmark --task_type binary_classification --num_repeats 1  --epochs 40 --include_val --include_trn --num_trials 10  --kernel_width default --num_lime_features 10
-        args.model_type = "LogReg"
-        args.setting = "adult"
-        args.method = "lime_captum"
+        args.model_type = "LightGBM"
+        args.setting = "diabetes130us"
+        args.method = "lime"
         args.distance_measure = "euclidean"
-        args.random_seed = 42 # Note: This might be overridden by the main random_seed argument if provided
-        args.scale = "small"
+        args.random_seed = 42
+        args.scale = "medium"
         args.use_benchmark = True
         args.task_type = "binary_classification"
         args.num_repeats = 1
-        args.epochs = 10
+        args.epochs = 25
         args.include_val = True
-        args.include_trn = True
-        args.num_trials = 3
+        args.num_trials = 5
         args.kernel_width = "default"
         args.num_lime_features = 10
-        # Set regression to False as task_type is binary_classification
-        args.regression = False 
-        # Set force to False unless explicitly requested
-        args.force = True # Note: This might be overridden later if force_training is set
-        # idx defaults to 0 if not specified
-        # args.idx = 0 # Explicitly set if needed, otherwise default is used
+        args.force_training = True
 
     if args.force_training:
         args.force_overwrite = True
@@ -329,7 +321,7 @@ def main():
     print(args)
 
     if args.downsample_analysis:
-        downsample_analysis_fractions = np.linspace(0.1, 1.0, 50)[:-1]
+        downsample_analysis_fractions = np.linspace(0.5, 1.0, 10)
     else:
         downsample_analysis_fractions = [1]
     
@@ -347,7 +339,6 @@ def main():
         args.downsample_analysis = 1.0
         run_knn_analysis(args)
         print(f"KNN analysis completed in {(time.time() - start_time)/60:.2f} minutes.")
-    
     if not args.skip_fraction:
         print("Starting fraction vs accuracy analysis...")
         start_time = time.time()
