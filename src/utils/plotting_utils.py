@@ -5,46 +5,50 @@ from matplotlib import gridspec, lines
 from collections import defaultdict
 import time
 import colorcet as cc
-from src.utils.process_results import get_knn_vs_diff_model_performance, get_performance_metrics_smpl_complex_models
+from src.utils.process_results import (get_knn_vs_diff_model_performance,
+                                    get_performance_metrics_smpl_complex_models,
+                                    get_kw_fp,
+                                    get_fraction, 
+                                    get_knn_vs_metric_data,
+                                    extract_sort_keys,
+                                    get_filter,
+                                    filter_best_performance_local_model
+                                    )
+import matplotlib as mpl
 
-from src.utils.process_results import get_results_files_dict, get_kernel_widths_to_filepaths, get_random_seed_to_filepaths, get_synthetic_dataset_mapping, get_synthetic_dataset_friendly_name, get_synthetic_dataset_friendly_name_regression
+font_path = "/home/grotehans/xai_locality/font/cmunbsr.ttf"
+mpl.font_manager.fontManager.addfont(font_path)
+font_path = "/home/grotehans/xai_locality/font/Computer Modern Roman.ttf"
+mpl.font_manager.fontManager.addfont(font_path)
+font_path = "/home/grotehans/xai_locality/font/Times New Roman.ttf"
+mpl.font_manager.fontManager.addfont(font_path)
+from matplotlib.font_manager import FontProperties
+
+from src.utils.process_results import get_results_files_dict, get_kernel_widths_to_filepaths, get_random_seed_to_filepaths, get_downsample_fraction_to_filepaths, get_synthetic_dataset_mapping, get_synthetic_dataset_friendly_name, get_synthetic_dataset_friendly_name_regression
 # Set global matplotlib style for all plotting functions
 plt.style.use('seaborn-v0_8-ticks')
-plt.rcParams['axes.spines.top'] = False
-plt.rcParams['axes.spines.right'] = False
-plt.rcParams['axes.axisbelow'] = True
 plt.rcParams.update({
-    "font.family": "DejaVu Serif",
-    "font.serif": ["Computer Modern Roman"],
+    'axes.spines.top': False,
+    'axes.spines.right': False,
+    'axes.axisbelow': True,
+    'axes.grid': True,
+    'grid.linestyle': ':',
+    'axes.xmargin': 0,
+    "font.family": "serif",
+    "font.serif": "cmr10",
     "text.usetex": False,  # Optional: if you want real LaTeX rendering
     'axes.labelsize': 14,
-    'axes.titlesize': 14,
+    "mathtext.fontset": "cm",    # Use Computer Modern for math symbols
+    'axes.titlesize': 18,
+    'axes.unicode_minus': False,
 })
 
-# plt.rcParams['axes.labelsize'] = 14
-# plt.rcParams['axes.titlesize'] = 14
 
 textwidth_pt = 426.79135
 inches_per_pt = 1 / 72.27
 TEXT_WIDTH = textwidth_pt * inches_per_pt  # in inches
 fig_height = TEXT_WIDTH * 0.6  # for a 3:2 aspect ratio, adjust as needed
-# fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
-
-# plt.rcParams['figure.facecolor'] = 'white'
-# plt.rcParams['axes.facecolor'] = 'white'
-# plt.rcParams['axes.grid'] = True
-# plt.rcParams['axes.grid.which'] = 'major'
-# plt.rcParams['axes.grid.axis'] = 'both'
-# plt.rcParams['grid.alpha'] = 0.3
-# plt.rcParams['grid.linestyle'] = ':'
-# plt.rcParams['font.family'] = 'sans-serif'
-# plt.rcParams['font.size'] = 10
-# plt.rcParams['axes.labelsize'] = 12
-# plt.rcParams['axes.titlesize'] = 14
-# plt.rcParams['xtick.labelsize'] = 10
-# plt.rcParams['ytick.labelsize'] = 10
-# plt.rcParams['legend.fontsize'] = 10
 MARKERS = ['o', 's', '^', 'D', 'v', '<', 'p', '*','>'  ]
 MODELS = [
 "LogReg",
@@ -159,18 +163,18 @@ METRICS_TO_IDX_CLF = {
     "MAE logit": 8,
     "R2 logit": 9,
     "Gini Impurity": 10,
-    "Accuracy const. local model": 11,
+    "Accuracy const. local model": 15,
     "Variance prob.": 12, 
     "Variance logit": 13,
     "Radius": 14,
-    "Local Ratio All Ones": 16,
-    "Accuracy $g_x$ - Accuracy const. local model": (0, 11),
+    "Local Ratio All Ones": 11,
+    "Accuracy $g_x$ - Accuracy const. local model": (0, 15),
 }
 
 METRICS_MAP_REG = {
     "MSE $g_x$": 0,
     "MAE $g_x$": 1,
-    "R2 $g_x$": 2,
+    "R2 kNN": 2,
     "MSE const. local model": 3,
     "MAE const. local model": 4,
     "Variance $f(x)$": 5,
@@ -224,15 +228,6 @@ def create_legend(models, colors, method, unique_kw_lines_idx=[]):
             labels.append(KERNEL_LABELS[i])
     return handles, labels
 
-def get_default_kernel_width_path(files):
-    kw_files = get_kernel_widths_to_filepaths(files)
-    return kw_files[int(np.median(range(len(kw_files))))][1]
-
-def get_fraction(metr0, metr1):
-    metr1 = np.round(metr1, decimals=5)
-    metr1 = np.where(np.isclose(metr1, 0), np.nan, metr1)  # Avoid division by zero
-    vals  = np.where(np.isclose(metr0, 0), 0, metr0 / metr1) # if g_x = 0, then value as zero mistakes
-    return vals
 
 def plot_dataset_metrics(models, 
                          datasets, 
@@ -270,7 +265,7 @@ def plot_dataset_metrics(models,
                 if isinstance(files, list) and len(files) == 0:
                     continue
                 if method == "lime" and metric not in ["Variance $f(x)$", "Radius", "Accuracy const. local model", "MSE const. local model", "MAE const. local model"]:
-                    path = get_default_kernel_width_path(files)
+                    path = get_kw_fp(files, kernel_width="default")
                 else:
                     path = files[0] if isinstance(files, list) else files
                 # print(model, dataset, path)
@@ -309,7 +304,7 @@ def plot_dataset_metrics(models,
             ax.set_xlabel(f"Neighborhood size ({distance} distance)")
             ax.grid(True, linestyle=':')
         handles, labels = create_legend(dataset_models, colors, method, [])
-        legend_ax.legend(handles, labels, frameon=True, fontsize=9)
+        legend_ax.legend(handles, labels, frameon=True, fontsize=11)
         method_title = method.split("/")[-1]
         method_title = " ".join(method_title.split("_"))
         if method == "lime" and lime_features == "all":
@@ -318,7 +313,7 @@ def plot_dataset_metrics(models,
         if method == "lime" and lime_features == "all":
             title += " (all features)"
         y_position = 1.04 if "syn" in dataset else 1.02
-        fig.suptitle(title, fontsize=14, y=y_position)
+        fig.suptitle(title, y=y_position)
         if save:
             fig.savefig(
                 f"graphics/knn_vs_metrics_{method.split('/')[-1]}_{dataset}.pdf",
@@ -330,25 +325,6 @@ def plot_dataset_metrics(models,
         else:
             plt.show();
 
-
-def extract_sort_keys(dataset, regression = False):
-    """Extract sorting keys from dataset name using regex."""
-    if regression: 
-        # Try to match polynomial regression pattern like: syn-reg polynomial (d:100, if:10, b: 1.0, ns:0.0, er:60)
-        match = re.search(r'syn\s+\w+\s+\(d:(\d+),\s*inf f.:(\d+)', dataset)
-        if match:
-            return (int(match.group(1)), int(match.group(2)))
-        return (int(match.group(1)), int(match.group(2))) if match else (0., 0.)
-    else:
-        pattern = r'd:(\d+).*?inf f.:(\d+).*?clust.:(\d+).*?sep.:([\d\.]+)' # inf f.:{i}, clust.:{c}, sep.:
-        match = re.search(pattern, dataset)
-        if match:
-            n_feat = int(match.group(1))
-            inf_feat = int(match.group(2))
-            n_clusters = int(match.group(3))
-            class_sep = float(match.group(4))
-            return n_feat, inf_feat,  n_clusters, -class_sep # Negative class_sep for descending order
-        return 0, 0, 0, 0  # Default for non-matching datasets
 
 def create_model_legend(ax, models, markers, bbox_to_anchor=(1.02, 0.5), plot_multiple=False):
     """Create a legend for models only, with specified markers."""
@@ -364,8 +340,8 @@ def create_model_legend(ax, models, markers, bbox_to_anchor=(1.02, 0.5), plot_mu
         loc='center left',
         bbox_to_anchor=bbox_to_anchor,
         frameon=False,
-        fontsize=9,
         ncol=1,
+        fontsize=12,
         handletextpad=1.5,
         columnspacing=2.0,
         borderpad=1.0
@@ -373,7 +349,7 @@ def create_model_legend(ax, models, markers, bbox_to_anchor=(1.02, 0.5), plot_mu
     for text in legend.get_texts():
         if text.get_text() == "Models:":
             text.set_weight('bold')
-            text.set_fontsize(10)
+            text.set_fontsize(14)
     return legend
 
 def create_dual_legend(ax, datasets, colors, models, markers, bbox_to_anchor=(1.02, 0.5), plot_multiple=False):
@@ -397,8 +373,8 @@ def create_dual_legend(ax, datasets, colors, models, markers, bbox_to_anchor=(1.
         loc='center left',
         bbox_to_anchor=bbox_to_anchor, #(0.0, 0.5),
         frameon=False,
-        fontsize=9,
         ncol=2,
+        fontsize=12,
         handletextpad=1.5,
         columnspacing=2.0,
         borderpad=1.0
@@ -406,153 +382,18 @@ def create_dual_legend(ax, datasets, colors, models, markers, bbox_to_anchor=(1.
     for text in legend.get_texts():
         if text.get_text() in ["Datasets:", "Models:"]:
             text.set_weight('bold')
-            text.set_fontsize(10)
+            text.set_fontsize(14)
     return legend
 
-def get_metrics(res, metric, regression=False):
-    """Extract metrics based on error type."""
-    if regression:
-        metric_map = {
-            'MSE': (res[0], res[3]),
-            'RMSE': (np.sqrt(res[0]), np.sqrt(res[3])),
-            'MAE': (res[1], res[4]),
-            'R2': (res[2], 1 - (res[3]/(res[5] + 0.00001) )), 
-            'Variance': res[5]
-        }
-    else: 
-        metric_map = {
-            'Accuracy': (res[0], res[3]),
-        }
-    return metric_map.get(metric, (None, None))
 
-def calculate_diff(metrics_gx, metrics_const, metric, regression, ):
-    """Calculate performance difference with direction handling for R2."""
-    diff = metrics_gx - metrics_const
-    if regression:
-        diff = metrics_const - metrics_gx
-    return diff
-
-def get_filter(mean_diffs, filter):
-    """Apply filter to mean differences."""
-    filters = {
-        'min': np.nanmin,
-        'max': np.nanmax,
-        'median': np.nanmedian,
-        'mean': np.nanmean
-    }
-    return filters.get(filter, lambda x: x[filter])(mean_diffs) if isinstance(filter, str) else mean_diffs[filter]
-
-def get_fraction(metr0, metr1):
-    metr1 = np.where(np.isclose(metr1, 0), np.nan, metr1)  # Avoid division by zero
-    return 1 - metr0/metr1
-
-def edit_ticks(ticks, val, label):
-    ticks = [t for t in ticks if t < 1.1]  # filter out > 1.1
-    if not any(np.isclose(t, val) for t in ticks):
-        ticks.append(val)
+def edit_ticks(ticks, val, label, exclude_lower = -np.inf, exclude_upper=1.1):
+    ticks = [t for t in ticks if exclude_lower<=t<exclude_upper]  # filter out > 1.1
+    if exclude_lower not in ticks:
+        ticks.append(exclude_lower)
     ticks = sorted(set(ticks))
     ticks_labels = [label if np.isclose(t, val) else str(round(t, 2)) for t in ticks]
     return ticks, ticks_labels
-
-def filter_best_performance_local_model(filepath, 
-                                        metric, 
-                                        summarizing_statistics, 
-                                        average_over_n_neighbors,
-                                        filter,  
-                                        regression=False):
-    if regression:
-        from src.utils.process_results import load_results_regression as load_results
-        metrics_map = METRICS_MAP_REG
-    else:
-        from src.utils.process_results import load_results_clf as load_results
-        metrics_map = METRICS_TO_IDX_CLF
-    data, _ = load_results(filepath)
-    metric_idx = metrics_map[metric]
-    is_diff = "-" in metric
-    is_ratio = "/" in metric
-    if is_ratio:
-        vals = get_fraction(data[metric_idx[0]], data[metric_idx[1]])
-        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
-    elif is_diff:
-        vals = data[metric_idx[0]] - data[metric_idx[1]]
-        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
-    else:
-        vals = data[metric_idx]
-        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
-    filtered_res = get_filter(summary_vals, filter)
-    return filtered_res
-
-
-def get_knn_vs_metric_data(res_model, 
-                           model_name, 
-                           mapping, 
-                           filter, 
-                           metric, 
-                           distance, 
-                           regression=False, 
-                           random_seed=42, 
-                           difference_to_constant_model=False,
-                           summarizing_statistics=None,
-                           complexity_regression=False, 
-                           average_over_n_neighbors=200):
-    """Extract kNN and performance difference data."""
-    if regression:
-        from src.utils.process_results import load_results_regression as load_results
-        from src.utils.process_results import get_best_metrics_of_complexity_of_f_regression as get_best_metrics
-        metrics_map = METRICS_MAP_REG
-        synthetic_dataset_name = get_synthetic_dataset_friendly_name_regression
-    else:
-        from src.utils.process_results import load_results_clf as load_results
-        from src.utils.process_results import get_best_metrics_of_complexity_of_f_clf as get_best_metrics
-        metrics_map = METRICS_TO_IDX_CLF
-        synthetic_dataset_name = get_synthetic_dataset_friendly_name
-    results = []
-    if summarizing_statistics is None:
-        summarizing_statistics = lambda x, axis: np.nanmean(x, axis=axis)
-    for dataset, files in res_model.items():
-        rs_files = [rs_fp for rs_fp in get_random_seed_to_filepaths(files)]
-        if len(rs_files) == 0: continue
-        random_seeds = np.array([int(rs[0])for rs in rs_files])
-        files_sorted_with_rs = [str(rs[1]) for rs in rs_files]
-        try: 
-            files_random_seed = files_sorted_with_rs[np.where(random_seeds==random_seed)[0][0]]
-        except IndexError:
-            print(f"{model_name}: Random seed {random_seed} not found in {dataset}.")
-            continue
-        file_path = get_default_kernel_width_path(files_random_seed)
-        filtered_res = filter_best_performance_local_model(
-            filepath=file_path,
-            metric=metric,
-            summarizing_statistics=summarizing_statistics,
-            average_over_n_neighbors=average_over_n_neighbors,
-            filter = filter, 
-            regression=regression
-        )
-        synthetic = "syn" in dataset
-        dataset_name = dataset if not synthetic else mapping.get(dataset, dataset)
-        if regression:
-            if complexity_regression:
-                complexity_metrics = "R2 Lin Reg"
-            else:
-                complexity_metrics = "R2 $g_x$"
-        else:
-            if complexity_regression:
-                complexity_metrics = "Accuracy Log Reg"
-            else:
-                complexity_metrics = "Accuracy $g_x$"
-        res_complexity = get_best_metrics(model_name, 
-                                            dataset_name, 
-                                            complexity_metrics, 
-                                            synthetic=synthetic, 
-                                            distance_measure=distance,
-                                            complexity_regression=complexity_regression,
-                                            random_seed=random_seed)
-        if res_complexity is None: continue
-        compl_metr = np.max([res_complexity[0], 0]) if regression else np.max([res_complexity[0], 0.5])
-        knn_result_metric = compl_metr
-        results.append((dataset, knn_result_metric, filtered_res))
-    return results
-
+       
 def get_y_axis_label(filter, metric_axis_label, is_diff, is_ratio, summary):
     if summary is np.nanmean:
         summary_label = "\\mathbb{E}_x"
@@ -599,27 +440,35 @@ def plot_knn_metrics_vs_metric(models,
                                regression=False, 
                                summarizing_statistics=None,
                                random_seed=42,
+                               kernel_width="default",
+                               plot_downsample_fraction=False,
                                plot_individual_random_seed=True,
-                               complexity_regression = False,
+                               complexity_regression = "best",
                                average_over_n_neighbors=200,
                                width = TEXT_WIDTH, 
                                height = TEXT_WIDTH * 0.9,
                                save=False):
     """Main plotting function comparing model complexity vs performance difference."""
     synthetic_dataset_name = get_synthetic_dataset_friendly_name_regression if regression else get_synthetic_dataset_friendly_name
-    
+    assert (plot_downsample_fraction and random_seed ==42) or (not plot_downsample_fraction), "Downsampled data is only available for random seed 42."
     create_legend_to_ax = ax is None
     if ax is None:
         ax = plt.subplots(figsize=(width, height))[1]
     cmap = COLOR_TO_CLF_DATASET if not regression else COLOR_TO_REG_DATASET
-    res_dict = get_results_files_dict(method, models, datasets, distance, random_seed=random_seed)
+    res_dict = get_results_files_dict(method, 
+                                      models, 
+                                      datasets,
+                                      distance, 
+                                      random_seed=random_seed, 
+                                      downsampled=plot_downsample_fraction,
+                                      kernel_width=kernel_width)
     is_diff = "-" in metric
     is_ratio = "/" in metric    
     all_results = defaultdict(list)
     all_results_std = defaultdict(list)
     cutoff_at = 0 if (regression and is_ratio) else 0.5
     cutoff_value_replaced = -0.05 if regression and is_ratio else 0.45
-    cutoff_label = f"<{cutoff_at}"
+    cutoff_label = f"$<${cutoff_at}"
     if summarizing_statistics is None:
         summarizing_statistics = lambda x, axis: np.nanmean(x, axis=axis)
     for model in models:
@@ -639,27 +488,34 @@ def plot_knn_metrics_vs_metric(models,
                 all_random_seeds.update(random_seeds)
             random_seeds = sorted(list(all_random_seeds))
         gather_res_per_dataset = defaultdict(list)
-        
-        for rs in random_seeds: 
-            mapping = get_synthetic_dataset_mapping(datasets, regression)
-            points = get_knn_vs_metric_data(model_results, 
-                                            model, 
-                                            mapping, 
-                                            filter, 
-                                            metric, 
-                                            distance, 
-                                            regression, 
-                                            summarizing_statistics=summarizing_statistics,
-                                            average_over_n_neighbors=average_over_n_neighbors,
-                                            difference_to_constant_model=difference_to_constant_model,
-                                            random_seed=rs,
-                                            complexity_regression=complexity_regression,)
-            if type(random_seed) == int or plot_individual_random_seed:
-                for dataset, knn_metric_res, filtered_res in points:
-                    all_results[model].append((dataset, knn_metric_res, filtered_res))
-            else:
-                for dataset, knn_metric_res, filtered_res in points:
-                    gather_res_per_dataset[dataset].append((knn_metric_res, filtered_res))
+        if plot_downsample_fraction:
+            random_seeds = [42]
+            downsample_fractions = np.linspace(0.5, 1.0, 10)
+        else:
+            downsample_fractions = [None]
+        for downsample_fraction in downsample_fractions:
+            for rs in random_seeds: 
+                mapping = get_synthetic_dataset_mapping(datasets, regression)
+                points = get_knn_vs_metric_data(model_results, 
+                                                model, 
+                                                mapping, 
+                                                filter, 
+                                                metric, 
+                                                distance, 
+                                                regression, 
+                                                summarizing_statistics=summarizing_statistics,
+                                                average_over_n_neighbors=average_over_n_neighbors,
+                                                kernel_width = kernel_width, 
+                                                difference_to_constant_model=difference_to_constant_model,
+                                                random_seed=rs,
+                                                downsample_fraction=downsample_fraction,
+                                                complexity_regression=complexity_regression,)
+                if type(random_seed) == int or plot_individual_random_seed:
+                    for dataset, knn_metric_res, filtered_res in points:
+                        all_results[model].append((dataset, knn_metric_res, filtered_res))
+                else:
+                    for dataset, knn_metric_res, filtered_res in points:
+                        gather_res_per_dataset[dataset].append((knn_metric_res, filtered_res))
         for dataset, knn_metric_res_list in gather_res_per_dataset.items():
             knn_metric_res = np.nanmean([res[0] for res in knn_metric_res_list])
             filtered_res = np.nanmean([res[1] for res in knn_metric_res_list])
@@ -702,52 +558,50 @@ def plot_knn_metrics_vs_metric(models,
         ax.axhline(0, color='black', linestyle='--', alpha=0.7)
     elif is_ratio:
         ax.axhline(0, color='black', linestyle='--', alpha=0.7)
-        ax.plot([0, 1], [0, 1], linestyle='--', color='gray', alpha=0.7)
-        ax.set_ylim((cutoff_value_replaced, 1))
-        yticks = ax.get_yticks()
-        yticks, ytick_labels = edit_ticks(yticks, cutoff_value_replaced, cutoff_label)
-        ax.set_yticks(yticks)
-        ax.set_yticklabels(ytick_labels)
-        ax.set_xlim((0, 1))
+        # ax.plot([0, 1], [0, 1], linestyle='--', color='gray', alpha=0.7)
     elif "Accuracy" in metric:
-        ax.axhline(0.5, color='gray', linestyle='--', alpha=0.7)
-        current_min_x_y = np.max([cutoff_value_replaced, current_min_x_y])
-        current_min_x_y = np.min([0.5, current_min_x_y])
-        ax.plot([current_min_x_y, 1], [current_min_x_y, 1], linestyle='--', color='gray', alpha=0.7)
-        yticks = list(ax.get_yticks())
-        yticks, ytick_labels = edit_ticks(yticks, cutoff_value_replaced, cutoff_label)
-        ax.set_yticks(yticks)
-        ax.set_yticklabels(ytick_labels)
-        ax.set_ylim((cutoff_value_replaced, 1))
+        ax.axhline(0.5, color='black', linestyle='--', alpha=0.7)
+    
+    current_min_x_y = np.max([cutoff_value_replaced, current_min_x_y])
+    current_min_x_y = np.min([cutoff_at, current_min_x_y])
+    
     # === Labels ===
-    metric_axis_label = "$R^2$" if regression else "Accuracy"
-    if complexity_regression:
-        x_label = f'{metric_axis_label} of {'Linear' if regression else 'Logistic'} Regression on model predictions'
-    else: 
-        x_label = f'{metric_axis_label} of kNN-{"regressor" if regression else "classifier"} on model predictions'
-    ax.set_xlabel(x_label)
+    metric_axis_label = "$R^2$" if regression else "accuracy"
+    if complexity_regression == "best":
+        # smpl_model = "one of: kNN-reg., linear reg. or decision tree\n" if regression else "one of: kNN-clf., logistic reg. or decision tree\n"
+        smpl_model = "baseline models"
+    elif complexity_regression == "kNN":
+        smpl_model = "kNN clf." if not regression else "kNN reg."
+    elif complexity_regression == "linear":
+        smpl_model = "Lin. Reg" if regression else "Log. Reg"
+    elif complexity_regression == "tree":
+        smpl_model = "Decision Tree"
+    ax.set_xlabel(f"{"Best " if complexity_regression == "best" else ""}{"$R^2$" if regression else "accuracy"} of {smpl_model} on model predictions")
     method_title = ' '.join(method.split('/')[-1].split('_')) 
     if method == "lime":
-        method_title+= " (sparse feat. space)"
+        method_title+= f" (sparse feat. space, kernel: {kernel_width if kernel_width == 'default' else kernel_width+' of default'})"
     if method == "lime_captum":
-        method_title += " (cont. feat. space)"
-    y_axis_label = get_y_axis_label(filter, metric, is_diff, is_ratio, summary=summarizing_statistics)
+        method_title += f" (cont. feat. space, kernel: {kernel_width if kernel_width == 'default' else kernel_width+' of default'})"
+    y_axis_label = f"Best avg. {metric_axis_label} of $g_x$" #get_y_axis_label(filter, metric, is_diff, is_ratio, summary=summarizing_statistics)
     ax.set_ylabel(y_axis_label)
     ax.set_xlim((0, 1)) if regression else  ax.set_xlim((0.5, 1))
+    ax.set_ylim((current_min_x_y, 1))
+    yticks = ax.get_yticks()
+    yticks, ytick_labels = edit_ticks(yticks, cutoff_value_replaced, cutoff_label, exclude_lower=current_min_x_y, exclude_upper=1.1)
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(ytick_labels)
 
-    # === Title ===
     if isinstance(filter, int):
-        ax.set_title(f"{method_title.capitalize()}:\n Complexity of f vs. {metric_axis_label} average {'improvement' if is_diff else 'of $g_x$'} within {filter} neighbors")
+        ax.set_title(f"{method_title.capitalize()}-\n Complexity of f vs. {metric_axis_label} avg. {'improvement' if is_diff else 'of $g_x$'} within {filter} neighbors")
     else:
-        ax.set_title(f"{method_title.capitalize()}:\n Complexity of f vs. {filter} average {metric_axis_label} {'improvement' if is_diff else 'of $g_x$'}")
-
+        ax.set_title(f"{method_title.capitalize()}-\n Complexity of f vs. {filter} avg. {metric_axis_label} {'improvement' if is_diff else 'of $g_x$'}")
     ax.grid(True, alpha=0.3)
-    # ax.set_position([
-    #     ax.get_position().x0,
-    #     ax.get_position().y0,
-    #     ax.get_position().width * 0.8,
-    #     ax.get_position().height
-    # ])
+    ax.set_position([
+        ax.get_position().x0,
+        ax.get_position().y0,
+        ax.get_position().width * 0.8,
+        ax.get_position().height
+    ])
     if create_legend_to_ax:
         create_dual_legend(ax, unique_datasets, colors, models_plotted,markers_to_models, bbox_to_anchor=(1.02, 0.5))
 
@@ -763,6 +617,7 @@ def plot_knn_metrics_vs_metric(models,
 def extract_random_seed(file_path):
     match = re.search(r'random_seed-(\d+)', file_path)
     return float(match.group(1)) if match else float('inf')
+
 def order_by_seed(file_paths):
     """Order file paths by the downsampling fraction in the string."""
     return sorted(file_paths, key=extract_random_seed)
@@ -824,8 +679,8 @@ def plot_random_seeds_results_per_dataset(method,
                            color=colors[model],
                            alpha=alpha)
         ax.set_xlabel("Number of Nearest Neighbors (k)", fontsize=12)
-        ax.set_ylabel(f"{'MSE' if regression else 'Accuracy'} of $g_x$", fontsize=12)
-        ax.set_title(f"{method.split("/")[-1].capitalize()}: Averaged over 5 random seeds, {'MSE' if regression else 'Accuracy'} vs. Neighborhood Size\nDataset: {dataset}", 
+        ax.set_ylabel(f"{'MSE' if regression else 'accuracy'} of $g_x$", fontsize=12)
+        ax.set_title(f"{method.split("/")[-1].capitalize()}: Averaged over 5 random seeds, {'MSE' if regression else 'accuracy'} vs. Neighborhood Size\nDataset: {dataset}", 
                     fontsize=14, pad=20)
         ax.grid(True, linestyle='--', alpha=0.6)
         # ax.set_axisbelow(True)
@@ -851,6 +706,8 @@ def get_local_vs_constant_metric_data(res_model,
                            filter, 
                            metric, 
                            regression=False, 
+                           random_seed=42,
+                           kernel_width="default",
                            summarizing_statistics=None,
                            average_over_n_neighbors=200):
     """Extract kNN and performance difference data."""
@@ -864,9 +721,17 @@ def get_local_vs_constant_metric_data(res_model,
     if summarizing_statistics is None:
         summarizing_statistics = lambda x, axis: np.nanmedian(x, axis=axis)
     for dataset, files in res_model.items():
-        kw_files = get_kernel_widths_to_filepaths(files)
-        if len(kw_files)==0: continue
-        data, _ = load_results(kw_files[int(np.median(range(len(kw_files))))][1])
+        rs_files = get_random_seed_to_filepaths(files)
+        if len(rs_files) == 0: continue
+        random_seeds = np.array([int(rs[0])for rs in rs_files])
+        files_sorted_with_rs = [str(rs[1]) for rs in rs_files]
+        try: 
+            files_random_seed = files_sorted_with_rs[np.where(random_seeds==random_seed)[0][0]]
+        except IndexError:
+            print(f"{files}: Random seed {random_seed} not found in {dataset}.")
+            continue
+        file_path = get_kw_fp(files_random_seed, kernel_width)
+        data, _ = load_results(file_path)
         # process local xai model results =========
         metric_idx = metrics_map[metric]
         is_diff = "-" in metric
@@ -896,20 +761,25 @@ def plot_local_metrics_vs_constant_metric(models,
                                summarizing_statistics=None,
                                average_over_n_neighbors=200,
                                width = TEXT_WIDTH, 
+                               kernel_width="default",
+                               random_seed=42,
+                               plot_individual_random_seed=True,
                                height = TEXT_WIDTH * 0.6,
                                save=False):
     """Main plotting function comparing model complexity vs performance difference."""
+    synthetic_dataset_name = get_synthetic_dataset_friendly_name_regression if regression else get_synthetic_dataset_friendly_name
     
     create_legend_to_ax = ax is None
     if ax is None:
         ax = plt.subplots(figsize=(width, height))[1]
     cmap = COLOR_TO_REG_DATASET if regression else COLOR_TO_CLF_DATASET
-    res_dict = get_results_files_dict(method, models, datasets, distance, random_seed=False)
+    res_dict = get_results_files_dict(method, models, datasets, distance, kernel_width= kernel_width, random_seed=random_seed)
     is_diff = "-" in metric
     is_ratio = "/" in metric    
-    cut_off = -3 if regression else 0.5
-    replace_with = -3.05 if regression else 0.4
+    cut_off = 0 if regression else 0.5
+    replace_with = -0.05 if regression else 0.45
     all_results = defaultdict(list)
+    all_results_std = defaultdict(list)
 
     if summarizing_statistics is None:
         summarizing_statistics = lambda x, axis: np.nanmean(x, axis=axis)
@@ -919,14 +789,40 @@ def plot_local_metrics_vs_constant_metric(models,
         if model_results is None or len(model_results) == 0:
             print(f"No results found for {model}.")
             continue
-        points = get_local_vs_constant_metric_data(res_model = model_results,
+        if type(random_seed) == int:
+            random_seeds = [random_seed]
+        else: 
+            all_random_seeds = set()
+            for dataset in datasets:
+                files = model_results.get(synthetic_dataset_name(dataset), None)
+                if files is None or len(files) == 0: continue
+                random_seed_to_fp = get_random_seed_to_filepaths(model_results.get(synthetic_dataset_name(dataset), None))
+                random_seeds = [int(rs_fp[0]) for rs_fp in random_seed_to_fp]
+                all_random_seeds.update(random_seeds)
+            random_seeds = sorted(list(all_random_seeds))
+        gather_res_per_dataset = defaultdict(list)
+        for rs in random_seeds: 
+            points = get_local_vs_constant_metric_data(res_model=model_results,
                            filter=filter,
                             metric=metric,
                             regression=regression, 
+                            random_seed=rs,
+                            kernel_width=kernel_width,
                             summarizing_statistics=summarizing_statistics,
                             average_over_n_neighbors=average_over_n_neighbors)
-        for dataset, metr_constant, metr_g in points:
-            all_results[model].append((dataset, metr_constant, metr_g))
+            if type(random_seed) == int or plot_individual_random_seed:
+                for dataset, knn_metric_res, filtered_res in points:
+                    all_results[model].append((dataset, knn_metric_res, filtered_res))
+            else:
+                for dataset, knn_metric_res, filtered_res in points:
+                    gather_res_per_dataset[dataset].append((knn_metric_res, filtered_res))
+        for dataset, knn_metric_res_list in gather_res_per_dataset.items():
+            knn_metric_res = np.nanmean([res[0] for res in knn_metric_res_list])
+            filtered_res = np.nanmean([res[1] for res in knn_metric_res_list])
+            knn_metric_res_std = np.nanstd([res[0] for res in knn_metric_res_list])
+            filtered_res_std = np.nanstd([res[1] for res in knn_metric_res_list])
+            all_results[model].append((dataset, knn_metric_res, filtered_res))
+            all_results_std[model].append((dataset, knn_metric_res_std, filtered_res_std))
 
     unique_datasets = sorted({d for m in all_results for d, _, _ in all_results[m]}, key=lambda x: extract_sort_keys(x, regression))
     colors = {d: cmap[d] for i, d in enumerate(unique_datasets)}
@@ -946,53 +842,57 @@ def plot_local_metrics_vs_constant_metric(models,
         current_max_x_y = max(current_max_x_y, max(x_vals), max(y_vals))
         ax.scatter(x_vals, y_vals, c=colors_list, marker=markers_to_models[model], 
                    s=80, alpha=0.8)
-        
-    def edit_ticks(ticks, val, label, exclude_lower = -np.inf, exclude_upper=1.1):
-        ticks = [t for t in ticks if exclude_lower<=t<exclude_upper]  # filter out > 1.1
-        # if not any(np.isclose(t, val) for t in ticks):
-        #     ticks.append(val)
-        ticks = sorted(set(ticks))
-        ticks_labels = [label if np.isclose(t, val) else str(round(t, 2)) for t in ticks]
-        return ticks, ticks_labels
+        if not(type(random_seed)==int or plot_individual_random_seed):
+            x_vals_std, y_vals_std = [], []
+            for dataset, knn_metric_res_std, filtered_res_std in all_results_std[model]:
+                x_vals_std.append(knn_metric_res_std)
+                y_vals_std.append(filtered_res_std)
+            for i, (xv, yv, xv_std, yv_std) in enumerate(zip(x_vals, y_vals, x_vals_std, y_vals_std)):
+                if yv > cut_off and xv > cut_off:
+                    ellipse = plt.matplotlib.patches.Ellipse(
+                    (xv, yv), width=2*xv_std, height=2*yv_std,
+                    edgecolor='none', facecolor=colors_list[i], alpha=0.15, zorder=1
+                    )
+                    ax.add_patch(ellipse)
+               
        
     # === Handle axes ===
     if is_diff or "R2" in metric:
         ax.axhline(0, color='black', linestyle='--', alpha=0.7)
         ax.set_ylim((replace_with, 1))
-        ax.set_xlim((replace_with, 1))
     elif is_ratio:
         ax.plot([current_min_x_y, 1], [current_min_x_y, 1], linestyle='--', color='gray', alpha=0.7)
         ax.set_ylim((current_min_x_y, 1))
-        ax.set_xlim((current_min_x_y, 1))
     elif "Accuracy" in metric:
         current_min_x_y = np.max([replace_with, current_min_x_y])
         current_min_x_y = np.min([cut_off, current_min_x_y])
+        ax.axhline(0.5, color='black', linestyle='--', alpha=0.7)
+        ax.axvline(0.5, color='black', linestyle='--', alpha=0.7)
         ax.plot([current_min_x_y, 1], [current_min_x_y, 1], linestyle='--', color='gray', alpha=0.7)
         ax.set_ylim((current_min_x_y, 1))
-        ax.set_xlim((current_min_x_y, 1))
+    ax.set_xlim((current_min_x_y, 1))
     yticks = ax.get_yticks()
-    yticks, ytick_labels = edit_ticks(yticks, replace_with, f"<{cut_off}", exclude_lower=current_min_x_y, exclude_upper=1.1)
+    yticks, ytick_labels = edit_ticks(yticks, replace_with, f"$<${cut_off}", exclude_lower=current_min_x_y, exclude_upper=1.1)
     ax.set_yticks(sorted(set(yticks)))
     ax.set_yticklabels(ytick_labels)
     xticks = ax.get_xticks()
-    xticks, xtick_labels = edit_ticks(xticks, replace_with, f"<{cut_off}", exclude_lower=current_min_x_y-0.1, exclude_upper=1.1)
+    xticks, xtick_labels = edit_ticks(xticks, replace_with, f"$<${cut_off}", exclude_lower=current_min_x_y, exclude_upper=1.1)
     ax.set_xticks(sorted(set(xticks)))
     ax.set_xticklabels(xtick_labels)
-
     ax.set_aspect('equal', adjustable='box')
     # # === Labels ===
-    metric_axis_label = "$R^2$" if regression else "Accuracy"
+    metric_axis_label = "$R^2$" if regression else "accuracy"
     method_title = ' '.join(method.split('/')[-1].split('_'))
-    y_axis_label = f"Best avg. {metric_axis_label} for $g_x$" if isinstance(filter, str) else f"Average {metric_axis_label} $g_x$ for {filter} closest neighbors"
-    x_axis_label = f"Best avg. {metric_axis_label} for const. local model" if isinstance(filter, str) else f"Average {metric_axis_label} const. local model for {filter} closest neighbors"
+    y_axis_label = f"Best avg. {metric_axis_label} of $g_x$" if isinstance(filter, str) else f"Average {metric_axis_label} $g_x$ for {filter} closest neighbors"
+    x_axis_label = f"Best avg. {metric_axis_label} of const. local model" if isinstance(filter, str) else f"Average {metric_axis_label} const. local model for {filter} closest neighbors"
     ax.set_ylabel(y_axis_label)
     ax.set_xlabel(x_axis_label)
 
     # === Title ===
     if isinstance(filter, int):
-        ax.set_title(f"{method_title.capitalize()}: average {metric_axis_label} of const. local model vs.\n {metric_axis_label} average of $g_x$ within {filter} neighbors")
+        ax.set_title(f"{method_title.capitalize()+": " if create_legend_to_ax else ""}Average {metric_axis_label} of const. local model vs.\n {metric_axis_label} avg. of $g_x$ within {filter} neighbors")
     else:
-        ax.set_title(f"{method_title.capitalize()}: {filter} average {metric_axis_label} of const.\n local model vs. {filter} average {metric_axis_label} of $g_x$")
+        ax.set_title(f"{method_title.capitalize()+": " if create_legend_to_ax else ""}Max. avg. {metric_axis_label} of const. local model vs.\n  max. avg. {metric_axis_label} of $g_x$")
 
     ax.grid(True, alpha=0.3)
     if create_legend_to_ax:
@@ -1013,7 +913,7 @@ def plot_knn_vs_model_performance_scatter(models,
                         regression=False, 
                         synthetic=False, 
                         random_seed=42,
-                        complexity_regression=False, 
+                        complexity_regression="best", 
                         ax=None, 
                         width=TEXT_WIDTH,
                         height=TEXT_WIDTH * 0.6,
@@ -1054,15 +954,27 @@ def plot_knn_vs_model_performance_scatter(models,
     unique_datasets = sorted({d for _, d, _, _ in results}, key=lambda x: extract_sort_keys(x, regression))
     colors = {d: cmap[d] for d in unique_datasets}
     models_plotted = sorted({m for m, _, _, _ in results})
-    markers_to_models = {m: markers[i % len(markers)] for i, m in enumerate(models_plotted)}
+    markers_to_models = {m: MODEL_TO_MARKER[m] for i, m in enumerate(models_plotted)}
 
     for model, dataset, x, y in results:
         ax.scatter(x, y, color=colors[dataset], marker=markers_to_models[model], s=80, alpha=0.8)
     ax.plot([0, 1], [0, 1], linestyle='--', color='gray', alpha=0.7)
+    # smpl_model = "Lin. Reg" if regression and complexity_regression else ("kNN-reg." if regression else ("Log. Reg" if complexity_regression else "kNN-clf."))
     smpl_model = "Lin. Reg" if regression and complexity_regression else ("kNN-reg." if regression else ("Log. Reg" if complexity_regression else "kNN-clf."))
-    ax.set_xlabel(f"{"$R^2$" if regression else "Accuracy"} of {smpl_model} on true labels", fontsize=14)
-    ax.set_ylabel(f"{"$R^2$" if regression else "Accuracy"} of f on true labels", fontsize=14)
-    ax.set_title(f"Model vs. {smpl_model} on true labels", fontsize=16)
+    if complexity_regression == "best":
+        # smpl_model = "one of: kNN-reg., linear reg. or decision tree\n" if regression else "one of: kNN-clf., logistic reg. or decision tree\n"
+        smpl_model = "baseline models"
+    elif complexity_regression == "kNN":
+        smpl_model = "kNN clf." if not regression else "kNN reg."
+    elif complexity_regression == "linear":
+        smpl_model = "Lin. Reg" if regression else "Log. Reg"
+    elif complexity_regression == "tree":
+        smpl_model = "Decision Tree"
+    else:
+        smpl_model = "smpl model"
+    ax.set_xlabel(f"{"Best " if complexity_regression == "best" else ""}{"$R^2$" if regression else "accuracy"} of {smpl_model} on true labels")
+    ax.set_ylabel(f"{"$R^2$" if regression else "accuracy"} of f on true labels")
+    ax.set_title(f"Complex models vs.\n baseline models on true labels")
     ax.set_aspect('equal', adjustable='box')
     ax.grid(True, alpha=0.3)
     ax.set_ylim((0, 1)) if regression else ax.set_ylim((0.5, 1))
@@ -1083,7 +995,7 @@ def plot_knn_vs_diff_scatter(models,
                         regression=False, 
                         synthetic=False, 
                         random_seed=42,
-                        complexity_regression=False, 
+                        complexity_regression="best", 
                         ax=None, 
                         width=TEXT_WIDTH,
                         height=TEXT_WIDTH * 0.6,
@@ -1106,7 +1018,8 @@ def plot_knn_vs_diff_scatter(models,
     from src.utils.plotting_utils import COLOR_TO_CLF_DATASET, COLOR_TO_REG_DATASET, extract_sort_keys
     markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*']
     cmap = COLOR_TO_REG_DATASET if regression else COLOR_TO_CLF_DATASET
-
+    current_min_x = np.inf
+    cutoff = 0 if regression else 0.5
     # Gather results
     results = []
     for model in models:
@@ -1116,6 +1029,7 @@ def plot_knn_vs_diff_scatter(models,
                     model, dataset, distance=distance, regression=regression,
                     synthetic=synthetic, random_seed=random_seed, complexity_regression=complexity_regression
                 )
+                current_min_x = min(current_min_x, x)
                 results.append((model, get_friendly_name(dataset), x, y))
             except Exception as e:
                 print(f"Skipping {model} on {dataset}: {e}")
@@ -1126,16 +1040,28 @@ def plot_knn_vs_diff_scatter(models,
     markers_to_models = {m: markers[i % len(markers)] for i, m in enumerate(models_plotted)}
 
     for model, dataset, x, y in results:
-        if x< 0: continue
+        if x<cutoff: continue
         ax.scatter(x, y, color=colors[dataset], marker=markers_to_models[model], s=80, alpha=0.8)
-
     smpl_model = "Lin. Reg" if regression and complexity_regression else ("kNN-reg." if regression else ("Log. Reg" if complexity_regression else "kNN-clf."))
-    ax.set_xlabel(f"{"$R^2$" if regression else "Accuracy"} of {smpl_model} on Model Predictions", fontsize=14)
-    ax.set_ylabel(f"Difference {"$R^2$" if regression else "Accuracy"}  on true labels: f-{smpl_model}", fontsize=14)
-    ax.set_title(f"Simplicty of $f$ vs.\n Difference: Model - {smpl_model} on true labels", fontsize=16)
+    if complexity_regression == "best":
+        # smpl_model = "one of: kNN-reg., linear reg. or decision tree\n" if regression else "one of: kNN-clf., logistic reg. or decision tree\n"
+        smpl_model = "baseline models"
+    elif complexity_regression == "kNN":
+        smpl_model = "kNN clf." if not regression else "kNN reg."
+    elif complexity_regression == "linear":
+        smpl_model = "Lin. Reg" if regression else "Log. Reg"
+    elif complexity_regression == "tree":
+        smpl_model = "Decision Tree"
+    else:
+        smpl_model = "smpl model"  
+    ax.axhline(0, color='black', linestyle='--', alpha=0.7)  
+    ax.set_xlabel(f"{"Best " if complexity_regression == "best" else ""}{"$R^2$" if regression else "accuracy"} of {smpl_model} on model predictions")
+    ax.set_ylabel(f"Difference in {"$R^2$" if regression else "accuracy"} on true labels")
+    ax.set_title(f"Complexity of $f$ vs.\n Difference of complex and baseline models on true labels")
     ax.grid(True, alpha=0.3)
+    ax.set_xlim((cutoff, 1))
     ax.set_aspect('equal', adjustable='box')
-    ax.set_xlim((0, 1)) if regression else ax.set_xlim((0.5, 1))
+
     if create_legend_to_ax:
         create_dual_legend(ax, unique_datasets, colors, models_plotted, markers_to_models)
 

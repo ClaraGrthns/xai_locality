@@ -7,6 +7,7 @@ import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import os.path as osp
 from pathlib import Path
+from collections import Counter
 
 DATASET_TO_NUM_FEATURES = {"higgs": 24,
                            "jannis": 54,
@@ -19,7 +20,183 @@ DATASET_TO_NUM_FEATURES = {"higgs": 24,
 def file_matching(file, distance_measure, condition=lambda x: True):
         return condition(file) and distance_measure in file
 BASEDIR = str(Path(__file__).resolve().parent.parent.parent)
+METRICS_TO_IDX_CLF = {
+    "Accuracy $g_x$": 0,
+    "Precision": 1,
+    "Recall": 2,
+    "F1": 3,
+    "MSE prob.": 4,
+    "MAE prob.": 5,
+    "R2  prob.": 6,
+    "MSE logit": 7,
+    "MAE logit": 8,
+    "R2 logit": 9,
+    "Gini Impurity": 10,
+    "Accuracy const. local model": 11,
+    "Variance prob.": 12, 
+    "Variance logit": 13,
+    "Radius": 14,
+    "Local Ratio All Ones": 16,
+    "Accuracy $g_x$ - Accuracy const. local model": (0, 11),
+}
 
+METRICS_MAP_REG = {
+    "MSE $g_x$": 0,
+    "MAE $g_x$": 1,
+    "R2 kNN": 2,
+    "MSE const. local model": 3,
+    "MAE const. local model": 4,
+    "Variance $f(x)$": 5,
+    "Radius": 6,
+    "MSE const. local model - MSE $g_x$": (3, 0),
+    "MAE const. local model - MAE $g_x$": (4, 1),
+    "MSE $g_x$ / MSE const. local model": (0, 3),
+    "MSE $g_x$ / Variance $f(x)$": (0, 5),
+    "E(MSE $g_x$ / Variance $f(x)$)": (0, 5),
+    "MSE const. local model / Variance $f(x)$": (3, 5),
+}
+
+def get_fraction(metr0, metr1):
+    metr1 = np.where(np.isclose(metr1, 0), np.nan, metr1)  # Avoid division by zero
+    return 1 - metr0/metr1
+
+
+def get_filter(mean_diffs, filter):
+    """Apply filter to mean differences."""
+    filters = {
+        'min': np.nanmin,
+        'max': np.nanmax,
+        'median': np.nanmedian,
+        'mean': np.nanmean
+    }
+    return filters.get(filter, lambda x: x[filter])(mean_diffs) if isinstance(filter, str) else mean_diffs[filter]
+
+
+def extract_sort_keys(dataset, regression = False):
+    """Extract sorting keys from dataset name using regex."""
+    if regression: 
+        # Try to match polynomial regression pattern like: syn-reg polynomial (d:100, if:10, b: 1.0, ns:0.0, er:60)
+        match = re.search(r'syn\s+\w+\s+\(d:(\d+),\s*inf f.:(\d+)', dataset)
+        if match:
+            return (int(match.group(1)), int(match.group(2)))
+        return (int(match.group(1)), int(match.group(2))) if match else (0., 0.)
+    else:
+        pattern = r'd:(\d+).*?inf f.:(\d+).*?clust.:(\d+).*?sep.:([\d\.]+)' # inf f.:{i}, clust.:{c}, sep.:
+        match = re.search(pattern, dataset)
+        if match:
+            n_feat = int(match.group(1))
+            inf_feat = int(match.group(2))
+            n_clusters = int(match.group(3))
+            class_sep = float(match.group(4))
+            return n_feat, inf_feat,  n_clusters, -class_sep # Negative class_sep for descending order
+        return 0, 0, 0, 0  # Default for non-matching datasets
+
+
+def filter_best_performance_local_model(filepath, 
+                                        metric, 
+                                        summarizing_statistics, 
+                                        average_over_n_neighbors,
+                                        filter,  
+                                        regression=False):
+    if regression:
+        load_results =  load_results_regression 
+        metrics_map = METRICS_MAP_REG
+    else:
+        load_results = load_results_clf
+        metrics_map = METRICS_TO_IDX_CLF
+    data, _ = load_results(filepath)
+    metric_idx = metrics_map[metric]
+    is_diff = "-" in metric
+    is_ratio = "/" in metric
+    if is_ratio:
+        vals = get_fraction(data[metric_idx[0]], data[metric_idx[1]])
+        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
+    elif is_diff:
+        vals = data[metric_idx[0]] - data[metric_idx[1]]
+        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
+    else:
+        vals = data[metric_idx]
+        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
+    filtered_res = get_filter(summary_vals, filter)
+    return filtered_res
+
+
+def get_knn_vs_metric_data(res_model, 
+                           model_name, 
+                           mapping, 
+                           filter, 
+                           metric, 
+                           distance, 
+                           regression=False, 
+                           random_seed=42, 
+                           kernel_width="default",
+                           difference_to_constant_model=False,
+                           summarizing_statistics=None,
+                           downsample_fraction = None, 
+                           complexity_regression="best", 
+                           average_over_n_neighbors=200):
+    """Extract kNN and performance difference data."""
+    results = []
+    if summarizing_statistics is None:
+        summarizing_statistics = lambda x, axis: np.nanmean(x, axis=axis)
+    for dataset, files in res_model.items():
+        if downsample_fraction is not None:
+            files = get_downsample_fraction_to_filepaths(files, downsample_fraction)
+        rs_files = get_random_seed_to_filepaths(files)
+        if len(rs_files) == 0: continue
+        random_seeds = np.array([int(rs[0])for rs in rs_files])
+        files_sorted_with_rs = [str(rs[1]) for rs in rs_files]
+        try: 
+            files_random_seed = files_sorted_with_rs[np.where(random_seeds==random_seed)[0][0]]
+        except IndexError:
+            print(f"{model_name}: Random seed {random_seed} not found in {dataset}.")
+            continue
+        file_path = get_kw_fp(files_random_seed, kernel_width)
+        filtered_res = filter_best_performance_local_model(
+            filepath=file_path,
+            metric=metric,
+            summarizing_statistics=summarizing_statistics,
+            average_over_n_neighbors=average_over_n_neighbors,
+            filter = filter, 
+            regression=regression
+        )
+        synthetic = "syn" in dataset
+        dataset_name = mapping.get(dataset, dataset)
+        res_complexity, _, _ = get_performance_metrics_smpl_complex_models(model_name,
+                                                dataset_name,
+                                                distance=distance,
+                                                regression=regression,
+                                                synthetic=synthetic,
+                                                random_seed=random_seed,
+                                                complexity_regression=complexity_regression)
+        
+        if res_complexity is None: continue
+        compl_metr = max(res_complexity, 0) if regression else max(res_complexity, 0.5)
+        knn_result_metric = compl_metr
+        results.append((dataset, knn_result_metric, filtered_res))
+    return results
+
+
+def get_kw_fp(kw_to_files, kernel_width):
+    """Get the kernel width and file path from a list of files."""
+    if not isinstance(kw_to_files, list):
+        return kw_to_files
+    kw_to_files_wo_inf = [(kw, f) for kw, f in kw_to_files if kw != np.inf]
+    if len(kw_to_files) > 0 and len(kw_to_files_wo_inf) >  0:
+        kw_to_files = kw_to_files_wo_inf
+    if len(kw_to_files) > 0:
+        if kernel_width == "default":
+            kw_idx = len(kw_to_files) // 2 # middle kernel width
+        elif kernel_width == "half":
+            kw_idx = 0
+        elif kernel_width == "double":
+            kw_idx = -1
+        if len(kw_to_files) != 3:
+            if kernel_width != "default": print(f"Warning: less than 3 kernel widths found: {kw_to_files}, using the {kw_idx}th.")
+        return kw_to_files[kw_idx][1]
+    else:
+        print(f"Warning: no kernel widths found, using the first file.")
+        return None
 
 def get_str_cond_to_filepaths(str_cond, files):
     """Extract kernel widths from file paths."""
@@ -33,9 +210,24 @@ def get_str_cond_to_filepaths(str_cond, files):
 
 def get_kernel_widths_to_filepaths(files):
     return get_str_cond_to_filepaths("kernel_width", files)
+
 def get_random_seed_to_filepaths(files):
     return get_str_cond_to_filepaths("random_seed", files)
 
+def get_downsample_fraction_to_filepaths(files, downsample_fraction):
+    res =  get_str_cond_to_filepaths("downsample", files)
+    if len(res) == 0: 
+        print(f"Warning: no downsampled files found, returning None.")
+        return None
+    downsample_fractions = np.array([int(rs[0])for rs in res])
+    files_sorted_with_ds = [str(rs[1]) for rs in res]
+    try: 
+        file_ds = files_sorted_with_ds[np.where(downsample_fractions==downsample_fraction)[0][0]]
+        return file_ds
+    except IndexError:
+        print(f"Fraction {downsample_fraction} not found in {files}.")
+        return None
+    
 def get_synthetic_dataset_mapping(datasets, regression=False):
     """Generate a mapping between user-friendly names and full synthetic dataset names"""
     mapping = {}
@@ -108,7 +300,8 @@ def get_results_files_dict(explanation_method: str,
                         lime_features=10, 
                         sampled_around_instance=False, 
                         random_seed=42,
-                        downsampled=False) -> dict:
+                        downsampled=False,
+                        kernel_width = "default") -> dict:
     from pathlib import Path
     BASEDIR = str(Path(__file__).resolve().parent.parent.parent)
     results_folder = f"{BASEDIR}/results/{explanation_method}"
@@ -157,27 +350,26 @@ def get_results_files_dict(explanation_method: str,
                         upper_limits.append(float(match.group(1)))
                 if len(upper_limits) > 0:
                     min_upper = min(upper_limits)
+                    if random_seed == True:
+                        # Take the upper limit in upper_limits that is the majority
+                        counter = Counter(upper_limits)
+                        min_upper = counter.most_common(1)[0][0]
                     files = [f for f in files if f"{min_upper}_dataset" in f]
             # Filter files with random_seed-42
             seed42_files = [f for f in files if "random_seed-42" in f or ("random_seed" not in f)]
-            if explanation_method == "lime" and len(seed42_files)>0 and (type(random_seed) == bool) and not downsampled:
+            if explanation_method in ["lime", "lime_captum"] and len(seed42_files)>0 and not downsampled and not(random_seed!=42):
                 kernel_widths = get_kernel_widths_to_filepaths(seed42_files)
                 kernel_widths = [kw for kw in kernel_widths if kw[0] is not None]  # Filter out None kernel widths
-                if len(kernel_widths) > 0 :
-                    median_idx = len(kernel_widths) // 2
-                    res = kernel_widths[median_idx][1]
+                if len(kernel_widths) > 0:
+                    res = get_kw_fp(kernel_widths, kernel_width)
                 else:
                     res = seed42_files[0]
-                if random_seed:
+                if (type(random_seed) == bool) and random_seed:
                     res = list(set(files)-set(seed42_files)| {res})
             else:
                 res = files
             if isinstance(res, list) and len(res) == 0:
                 continue
-            # if explanation_method == "lime":
-            #     results_files_dict[model][dataset] = res
-            # elif downsampled or type(random_seed)== int:
-            #     results_files_dict[model][dataset] = res
             if len(res) > 0:
                 results_files_dict[model][dataset] = res
 
@@ -370,7 +562,7 @@ def load_model_performance(model, dataset, synthetic=False, regression=False, ra
     results_folder = f"{BASEDIR}/results"
     if synthetic:
         dataset_name = dataset.split('/')[-1]
-        file_path = f"{results_folder}/knn_model_preds/{model}/synthetic_data/{dataset_name}/model{regression_str}_performance_{model}_random_seed-{random_seed}.npz"
+        file_path = f"{results_folder}/knn_model_preds/{model}/{"regression_" if regression else ""}synthetic_data/{dataset_name}/model{regression_str}_performance_{model}_random_seed-{random_seed}.npz"
     else:
         file_path = f"{results_folder}/knn_model_preds/{model}/{dataset}/model{regression_str}_performance_{model}_random_seed-{random_seed}.npz"
     try:
@@ -387,7 +579,7 @@ def get_performance_metrics_models(model, dataset, synthetic=False, regression=F
     """
     res = load_model_performance(model, dataset, synthetic, regression, random_seed)
     if res is None:
-        return np.nan
+        return None
     else:
         if regression:
             return float(res['regression_model'][0]), float(res['regression_model'][1]), float(res['regression_model'][2])
@@ -414,61 +606,68 @@ def get_performance_metrics_smpl_complex_models(model,
                                                 regression=False,
                                                 synthetic=False,
                                                 random_seed=42,
-                                                complexity_regression=False):
+                                                complexity_regression="best"):
     """Get performance metrics for the model and dataset."""  
     if regression:
         from src.utils.process_results import get_best_metrics_of_complexity_of_f_regression as get_best_metrics
     else:
         from src.utils.process_results import get_best_metrics_of_complexity_of_f_clf as get_best_metrics
+    if complexity_regression == "best":
+        if regression:
+            complexity_metrics = ["R2 kNN", "R2 Lin Reg", "R2 Decision Tree"]
+        else:
+            complexity_metrics = ["Accuracy kNN", "Accuracy Log Reg", "Accuracy Decision Tree"]
+    elif complexity_regression in ["kNN", "knn"]:
+        if regression:
+            complexity_metrics = ["R2 kNN"]
+        else:
+            complexity_metrics = ["Accuracy kNN"]
+    elif complexity_regression == "linear":
+        if regression:
+            complexity_metrics = ["R2 Lin Reg"]
+        else:
+            complexity_metrics = ["Accuracy Log Reg"]
+    elif complexity_regression == "tree":
+        if regression:
+            complexity_metrics = ["R2 Decision Tree"]
+        else:
+            complexity_metrics = ["Accuracy Decision Tree"]
 
-    if regression:
-        if complexity_regression:
-            complexity_metrics = "R2 Lin Reg"
-        else:
-            complexity_metrics = "R2 $g_x$"
-    else:
-        if complexity_regression:
-            complexity_metrics = "Accuracy Log Reg"
-        else:
-            complexity_metrics = "Accuracy $g_x$"
-
-    performance_smple_model_model_preds = get_best_metrics(model, 
-                                    dataset, 
-                                    complexity_metrics, 
-                                    synthetic=synthetic, 
-                                    distance_measure=distance,
-                                    complexity_regression=complexity_regression,
-                                    random_seed=random_seed)[0]
-    if regression:
-        if complexity_regression:
-            smple_model_true_labels = "R2 Lin Reg true labels"
-        else:
-            smple_model_true_labels = "R2 true labels"
-    else:
-        if complexity_regression:
-            smple_model_true_labels = "Accuracy Log Reg true labels"
-        else:
-            smple_model_true_labels = "Accuracy true labels"
-
-    performance_smpl_model_true_labels = get_best_metrics(model,
-                                    dataset, 
-                                    smple_model_true_labels, 
-                                    synthetic=synthetic, 
-                                    distance_measure=distance,
-                                    complexity_regression=complexity_regression,
-                                    random_seed=random_seed)[0]
+    max_complexity_performance = 0
+    for complexity_metric in complexity_metrics:
+        performance_smple_model_model_preds = get_best_metrics(model, 
+                                        dataset, 
+                                        complexity_metric, 
+                                        synthetic=synthetic, 
+                                        distance_measure=distance,
+                                        complexity_regression=("kNN" not in complexity_metric),
+                                        random_seed=random_seed)[0]
+        max_complexity_performance = max(max_complexity_performance, performance_smple_model_model_preds)
+    smple_model_true_labels = [complexity_metric + " true labels" for complexity_metric in complexity_metrics]
+    max_performance_true_labels = 0
+    for smple_model_true_label in smple_model_true_labels:
+        performance_smpl_model_true_labels = get_best_metrics(model,
+                                        dataset, 
+                                        smple_model_true_label, 
+                                        synthetic=synthetic, 
+                                        distance_measure=distance,
+                                        complexity_regression=("kNN" not in smple_model_true_label),
+                                        random_seed=random_seed)[0]
+        max_performance_true_labels = max(max_performance_true_labels, performance_smpl_model_true_labels)
 
     res = get_performance_metrics_models(model,
                                 dataset,
                                 synthetic=synthetic,
                                 regression=regression,
                                 random_seed=random_seed,)
-
-    if regression:
+    if res is None: 
+        print(f"Warning: no results found for {model} on {dataset}")
+        performance_model = np.nan
+    elif regression:
         performance_model = res[2]
     else:
         performance_model = res[1]
-    return performance_smple_model_model_preds, performance_smpl_model_true_labels, performance_model
+    return max_complexity_performance, max_performance_true_labels, performance_model
 
 def get_knn_vs_diff_model_performance(model,
                                     dataset,
@@ -476,7 +675,7 @@ def get_knn_vs_diff_model_performance(model,
                                     regression=False,
                                     synthetic=False,
                                     random_seed=42,
-                                    complexity_regression=False):
+                                    complexity_regression="best"):
     performance_smple_model_model_preds, performance_smpl_model_true_labels, performance_model = get_performance_metrics_smpl_complex_models(
             model, dataset, distance=distance, regression=regression,
             synthetic=synthetic, random_seed=random_seed, complexity_regression=complexity_regression
@@ -493,7 +692,7 @@ def get_best_metrics_of_complexity_of_f_clf(model,
                                 random_seed=42):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
-        "Accuracy $g_x$": ("classification", 0),
+        "Accuracy kNN": ("classification", 0),
         "Precision": ("classification", 1),
         "Recall": ("classification", 2),
         "F1": ("classification", 3),
@@ -503,12 +702,14 @@ def get_best_metrics_of_complexity_of_f_clf(model,
         "MSE logit": ("logit_regression", 0),
         "MAE logit": ("logit_regresasion", 1),
         "R2 logit": ("logit_regression", 2),
-        "Accuracy true labels": ("classification_true_labels", 0),
+        "Accuracy kNN true labels": ("classification_true_labels", 0),
         "Precision true labels": ("classification_true_labels", 1),
         "Recall true labels": ("classification_true_labels", 2),
         "F1 true labels": ("classification_true_labels", 3),
         "Accuracy Log Reg" : ("log_regression_res", 1),
-        "Accuracy Log Reg true labels" : ("log_regression_true_y_res", 1)
+        "Accuracy Log Reg true labels" : ("log_regression_true_y_res", 1),
+        "Accuracy Decision Tree" : ("decision_tree_classification_res", 1),
+        "Accuracy Decision Tree true labels" : ("decision_tree_classification_true_y_res", 1),
     }
     if type(metric_sr_ls) == str:
         metric_sr_ls = [metric_sr_ls]
@@ -528,6 +729,11 @@ def get_best_metrics_of_complexity_of_f_clf(model,
             continue
         metric_key_pair = metric_str_to_key_pair[metric_sr]
         if complexity_regression:
+            file = res.get(metric_key_pair[0], None)
+            if file is None:
+                print("simple model not found in file", random_seed, model, dataset, res.files, metric_sr_ls, metric_key_pair[0])
+                metrics_res.append((np.nan, np.nan))
+                continue
             best_metric = res[metric_key_pair[0]][metric_key_pair[1]]
             best_idx = 0
             metrics_res.append((best_metric, best_idx))
@@ -546,21 +752,24 @@ def get_best_metrics_of_complexity_of_f_regression(model,
                                        metric_sr_ls, 
                                        synthetic=False, 
                                        distance_measure="euclidean", 
-                                       complexity_regression=False,
+                                    complexity_regression=False,
                                        random_seed=42):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
         "MSE $g_x$": ("res_regression", 0),
         "RMSE $g_x$": ("res_regression", 0),
         "MAE $g_x$": ("res_regression", 1),
-        "R2 $g_x$": ("res_regression", 2),
+        "R2 kNN": ("res_regression", 2),
         "MSE true labels": ("res_regression_true_y", 0),
         "MAE true labels": ("res_regression_true_y", 1),
-        "R2 true labels": ("res_regression_true_y", 2),
+        "R2 kNN true lables": ("res_regression_true_y", 2),
         "MSE Lin Reg": ("linear_regression_res", 0),
         "MAE Lin Reg": ("linear_regression_res", 1),
         "R2 Lin Reg": ("linear_regression_res", 2),
         "R2 Lin Reg true labels": ("linear_regression_res_true_y", 2),
+        "R2 Decision Tree": ("decision_tree_regression_res", 2),
+        "R2 Decision Tree true labels": ("decision_tree_regression_res_true_y", 2),
+
     }
     if type(metric_sr_ls) == str:
         metric_sr_ls = [metric_sr_ls]
@@ -582,11 +791,15 @@ def get_best_metrics_of_complexity_of_f_regression(model,
         metric_key_pair = metric_str_to_key_pair[metric_sr]
         
         if complexity_regression:
+            file = res.get(metric_key_pair[0], None)
+            if file is None:
+                print("simple model not found in file", model, random_seed, dataset, res.files, metric_sr_ls, metric_key_pair[0])
+                metrics_res.append((np.nan, np.nan))
+                continue
             best_metric = res[metric_key_pair[0]][metric_key_pair[1]]
             best_idx = 0
             metrics_res.append((best_metric, best_idx))
             continue
-
         if "R2" in metric_sr:
             best_metric = np.max(res[metric_key_pair[0]][:, metric_key_pair[1]])
             best_idx = np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
