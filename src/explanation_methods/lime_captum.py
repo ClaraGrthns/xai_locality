@@ -75,9 +75,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from captum.attr._core.lime import get_exp_kernel_similarity_function, default_perturb_func, default_from_interp_rep_transform, construct_feature_mask 
 
 class LimeCaptumHandler(BaseExplanationMethodHandler):
-    def set_explainer(self, **kwargs):
-        model = kwargs.get("model")
-
+    def set_explainer(self, **kwargs_explainer):
+        model = kwargs_explainer.get("model")
         def to_interp_transform(curr_sample, 
                                 original_inp, 
                                 **kwargs):
@@ -91,7 +90,7 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
                               perturbed_interpretable_input: Tensor, 
                               **kwargs)->Tensor:
             # kernel_width will be provided to attribute as a kwarg
-            kernel_width = kwargs.get("kernel_width", np.sqrt(original_input.shape[1])*0.75)
+            kernel_width = kwargs_explainer.get("kernel_width", np.sqrt(original_input.shape[1])*0.75)
             l2_dist = torch.norm(original_input - perturbed_input)
             return torch.exp(- (l2_dist**2) / (kernel_width**2))
         
@@ -112,8 +111,12 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
         device = torch.device("cpu")
         feature_attribution_folder = osp.join(results_path,
                                     "feature_attribution")
-        bias_feature_attribution_file_path = osp.join(feature_attribution_folder, f"bias_feature_attribution_{self.args.gradient_method}_random_seed-{self.args.random_seed}.h5")
-        coefs_feature_attribution_file_path = osp.join(feature_attribution_folder, f"coefs_feature_attribution_{self.args.gradient_method}_random_seed-{self.args.random_seed}.h5")
+        if self.args.kernel_width == "default":
+            bias_feature_attribution_file_path = osp.join(feature_attribution_folder, f"bias_feature_attribution_{self.args.gradient_method}_random_seed-{self.args.random_seed}.h5")
+            coefs_feature_attribution_file_path = osp.join(feature_attribution_folder, f"coefs_feature_attribution_{self.args.gradient_method}_random_seed-{self.args.random_seed}.h5")
+        else:
+            bias_feature_attribution_file_path = osp.join(feature_attribution_folder, f"bias_feature_attribution_{self.args.gradient_method}_kernel_width-{self.args.kernel_width}_random_seed-{self.args.random_seed}.h5")
+            coefs_feature_attribution_file_path = osp.join(feature_attribution_folder, f"coefs_feature_attribution_{self.args.gradient_method}_kernel_width-{self.args.kernel_width}_random_seed-{self.args.random_seed}.h5")
 
         bias_feature_attributions = None
         coefs_feature_attributions = None
@@ -165,7 +168,10 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
         df_setting = "dataset_test"
         df_setting += "_val" if self.args.include_val else ""
         df_setting += "_trn" if self.args.include_trn else ""
-        setting = f"{self.args.method}_{df_setting}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
+        if self.args.kernel_width == "default":
+            setting = f"{self.args.method}_{df_setting}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
+        else:
+            setting = f"{self.args.method}_{df_setting}_kernel_width-{self.args.kernel_width}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
         # else:
         #     setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"
         if self.args.downsample_analysis != 1.0:

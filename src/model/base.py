@@ -81,6 +81,7 @@ class BaseModelHandler:
                 val_size=args.val_size,
                 tail_strength=args.tail_strength,
                 effective_rank=args.effective_rank,
+                force_create=True
             )
         else:
             col_indices = np.arange(args.n_features)
@@ -164,7 +165,31 @@ class BaseModelHandler:
                 analysis_feat = torch.cat([analysis_feat, val_feat], dim=0)
         if "synthetic" in self.args.data_folder and self.args.create_additional_analysis_data:
             if self.args.regression:
-                pass  # Placeholder for regression case
+                _, trn_feat_unnormalized, _, _, _, _, _, _ = create_custom_synthetic_regression_data(regression_mode=self.args.regression_mode,
+                                                                                                  n_features= args.n_features,
+                                                                                                  n_informative=args.n_informative,
+                                                                                                  n_samples=args.n_samples,
+                                                                                                  noise=args.noise,
+                                                                                                  bias=args.bias,
+                                                                                                  random_seed=args.random_seed_synthetic_data,
+                                                                                                  data_folder=args.data_folder,
+                                                                                                  test_size=args.test_size,
+                                                                                                  val_size=args.val_size,
+                                                                                                  tail_strength=args.tail_strength,
+                                                                                                  effective_rank=args.effective_rank,)
+                setting_name, X_train, X_val, X_test, y_train, y_val, y_test, col_indices = create_custom_synthetic_regression_data(regression_mode=self.args.regression_mode,
+                                                                                                  n_features= args.n_features,
+                                                                                                  n_informative=args.n_informative,
+                                                                                                  n_samples=200000,
+                                                                                                  noise=args.noise,
+                                                                                                  bias=args.bias,
+                                                                                                  random_seed=args.random_seed_synthetic_data,
+                                                                                                  data_folder=args.data_folder,
+                                                                                                  test_size=args.test_size,
+                                                                                                  val_size=args.val_size,
+                                                                                                  tail_strength=args.tail_strength,
+                                                                                                  effective_rank=args.effective_rank,)
+                X = np.concatenate([X_train, X_val, X_test], axis=0)
             else:
                 _, trn_feat_unnormalized, _, _, _, _, _ = create_synthetic_classification_data_sklearn(
                     n_features=args.n_features, 
@@ -195,17 +220,17 @@ class BaseModelHandler:
                         random_state=self.args.random_seed_synthetic_data+1,
                         shuffle=True  # Important for random sampling while maintaining balance
                 )
-                X_mean = np.mean(trn_feat_unnormalized, axis=0)
-                X_std = np.std(trn_feat_unnormalized, axis=0)
-                X_normalized = (X - X_mean) / X_std
-                if isinstance(analysis_feat, np.ndarray):
-                    analysis_feat = X_normalized
-                else:
-                    X_normalized = torch.tensor(X_normalized, dtype=torch.float32)
-                    analysis_feat = X_normalized
-                if self.args.downsample_analysis != 1.0:
-                    downsample_size = int(self.args.downsample_analysis * len(analysis_feat))
-                    analysis_feat = analysis_feat[:downsample_size] 
+            X_mean = np.mean(trn_feat_unnormalized, axis=0)
+            X_std = np.std(trn_feat_unnormalized, axis=0)
+            X_normalized = (X - X_mean) / X_std
+            if isinstance(analysis_feat, np.ndarray):
+                analysis_feat = X_normalized
+            else:
+                X_normalized = torch.tensor(X_normalized, dtype=torch.float32)
+                analysis_feat = X_normalized
+            if self.args.downsample_analysis != 1.0:
+                downsample_size = int(self.args.downsample_analysis * len(analysis_feat))
+                analysis_feat = analysis_feat[:downsample_size] 
         tst_dataset = TabularDataset(tst_feat)
         analysis_dataset = TabularDataset(analysis_feat)
         print("Length of data set for analysis", len(analysis_dataset))

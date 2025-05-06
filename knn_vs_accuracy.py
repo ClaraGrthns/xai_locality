@@ -43,7 +43,7 @@ def main(args):
     print("Number of LIME features: ", args.num_lime_features)
     predict_fn = model_handler.predict_fn
     
-    if args.method == "lime":
+    if args.method == "lime" or args.method == args.method == "lime_captum":
         if (args.kernel_width is None or args.kernel_width == "default"):
             args.kernel_width = np.round(np.sqrt(trn_feat.shape[1]) * .75, 2)  # Default value
         elif args.kernel_width == "double":
@@ -56,7 +56,8 @@ def main(args):
     explainer_handler = ExplanationMethodHandlerFactory.get_handler(method=method)(args)
     explainer_handler.set_explainer(dataset=trn_feat,
                                     class_names=model_handler.get_class_names(),
-                                    model=predict_fn)
+                                    model=predict_fn,
+                                    kernel_width=args.kernel_width,)
     
     explanations = explainer_handler.compute_explanations(results_path=results_path, 
                                                           predict_fn=predict_fn, 

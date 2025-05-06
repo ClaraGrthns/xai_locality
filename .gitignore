@@ -46,3 +46,6 @@ scripts/generate_experiment_commands_reduced_sample_size_Synthetic_biggerAnalysi
 scripts/generate_experiment_commands_regression_sampling.py
 scripts/generate_experiment_commands_sampling.py
 find_file.sh
+commands_sbach_files/*
+Times New Roman.ttf
+font*

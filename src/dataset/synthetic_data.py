@@ -311,7 +311,8 @@ def create_custom_synthetic_regression_data(regression_mode,
                                            data_folder, 
                                            test_size=0.4, 
                                            val_size=0.1,
-                                           tail_strength=0.5,  
+                                           tail_strength=0.5, 
+                                           force_create = False, 
                                            effective_rank=None):
     """
     Create custom synthetic regression data manually without sklearn's make_regression.
@@ -348,7 +349,7 @@ def create_custom_synthetic_regression_data(regression_mode,
     
     file_path = os.path.join(data_folder, f'{setting_name}.npz')
     
-    if os.path.exists(file_path):
+    if os.path.exists(file_path) and not force_create:
         data = np.load(file_path)
         X_train = data['X_train']
         X_val = data['X_val']
@@ -356,6 +357,7 @@ def create_custom_synthetic_regression_data(regression_mode,
         y_train = data['y_train']
         y_val = data['y_val']
         y_test = data['y_test']
+        col_indices = None
     else:
         rng = np.random.RandomState(random_seed)
         X = rng.randn(n_samples, n_features)

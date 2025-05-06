@@ -7,7 +7,7 @@ import numpy as np
 from pathlib import Path
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression# logistic regression
-
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -175,10 +175,23 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
     auroc_true_y, accuracy_true_y, precision_true_y, recall_true_y, f1_true_y = binary_classification_metrics(
         y_tst.flatten(), lr_preds.flatten(), None)
     print(f"Results for LogisticRegression on true labels: AUROC={auroc_true_y}, Accuracy={accuracy_true_y}, Precision={precision_true_y}, Recall={recall_true_y}, F1={f1_true_y}")
+
+    reg = DecisionTreeClassifier(random_state = args.random_seed, max_depth=5).fit(X_trn, ys_trn_predicted_labels)
+    dt_preds = reg.predict(X_tst)
+    auroc_dt, accuracy_dt, precision_dt, recall_dt, f1_dt = binary_classification_metrics(
+        ys_tst_predicted_labels.flatten(), dt_preds.flatten(), None)
+    print(f"Results for DecisionTreeClassifier on model predictions: AUROC={auroc_dt}, Accuracy={accuracy_dt}, Precision={precision_dt}, Recall={recall_dt}, F1={f1_dt}")
+    reg = DecisionTreeClassifier(random_state = args.random_seed, max_depth=5).fit(X_trn, y_trn)
+    dt_preds = reg.predict(X_tst)
+    auroc_dt_true_y, accuracy_dt_true_y, precision_dt_true_y, recall_dt_true_y, f1_dt_true_y = binary_classification_metrics(
+        y_tst.flatten(), dt_preds.flatten(), None)
+    print(f"Results for DecisionTreeClassifier on true labels: AUROC={auroc_dt_true_y}, Accuracy={accuracy_dt_true_y}, Precision={precision_dt_true_y}, Recall={recall_dt_true_y}, F1={f1_dt_true_y}")
     
-    np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}_random_seed-{args.random_seed}"),
+    np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}_random_seed-{args.random_seed}"),#random_state = args.random_seed
              **{"log_regression_res": np.array([auroc, accuracy, precision, recall, f1]),
-                "log_regression_true_y_res": np.array([auroc_true_y, accuracy_true_y, precision_true_y, recall_true_y, f1_true_y ])})
+                "log_regression_true_y_res": np.array([auroc_true_y, accuracy_true_y, precision_true_y, recall_true_y, f1_true_y ]),
+                "decision_tree_classification_res": np.array([auroc_dt, accuracy_dt, precision_dt, recall_dt, f1_dt]),
+                "decision_tree_classification_true_y_res": np.array([auroc_dt_true_y, accuracy_dt_true_y, precision_dt_true_y, recall_dt_true_y, f1_dt_true_y])})
 
     # Save model performance metrics
     print("Computing metrics for the actual model")
@@ -214,8 +227,8 @@ def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn
             # Regression on model predictions
             kNN_regressor = KNeighborsRegressor(n_neighbors=k_neighbors, metric=distance_measure)
             kNN_regressor.fit(X_trn, ys_trn_preds)
-            classifier_preds = kNN_regressor.predict(X_tst)
-            mse, mae, r2 = regression_metrics(y_tst_preds.flatten(), classifier_preds.flatten())            
+            regression_preds = kNN_regressor.predict(X_tst)
+            mse, mae, r2 = regression_metrics(y_tst_preds.flatten(), regression_preds.flatten())            
             res_regression[i] = [mse, mae, r2]
             
             # Regression on true labels
@@ -247,10 +260,22 @@ def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn
     reg = LinearRegression().fit(X_trn, y_trn)
     regression_preds = reg.predict(X_tst)
     mse_true_y, mae_true_y, r2_true_y = regression_metrics(y_tst.flatten(), regression_preds.flatten())
+
+    reg = DecisionTreeRegressor(random_state = args.random_seed, max_depth=5).fit(X_trn, ys_trn_preds)
+    regression_preds = reg.predict(X_tst)
+    mse_tree, mae_tree, r2_tree = regression_metrics(y_tst_preds.flatten(), regression_preds.flatten())
+    print(f"Results for DecisionTreeRegressor on model predictions: MSE={mse_tree}, MAE={mae_tree}, R2={r2_tree}")
+    reg = DecisionTreeRegressor(random_state = args.random_seed, max_depth=5).fit(X_trn, y_trn)
+    regression_preds = reg.predict(X_tst)
+    mse_tree_true_y, mae_tree_true_y, r2_tree_true_y = regression_metrics(y_tst.flatten(), regression_preds.flatten())
+    print(f"Results for DecisionTreeRegressor on true labels: MSE={mse_tree_true_y}, MAE={mae_tree_true_y}, R2={r2_tree_true_y}")
+
     print(f"Results for LinearRegression on true labels: MSE={mse_true_y}, MAE={mae_true_y}, R2={r2_true_y}")
     np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}_random_seed-{args.random_seed}"),
              **{"linear_regression_res_true_y": np.array([mse_true_y, mae_true_y, r2_true_y]),
-                "linear_regression_res": np.array([mse, mae, r2])})
+                "linear_regression_res": np.array([mse, mae, r2]),
+                "decision_tree_regression_res": np.array([mse_tree, mae_tree, r2_tree]),
+                "decision_tree_regression_res_true_y": np.array([mse_tree_true_y, mae_tree_true_y, r2_tree_true_y])})
     
     # Save model performance metrics
     print("Computing metrics for the actual model")
@@ -274,15 +299,7 @@ def main(args):
     
     model_handler = ModelHandlerFactory.get_handler(args)
     trn_feat, analysis_feat, tst_feat, y_trn, analysis_y, y_tst = model_handler.load_data_for_kNN()
-    if args.regression and not args.use_benchmark:
-        col_indices = model_handler.get_col_indices_informative_features()
-        original_inf_idx = np.arange(args.informative_features)
-        shuffled_positions = {orig_idx: np.where(col_indices == orig_idx)[0][0] 
-                      for orig_idx in original_inf_idx}
-        indices_informative_shuffled = [shuffled_positions[orig_idx] for orig_idx in col_indices]
-        trn_feat = trn_feat[:, indices_informative_shuffled]
-        tst_feat = tst_feat[:, indices_informative_shuffled]
-       
+    
 
     # Convert features to numpy arrays
     X_trn = trn_feat.numpy() if isinstance(trn_feat, torch.Tensor) else trn_feat
@@ -334,6 +351,15 @@ def main(args):
     print(f"Processing with distance measures: {distance_measures}")
     
     if args.regression:
+        # if not args.use_benchmark:
+        #     col_indices = model_handler.get_col_indices_informative_features()
+        #     original_inf_idx = np.arange(args.n_informative)
+        #     shuffled_positions = {orig_idx: np.where(col_indices == orig_idx)[0][0] 
+        #                 for orig_idx in original_inf_idx}
+        #     indices_informative_shuffled = [shuffled_positions[orig_idx] for orig_idx in original_inf_idx]
+        #     X_trn = X_trn[:, indices_informative_shuffled]
+        #     X_tst = X_tst[:, indices_informative_shuffled]
+
         run_regression_analysis(
             args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst,
             k_nns, results_path, file_name_wo_file_ending, distance_measures

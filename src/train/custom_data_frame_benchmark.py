@@ -206,6 +206,7 @@ def prepare_data_and_models(args):
             val_size=args.val_size,
             tail_strength=args.tail_strength,
             effective_rank=args.effective_rank,
+            force_create = args.force_training
             )
         data_folder = args.data_folder
     else: 
