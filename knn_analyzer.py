@@ -199,7 +199,7 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
     # Save model performance metrics
     print("Computing metrics for the actual model")
     auroc, accuracy, precision, recall, f1 = binary_classification_metrics(
-        y_tst, ys_tst_predicted_labels, y_tst_proba_top_label)
+        y_tst, ys_tst_predicted_labels, ys_true_softmaxed[:, 1])
     print(f"Model performance: AUROC={auroc}, Accuracy={accuracy}, Precision={precision}, Recall={recall}, F1={f1}")
     res_model = np.array([auroc, accuracy, precision, recall, f1])
     
