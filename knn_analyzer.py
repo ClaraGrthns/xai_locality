@@ -81,7 +81,7 @@ def process_classification_predictions(preds, proba_output=False):
     predicted_labels = np.argmax(softmaxed, axis=-1)
     return softmaxed, predicted_labels
 
-def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst,  X_val, y_val,
+def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst, 
                                k_nns, results_path, file_name_wo_file_ending, distance_measures):
     """Run KNN analysis for classification tasks."""
     proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_xgb", "LogReg"]
@@ -96,7 +96,8 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
         print(f"\nProcessing with distance measure: {distance_measure}")
         
         
-        experiment_setting = f"kNN_on_model_preds_{args.model_type}_dist_measure-{distance_measure}_random_seed-{args.random_seed}"
+        # experiment_setting = f"kNN_on_model_preds_{args.model_type}_dist_measure-{distance_measure}_random_seed-{args.random_seed}"
+        experiment_setting = f"kNN_on_model_preds_{args.model_type}_dist_measure-{distance_measure}"
         if osp.exists(osp.join(results_path, experiment_setting + ".npz")) and not args.force_overwrite:
             print(f"Results for the experiment setting {experiment_setting} already exist. Skipping.")
             continue
@@ -117,32 +118,32 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
                 ys_tst_predicted_labels, classifier_preds, None)
             res_classification[i] = [accuracy, precision, recall, f1]
             
-            # Regression on probabilities
-            regressors, regressor_preds = train_knn_regressors(
-                X_trn, ys_trn_softmaxed, X_tst, k_neighbors, distance_measure)
+            # # Regression on probabilities
+            # regressors, regressor_preds = train_knn_regressors(
+            #     X_trn, ys_trn_softmaxed, X_tst, k_neighbors, distance_measure)
             
-            if regressor_preds.ndim > 1:
-                regressor_preds_top_label = regressor_preds[
-                    np.arange(len(ys_tst_predicted_labels)), ys_tst_predicted_labels]
-            else:
-                regressor_preds_top_label = regressor_preds
+            # if regressor_preds.ndim > 1:
+            #     regressor_preds_top_label = regressor_preds[
+            #         np.arange(len(ys_tst_predicted_labels)), ys_tst_predicted_labels]
+            # else:
+            #     regressor_preds_top_label = regressor_preds
                 
-            mse, mae, r2 = regression_metrics(y_tst_proba_top_label.flatten(), regressor_preds_top_label.flatten())   
-            res_proba_regression[i] = [mse, mae, r2]
+            # mse, mae, r2 = regression_metrics(y_tst_proba_top_label.flatten(), regressor_preds_top_label.flatten())   
+            # res_proba_regression[i] = [mse, mae, r2]
             
-            # Regression on logits (if not using probability output)
-            if not proba_output:
-                regressors, regressor_logit = train_knn_regressors(
-                    X_trn, ys_trn_preds, X_tst, k_neighbors, distance_measure)
+            # # Regression on logits (if not using probability output)
+            # if not proba_output:
+            #     regressors, regressor_logit = train_knn_regressors(
+            #         X_trn, ys_trn_preds, X_tst, k_neighbors, distance_measure)
                 
-                if regressor_logit.ndim == 1:
-                    regressor_logit_top_label = regressor_logit
-                else:
-                    regressor_logit_top_label = regressor_logit[
-                        np.arange(len(ys_tst_predicted_labels)), ys_tst_predicted_labels]
+            #     if regressor_logit.ndim == 1:
+            #         regressor_logit_top_label = regressor_logit
+            #     else:
+            #         regressor_logit_top_label = regressor_logit[
+            #             np.arange(len(ys_tst_predicted_labels)), ys_tst_predicted_labels]
                 
-                mse, mae, r2 = regression_metrics(y_tst_logit_top_label.flatten(), regressor_logit_top_label.flatten())   
-                res_logit_regression[i] = [mse, mae, r2]
+            #     mse, mae, r2 = regression_metrics(y_tst_logit_top_label.flatten(), regressor_logit_top_label.flatten())   
+            #     res_logit_regression[i] = [mse, mae, r2]
         
             # Classification on true labels
             classifier = KNeighborsClassifier(n_neighbors=k_neighbors, metric=distance_measure)
@@ -189,7 +190,7 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
         y_tst.flatten(), dt_preds.flatten(), None)
     print(f"Results for DecisionTreeClassifier on true labels: AUROC={auroc_dt_true_y}, Accuracy={accuracy_dt_true_y}, Precision={precision_dt_true_y}, Recall={recall_dt_true_y}, F1={f1_dt_true_y}")
     
-    np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}_random_seed-{args.random_seed}"),#random_state = args.random_seed
+    np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}"),#random_state = args.random_seed
              **{"log_regression_res": np.array([auroc, accuracy, precision, recall, f1]),
                 "log_regression_true_y_res": np.array([auroc_true_y, accuracy_true_y, precision_true_y, recall_true_y, f1_true_y ]),
                 "decision_tree_classification_res": np.array([auroc_dt, accuracy_dt, precision_dt, recall_dt, f1_dt]),
@@ -203,17 +204,17 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
     res_model = np.array([auroc, accuracy, precision, recall, f1])
     
     model_res = {"classification_model": res_model}
-    model_experiment_setting = f"model_performance_{args.model_type}_random_seed-{args.random_seed}"
+    model_experiment_setting = f"model_performance_{args.model_type}"
     
     np.savez(osp.join(results_path, model_experiment_setting), **model_res)
     print(f"Model performance results saved to {osp.join(results_path, model_experiment_setting)}")
 
-def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst, X_val, y_val,
+def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst, 
                           k_nns, results_path, file_name_wo_file_ending, distance_measures):
     """Run KNN analysis for regression tasks."""
     for distance_measure in distance_measures:
         print(f"\nProcessing with distance measure: {distance_measure}")
-        experiment_setting = f"kNN_regression_on_model_preds_{args.model_type}_dist_measure-{distance_measure}_random_seed-{args.random_seed}"
+        experiment_setting = f"kNN_regression_on_model_preds_{args.model_type}_dist_measure-{distance_measure}"
         
         if osp.exists(osp.join(results_path, experiment_setting + ".npz")) and not args.force_overwrite:
             print(f"Results for the experiment setting {experiment_setting} already exist. Skipping.")
@@ -273,7 +274,7 @@ def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn
     print(f"Results for DecisionTreeRegressor on true labels: MSE={mse_tree_true_y}, MAE={mae_tree_true_y}, R2={r2_tree_true_y}")
 
     print(f"Results for LinearRegression on true labels: MSE={mse_true_y}, MAE={mae_true_y}, R2={r2_true_y}")
-    np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}_random_seed-{args.random_seed}"),
+    np.savez(osp.join(results_path, f"lr_on_model_preds{args.model_type}"),
              **{"linear_regression_res_true_y": np.array([mse_true_y, mae_true_y, r2_true_y]),
                 "linear_regression_res": np.array([mse, mae, r2]),
                 "decision_tree_regression_res": np.array([mse_tree, mae_tree, r2_tree]),
@@ -285,7 +286,7 @@ def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn
     print(f"Model performance: MSE={mse}, MAE={mae}, R2={r2}")
     res_model = np.array([mse, mae, r2])
     model_res = {"regression_model": res_model}
-    model_experiment_setting = f"model_regression_performance_{args.model_type}_random_seed-{args.random_seed}"
+    model_experiment_setting = f"model_regression_performance_{args.model_type}"
     np.savez(osp.join(results_path, model_experiment_setting), **model_res)
     print(f"Model performance results saved to {osp.join(results_path, model_experiment_setting)}")
 
@@ -301,6 +302,9 @@ def main(args):
     
     model_handler = ModelHandlerFactory.get_handler(args)
     trn_feat, analysis_feat, tst_feat, y_trn, analysis_y, y_tst = model_handler.load_data_for_kNN()
+
+    tst_feat = np.concatenate([analysis_feat, tst_feat], axis=0) if isinstance(tst_feat, np.ndarray) else torch.cat([analysis_feat, tst_feat], dim=0)
+    y_tst = np.concatenate([analysis_y, y_tst], axis=0) if isinstance(y_tst, np.ndarray) else torch.cat([analysis_y, y_tst], dim=0)
     
 
     # Convert features to numpy arrays
@@ -308,8 +312,6 @@ def main(args):
     X_tst = tst_feat.numpy() if isinstance(tst_feat, torch.Tensor) else tst_feat
     y_trn = y_trn.numpy() if isinstance(y_trn, torch.Tensor) else y_trn
     y_tst = y_tst.numpy() if isinstance(y_tst, torch.Tensor) else y_tst
-    X_val = analysis_feat.numpy() if isinstance(analysis_feat, torch.Tensor) else analysis_feat
-    y_val = analysis_y.numpy() if isinstance(analysis_y, torch.Tensor) else analysis_y
 
     # Check for NaNs in training data
     nan_mask_trn = np.isnan(X_trn).any(axis=1)
@@ -327,13 +329,9 @@ def main(args):
         X_tst = X_tst[~nan_mask_tst]
         y_tst = y_tst[~nan_mask_tst]
 
-    nan_mask_val = np.isnan(X_val).any(axis=1)
-    if np.any(nan_mask_val):
-        num_nan_val = np.sum(nan_mask_val)
-        print(f"Warning: Found {num_nan_val} rows with NaN values in the validation features. Removing these rows.")
-        X_val = X_val[~nan_mask_val]
-        y_val = y_val[~nan_mask_val]
+
     df_loader = DataLoader(trn_feat, shuffle=False, batch_size=args.chunk_size)
+    df_load_test = DataLoader(tst_feat, shuffle=False, batch_size=args.chunk_size)
     
     ys_trn_preds_path = osp.join(results_path, "ys_trn_preds.npy")
     ys_trn_preds = compute_predictions(
@@ -341,7 +339,7 @@ def main(args):
     
     ys_tst_preds_path = osp.join(results_path, "ys_tst_preds.npy")
     y_tst_preds = compute_predictions(
-        model_handler, tst_feat, None, ys_tst_preds_path, "test", args.debug)
+        model_handler, tst_feat, df_load_test, ys_tst_preds_path, "test", args.debug)
     
     k_nns = np.arange(args.min_k, args.max_k + 1, args.k_step)
     
@@ -372,13 +370,11 @@ def main(args):
 
         run_regression_analysis(
             args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst,
-            X_val, y_val,
             k_nns, results_path, file_name_wo_file_ending, distance_measures
         )
     else:
         run_classification_analysis(
             args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst,
-            X_val, y_val,   
             k_nns, results_path, file_name_wo_file_ending, distance_measures
         )
     
@@ -421,8 +417,8 @@ if __name__ == "__main__":
     parser.add_argument("--chunk_size", type=int, default=200, help="Chunk size of test set computed at once")
     parser.add_argument("--debug", action="store_true", help="Debug")
     parser.add_argument("--min_k", type=int, default=1)
-    parser.add_argument("--max_k", type=int, default=50)
-    parser.add_argument("--k_step", type=int, default=1)
+    parser.add_argument("--max_k", type=int, default=20)
+    parser.add_argument("--k_step", type=int, default=2)
     
     args = parser.parse_args()
     
