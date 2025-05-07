@@ -263,9 +263,10 @@ def prepare_data_and_models(args):
     dataset_name = get_dataset_name(args.task_type, args.scale, args.idx)
     print(f"Dataset: {dataset_name}")
 
-    dataset = DataFrameBenchmark(root=path, task_type=TaskType(args.task_type),
-                                scale=args.scale, 
-                                idx=args.idx,
+    dataset = DataFrameBenchmark(root=path, 
+                                 task_type=TaskType(args.task_type),
+                                 scale=args.scale, 
+                                 idx=args.idx,
                                 )
     dataset.materialize()
     dataset = dataset.shuffle()
@@ -846,7 +847,8 @@ def main_gbdt(args=None):
     import time
     start_time = time.time()
     model.tune(tf_train=train_tensor_frame,
-               tf_val=val_tensor_frame, num_trials=args.num_trials)
+               tf_val=val_tensor_frame, 
+               num_trials=args.num_trials,)
     val_pred = model.predict(tf_test=val_tensor_frame)
     val_metric = model.compute_metric(val_tensor_frame.y, val_pred)
     test_pred = model.predict(tf_test=test_tensor_frame)

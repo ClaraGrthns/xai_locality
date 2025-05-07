@@ -81,7 +81,7 @@ def process_classification_predictions(preds, proba_output=False):
     predicted_labels = np.argmax(softmaxed, axis=-1)
     return softmaxed, predicted_labels
 
-def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst, 
+def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst,  X_val, y_val,
                                k_nns, results_path, file_name_wo_file_ending, distance_measures):
     """Run KNN analysis for classification tasks."""
     proba_output = args.model_type in ["LightGBM", "XGBoost", "pt_frame_xgb", "LogReg"]
@@ -162,7 +162,9 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
         np.savez(osp.join(results_path, experiment_setting), **res_dict)
         print(f"Results saved to {osp.join(results_path, experiment_setting)}")
     print("Results for kNN classification on model predictions:")
-    print(res_classification)
+    print(np.array(res_classification).max(axis=0))
+    print("Results for kNN classification on true labels:")
+    print(np.array(res_classification_true_labels).max(axis=0))
     print("Computing metrics for regression on model predictions")
     reg = LogisticRegression().fit(X_trn, ys_trn_predicted_labels)
     lr_preds = reg.predict(X_tst)
@@ -206,7 +208,7 @@ def run_classification_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y
     np.savez(osp.join(results_path, model_experiment_setting), **model_res)
     print(f"Model performance results saved to {osp.join(results_path, model_experiment_setting)}")
 
-def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst,
+def run_regression_analysis(args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst, X_val, y_val,
                           k_nns, results_path, file_name_wo_file_ending, distance_measures):
     """Run KNN analysis for regression tasks."""
     for distance_measure in distance_measures:
@@ -306,6 +308,8 @@ def main(args):
     X_tst = tst_feat.numpy() if isinstance(tst_feat, torch.Tensor) else tst_feat
     y_trn = y_trn.numpy() if isinstance(y_trn, torch.Tensor) else y_trn
     y_tst = y_tst.numpy() if isinstance(y_tst, torch.Tensor) else y_tst
+    X_val = analysis_feat.numpy() if isinstance(analysis_feat, torch.Tensor) else analysis_feat
+    y_val = analysis_y.numpy() if isinstance(analysis_y, torch.Tensor) else analysis_y
 
     # Check for NaNs in training data
     nan_mask_trn = np.isnan(X_trn).any(axis=1)
@@ -323,6 +327,12 @@ def main(args):
         X_tst = X_tst[~nan_mask_tst]
         y_tst = y_tst[~nan_mask_tst]
 
+    nan_mask_val = np.isnan(X_val).any(axis=1)
+    if np.any(nan_mask_val):
+        num_nan_val = np.sum(nan_mask_val)
+        print(f"Warning: Found {num_nan_val} rows with NaN values in the validation features. Removing these rows.")
+        X_val = X_val[~nan_mask_val]
+        y_val = y_val[~nan_mask_val]
     df_loader = DataLoader(trn_feat, shuffle=False, batch_size=args.chunk_size)
     
     ys_trn_preds_path = osp.join(results_path, "ys_trn_preds.npy")
@@ -362,11 +372,13 @@ def main(args):
 
         run_regression_analysis(
             args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst,
+            X_val, y_val,
             k_nns, results_path, file_name_wo_file_ending, distance_measures
         )
     else:
         run_classification_analysis(
             args, X_trn, X_tst, ys_trn_preds, y_tst_preds, y_trn, y_tst,
+            X_val, y_val,   
             k_nns, results_path, file_name_wo_file_ending, distance_measures
         )
     

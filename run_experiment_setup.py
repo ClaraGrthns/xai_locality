@@ -283,20 +283,27 @@ def main():
     if args.debug:
         # Debug configuration based on user provided command line example:
         args.model_type = "LightGBM"
-        args.setting = "diabetes130us"
         args.method = "lime"
         args.distance_measure = "euclidean"
         args.random_seed = 42
-        args.scale = "medium"
-        args.use_benchmark = True
-        args.task_type = "binary_classification"
-        args.num_repeats = 1
-        args.epochs = 25
-        args.include_val = True
+        args.n_features = 200
+        args.n_informative = 10
+        args.n_redundant = 0
+        args.n_repeated = 0
+        args.n_classes = 2
+        args.n_samples = 100000
+        args.n_clusters_per_class = 20
+        args.class_sep = 0.7
+        args.flip_y = 0.0
+        args.random_seed_synthetic_data = 42
         args.num_trials = 5
+        args.num_repeats = 1
+        args.epochs = 10
+        args.optimize = True
         args.kernel_width = "default"
         args.num_lime_features = 10
         args.force_training = True
+        args.hypercube=True
 
     if args.force_training:
         args.force_overwrite = True

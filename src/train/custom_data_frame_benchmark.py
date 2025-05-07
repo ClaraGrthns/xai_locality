@@ -13,8 +13,8 @@
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy...
 
-
-
+from src.utils.metrics import binary_classification_metrics, regression_metrics
+from torch_frame import Metric
 import argparse
 import math
 import os
@@ -224,11 +224,13 @@ def prepare_data_and_models(args):
             data_folder=args.data_folder,
             hypercube = args.hypercube,
             test_size=args.test_size, 
-            val_size=args.val_size)
+            val_size=args.val_size,
+            force_create = args.force_training)
         data_folder = args.data_folder
         
     trn_feat_norm, val_feat_norm, tst_feat_norm, scaler = normalize_features(trn_feat, val_feat, tst_feat)
-    y_train, y_val, y_test = normalize_target(y_train, y_val, y_test)
+    if args.regression:
+        y_train, y_val, y_test = normalize_target(y_train, y_val, y_test)
 
     df_trn = pd.DataFrame(trn_feat_norm)
     df_trn['y'] = y_train
@@ -796,7 +798,9 @@ def main_gbdt(args=None):
         num_classes = dataset.num_classes
     else:
         num_classes = None
-    model = model_cls(task_type=dataset.task_type, num_classes=num_classes)
+    metric_task = Metric.ACCURACY if dataset.task_type.is_classification else Metric.RMSE
+    
+    model = model_cls(task_type=dataset.task_type, num_classes=num_classes, metric=metric_task)
 
     import time
     start_time = time.time()
@@ -806,6 +810,8 @@ def main_gbdt(args=None):
     val_metric = model.compute_metric(val_dataset.tensor_frame.y, val_pred)
     test_pred = model.predict(tf_test=test_dataset.tensor_frame)
     test_metric = model.compute_metric(test_dataset.tensor_frame.y, test_pred)
+    print(binary_classification_metrics(
+        test_dataset.tensor_frame.y, (test_pred>0.5).int(), test_pred))
     end_time = time.time()
     result_dict = {
         'args': args.__dict__,

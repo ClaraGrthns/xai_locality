@@ -159,7 +159,8 @@ def create_synthetic_classification_data_sklearn(n_features,
                                    random_seed, 
                                    data_folder, 
                                    test_size=0.4, 
-                                   val_size=0.1):
+                                   val_size=0.1,
+                                   force_create=False):
     
     setting_name = get_setting_name_classification(
         n_features=n_features,
@@ -176,7 +177,7 @@ def create_synthetic_classification_data_sklearn(n_features,
     )
     file_path = os.path.join(data_folder, f'{setting_name}.npz')
     
-    if os.path.exists(file_path):
+    if os.path.exists(file_path) and not force_create:
         data = np.load(file_path)
         X_train = data['X_train']
         X_val = data['X_val']
