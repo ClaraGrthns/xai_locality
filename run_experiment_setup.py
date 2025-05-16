@@ -7,8 +7,8 @@ import time
 import numpy as np
 
 from src.train.custom_data_frame_benchmark import main_deep_models, main_gbdt
-from knn_vs_accuracy import main as main_knn_vs_accuracy
-from knn_analyzer import main as main_knn_analyzer
+from estimate_local_fidelity import main as main_knn_vs_accuracy
+from model_complexity import main as main_knn_analyzer
 from src.dataset.synthetic_data import get_setting_name_classification, get_setting_name_regression
 from src.utils.misc import set_random_seeds
 
@@ -61,6 +61,9 @@ def parse_args():
                         help="Index of benchmark dataset")
     parser.add_argument("--num_trials", type=int,  help="Number of trials for training", default=15)
     parser.add_argument("--num_repeats", type=int, help="Number of repeats for training", default = 1)
+    parser.add_argument("--complexity_model", type=str,default="optimize",
+                        choices=["simple", "complex", "optimize"],
+                        help="Complexity of the model")
 
     # Train configuration
     parser.add_argument("--epochs", type=int, help="Number of epochs for training")
@@ -94,9 +97,9 @@ def parse_args():
     parser.add_argument("--distance_measure", type=str, help="Distance measure for KNN")
     parser.add_argument("--distance_measures", nargs='+', default=["euclidean", "manhattan", "cosine"], 
                         help="List of distance measures to use")
-    parser.add_argument("--min_k", type=int, default=1, help="Minimum k for KNN")
-    parser.add_argument("--max_k", type=int, default=40, help="Maximum k for KNN")
-    parser.add_argument("--k_step", type=int, default=1, help="Step size for k in KNN")
+    parser.add_argument("--min_k", type=int, default=2, help="Minimum k for KNN")
+    parser.add_argument("--max_k", type=int, default=20, help="Maximum k for KNN")
+    parser.add_argument("--k_step", type=int, default=2, help="Step size for k in KNN")
     parser.add_argument("--chunk_size", type=int, default=200, help="Chunk size for processing")
     parser.add_argument("--max_test_points", type=int, default=200, help="Maximum number of test points")
     parser.add_argument("--force_overwrite", action="store_true", help="Force overwrite existing results")
@@ -201,9 +204,9 @@ def get_results_path(args, step):
                         args.setting)
     elif step == "train" and args.use_benchmark:
         if args.regression:
-            model_name = f"{args.model_type}_normalized_regression_{args.setting}_results.pt"
+            model_name = f"{args.model_type}_normalized_regression_{args.setting}_{f"{args.complexity_model}__" if args.complexity_model != "optimize" else ""}results.pt"
         else:
-            model_name =f"{args.model_type}_normalized_binary_{args.setting}_results.pt"
+            model_name =f"{args.model_type}_normalized_binary_{args.setting}_{f"{args.complexity_model}__" if args.complexity_model != "optimize" else ""}results.pt"
         return osp.join(args.model_folder,
                         args.model_type, 
                         args.setting,
@@ -279,31 +282,32 @@ def main():
     args.force = True #TODO: Delete
     args.force_overwrite = True #TODO: Delete
     args.use_custom_generator = True  # Default to using custom generator in debug mode
+    args.include_trn = False
     
     if args.debug:
-        # Debug configuration based on user provided command line example:
-        args.model_type = "LightGBM"
+        args.model_type = "MLP"
+        args.setting = "n_feat55_n_informative30_n_redundant5_n_repeated5_n_classes2_n_samples100000_n_clusters_per_class5_class_sep0.8_flip_y0.05_random_state42_hypercubeFalse"
         args.method = "lime"
         args.distance_measure = "euclidean"
         args.random_seed = 42
-        args.n_features = 200
-        args.n_informative = 10
-        args.n_redundant = 0
-        args.n_repeated = 0
+        args.skip_knn = True
+        args.n_features = 55
+        args.n_informative = 30
+        args.n_redundant = 5
+        args.n_repeated = 5
         args.n_classes = 2
         args.n_samples = 100000
-        args.n_clusters_per_class = 20
-        args.class_sep = 0.7
-        args.flip_y = 0.0
+        args.n_clusters_per_class = 5
+        args.class_sep = 0.8
+        args.flip_y = 0.05
         args.random_seed_synthetic_data = 42
-        args.num_trials = 5
+        args.num_trials = 15
         args.num_repeats = 1
-        args.epochs = 10
+        args.epochs = 40
         args.optimize = True
         args.kernel_width = "default"
         args.num_lime_features = 10
-        args.force_training = True
-        args.hypercube=True
+        args.create_additional_analysis_data = True
 
     if args.force_training:
         args.force_overwrite = True
@@ -325,6 +329,10 @@ def main():
     args.model_path = model_path
     args.data_path = get_data_path(args)
     args.coef = False
+    args.skip_knn = True  
+    args.skip_fraction = False #TODO: Delete
+    # args.force_training = False #TODO: Delete
+
     print(args)
 
     if args.downsample_analysis:
@@ -340,12 +348,14 @@ def main():
     else:
         print(f"Model already exists at {args.model_path}")
     
+
     if not args.skip_knn:
         print("Starting KNN analysis...")
         start_time = time.time()
         args.downsample_analysis = 1.0
         run_knn_analysis(args)
         print(f"KNN analysis completed in {(time.time() - start_time)/60:.2f} minutes.")
+
     if not args.skip_fraction:
         print("Starting fraction vs accuracy analysis...")
         start_time = time.time()

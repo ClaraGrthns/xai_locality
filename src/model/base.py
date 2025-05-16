@@ -51,7 +51,6 @@ class BaseModelHandler:
         tst_feat = whole_tst_feat[tst_indices]
         analysis_y = y[analysis_indices]
         tst_y = y[tst_indices]
-
         return tst_feat, analysis_feat, tst_y, analysis_y
     
     def _transform_materialize_data(self, X, y):
@@ -164,6 +163,7 @@ class BaseModelHandler:
             else:
                 analysis_feat = torch.cat([analysis_feat, val_feat], dim=0)
         if "synthetic" in self.args.data_folder and self.args.create_additional_analysis_data:
+            n_additional_samples = 100000
             if self.args.regression:
                 _, trn_feat_unnormalized, _, _, _, _, _, _ = create_custom_synthetic_regression_data(regression_mode=self.args.regression_mode,
                                                                                                   n_features= args.n_features,
@@ -180,10 +180,10 @@ class BaseModelHandler:
                 setting_name, X_train, X_val, X_test, y_train, y_val, y_test, col_indices = create_custom_synthetic_regression_data(regression_mode=self.args.regression_mode,
                                                                                                   n_features= args.n_features,
                                                                                                   n_informative=args.n_informative,
-                                                                                                  n_samples=200000,
+                                                                                                  n_samples=n_additional_samples,
                                                                                                   noise=args.noise,
                                                                                                   bias=args.bias,
-                                                                                                  random_seed=args.random_seed_synthetic_data,
+                                                                                                  random_seed=args.random_seed_synthetic_data+1,
                                                                                                   data_folder=args.data_folder,
                                                                                                   test_size=args.test_size,
                                                                                                   val_size=args.val_size,
@@ -206,8 +206,8 @@ class BaseModelHandler:
                     hypercube = args.hypercube,
                     test_size=args.test_size, 
                     val_size=args.val_size)
-                X, _ = make_classification(
-                        n_samples=200000,
+                X, y = make_classification(
+                        n_samples=n_additional_samples,
                         n_features=self.args.n_features,
                         n_informative=self.args.n_informative,
                         n_redundant=self.args.n_redundant,
@@ -220,17 +220,21 @@ class BaseModelHandler:
                         random_state=self.args.random_seed_synthetic_data+1,
                         shuffle=True  # Important for random sampling while maintaining balance
                 )
+                # Xaux, X_test, y, y_test = train_test_split(X, y, test_size=0.4, random_state=42)
+                # X_train, X_val, y_train, y_val = train_test_split(Xaux, y, test_size=0.1, random_state=42)
             X_mean = np.mean(trn_feat_unnormalized, axis=0)
             X_std = np.std(trn_feat_unnormalized, axis=0)
             X_normalized = (X - X_mean) / X_std
+            # X_test = (X_test - X_mean) / X_std
+            # # X_analysis = X_test[analysis_indices]
+            # X_test = X_test[tst_indices]
             if isinstance(analysis_feat, np.ndarray):
                 analysis_feat = X_normalized
             else:
                 X_normalized = torch.tensor(X_normalized, dtype=torch.float32)
                 analysis_feat = X_normalized
-            if self.args.downsample_analysis != 1.0:
-                downsample_size = int(self.args.downsample_analysis * len(analysis_feat))
-                analysis_feat = analysis_feat[:downsample_size] 
+            downsample_size = int(self.args.downsample_analysis * len(analysis_feat))
+            analysis_feat = analysis_feat[:downsample_size] 
         tst_dataset = TabularDataset(tst_feat)
         analysis_dataset = TabularDataset(analysis_feat)
         print("Length of data set for analysis", len(analysis_dataset))

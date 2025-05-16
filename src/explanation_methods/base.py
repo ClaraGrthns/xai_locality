@@ -279,7 +279,7 @@ class BaseExplanationMethodHandler:
             results: Results dictionary to save
         """
         # np.savez(os.path.join(results_path, experiment_setting), **results)
-        if self.args.downsample_analysis != 1.0:
+        if self.args.create_additional_analysis_data:
            results_path = os.path.join(results_path, "downsampled")
            if not os.path.exists(results_path):
                os.makedirs(results_path)
