@@ -67,7 +67,9 @@ def get_filter(mean_diffs, filter):
         'min': np.nanmin,
         'max': np.nanmax,
         'median': np.nanmedian,
-        'mean': np.nanmean
+        'mean': np.nanmean,
+        'argmax': np.nanargmax,
+        'argmin': np.nanargmin,
     }
     return filters.get(filter, lambda x: x[filter])(mean_diffs) if isinstance(filter, str) else mean_diffs[filter]
 
@@ -120,6 +122,69 @@ def filter_best_performance_local_model(filepath,
     filtered_res = get_filter(summary_vals, filter)
     return filtered_res
 
+def get_metric_vals(is_ratio, is_diff, metric_idx, data):
+    if is_ratio:
+        vals = get_fraction(data[metric_idx[0]], data[metric_idx[1]])
+    elif is_diff:
+        vals = data[metric_idx[0]] - data[metric_idx[1]]
+    else:
+        vals = data[metric_idx]
+    return vals
+
+def get_local_vs_constant_metric_data(res_model, 
+                           filter, 
+                           metric, 
+                           regression=False, 
+                           random_seed=42,
+                           kernel_width="default",
+                           downsample_fraction = None, 
+                           summarizing_statistics=None,
+                           average_over_n_neighbors=200):
+    """Extract kNN and performance difference data."""
+    if regression:
+        from src.utils.process_results import load_results_regression as load_results
+        metrics_map = METRICS_MAP_REG
+    else:
+        from src.utils.process_results import load_results_clf as load_results
+        metrics_map = METRICS_TO_IDX_CLF
+    results = []
+    if summarizing_statistics is None:
+        summarizing_statistics = lambda x, axis: np.nanmedian(x, axis=axis)
+    for dataset, files in res_model.items():
+        if downsample_fraction is not None:
+            files = get_downsample_fraction_to_filepaths(files, downsample_fraction)
+            if files is None: continue
+        rs_files = get_random_seed_to_filepaths(files)
+        if len(rs_files) == 0: continue
+        random_seeds = np.array([int(rs[0])for rs in rs_files])
+        files_sorted_with_rs = [str(rs[1]) for rs in rs_files]
+        try: 
+            files_random_seed = files_sorted_with_rs[np.where(random_seeds==random_seed)[0][0]]
+        except IndexError:
+            print(f"{files}: Random seed {random_seed} not found in {dataset}.")
+            continue
+        file_path = get_kw_fp(files_random_seed, kernel_width)
+        filtered_res_g = filter_best_performance_local_model(
+            filepath=file_path,
+            metric=metric,
+            summarizing_statistics=summarizing_statistics,
+            average_over_n_neighbors=average_over_n_neighbors,
+            filter = filter, 
+            regression=regression
+        )
+        # process constant xai model results =========
+        metric_constant = metric.replace("$g_x$", "const. local model")
+        filtered_res_constant = filter_best_performance_local_model(
+            filepath=file_path,
+            metric=metric_constant,
+            summarizing_statistics=summarizing_statistics,
+            average_over_n_neighbors=average_over_n_neighbors,
+            filter = filter, 
+            regression=regression
+        )
+        results.append((dataset, filtered_res_constant, filtered_res_g))
+    return results
+
 
 def get_knn_vs_metric_data(res_model, 
                            model_name, 
@@ -134,6 +199,7 @@ def get_knn_vs_metric_data(res_model,
                            summarizing_statistics=None,
                            downsample_fraction = None, 
                            complexity_regression="best", 
+                           complexity_model = "",
                            average_over_n_neighbors=200):
     """Extract kNN and performance difference data."""
     results = []
@@ -142,6 +208,7 @@ def get_knn_vs_metric_data(res_model,
     for dataset, files in res_model.items():
         if downsample_fraction is not None:
             files = get_downsample_fraction_to_filepaths(files, downsample_fraction)
+            if files is None: continue
         rs_files = get_random_seed_to_filepaths(files)
         if len(rs_files) == 0: continue
         random_seeds = np.array([int(rs[0])for rs in rs_files])
@@ -152,7 +219,7 @@ def get_knn_vs_metric_data(res_model,
             print(f"{model_name}: Random seed {random_seed} not found in {dataset}.")
             continue
         file_path = get_kw_fp(files_random_seed, kernel_width)
-        filtered_res = filter_best_performance_local_model(
+        filtered_res_g = filter_best_performance_local_model(
             filepath=file_path,
             metric=metric,
             summarizing_statistics=summarizing_statistics,
@@ -168,14 +235,34 @@ def get_knn_vs_metric_data(res_model,
                                                 regression=regression,
                                                 synthetic=synthetic,
                                                 random_seed=random_seed,
+                                                complexity_model=complexity_model,
                                                 complexity_regression=complexity_regression)
         
         if res_complexity is None: continue
         compl_metr = max(res_complexity, 0) if regression else max(res_complexity, 0.5)
-        knn_result_metric = compl_metr
-        results.append((dataset, knn_result_metric, filtered_res))
+        results.append((dataset, compl_metr, filtered_res_g))
     return results
 
+def get_kw_float(kw_to_files, kernel_width):
+    """Get the kernel width and file path from a list of files."""
+    if not isinstance(kw_to_files, list):
+        return kw_to_files
+    kw_to_files_wo_inf = [(kw, f) for kw, f in kw_to_files if kw != np.inf]
+    if len(kw_to_files) > 0 and len(kw_to_files_wo_inf) >  0:
+        kw_to_files = kw_to_files_wo_inf
+    if len(kw_to_files) > 0:
+        if kernel_width == "default":
+            kw_idx = len(kw_to_files) // 2 # middle kernel width
+        elif kernel_width == "half":
+            kw_idx = 0
+        elif kernel_width == "double":
+            kw_idx = -1
+        if len(kw_to_files) != 3:
+            if kernel_width != "default": print(f"Warning: less than 3 kernel widths found: {kw_to_files}, using the {kw_idx}th.")
+        return kw_to_files[kw_idx][0]
+    else:
+        print(f"Warning: no kernel widths found, using the first file.")
+        return None
 
 def get_kw_fp(kw_to_files, kernel_width):
     """Get the kernel width and file path from a list of files."""
@@ -219,7 +306,7 @@ def get_downsample_fraction_to_filepaths(files, downsample_fraction):
     if len(res) == 0: 
         print(f"Warning: no downsampled files found, returning None.")
         return None
-    downsample_fractions = np.array([int(rs[0])for rs in res])
+    downsample_fractions = np.array([rs[0]for rs in res])
     files_sorted_with_ds = [str(rs[1]) for rs in res]
     try: 
         file_ds = files_sorted_with_ds[np.where(downsample_fractions==downsample_fraction)[0][0]]
@@ -252,7 +339,7 @@ def get_synthetic_dataset_friendly_name(dataset_name, pattern=None):
         i = match.group(2)       # number of informative features
         c = match.group(3)       # clusters per class
         s = match.group(4)       # class separation
-        hypercube_param = "hc: ×" if "hypercubeFalse" in dataset_name else "hc: ✓"
+        hypercube_param = "hc: n" if "hypercubeFalse" in dataset_name else "hc: y"
         return f"syn \n(d:{d}, inf f.:{i}, clust.:{c}, sep.:{s}, {hypercube_param})"
     return dataset_name
 
@@ -339,8 +426,10 @@ def get_results_files_dict(explanation_method: str,
                 elif type(random_seed) == bool:
                     return f"random_seed" in file
                 return f"random_seed-42" in file
+            def not_train_condition(file):
+                return "dataset_test_val_trn" not in file
             # Combine conditions
-            combined_condition = lambda x: file_matching(x, distance_measure, condition=condition) and random_seed_condition(x)
+            combined_condition = lambda x: file_matching(x, distance_measure, condition=condition) and random_seed_condition(x) and not_train_condition(x)
             files = [os.path.join(path_to_results, f) for f in os.listdir(path_to_results) if combined_condition(f)]
             if len(files) > 0 and not (isinstance(random_seed, int) and downsampled):
                 upper_limits = []
@@ -356,18 +445,30 @@ def get_results_files_dict(explanation_method: str,
                         min_upper = counter.most_common(1)[0][0]
                     files = [f for f in files if f"{min_upper}_dataset" in f]
             # Filter files with random_seed-42
-            seed42_files = [f for f in files if "random_seed-42" in f or ("random_seed" not in f)]
-            if explanation_method in ["lime", "lime_captum"] and len(seed42_files)>0 and not downsampled and not(random_seed!=42):
-                kernel_widths = get_kernel_widths_to_filepaths(seed42_files)
-                kernel_widths = [kw for kw in kernel_widths if kw[0] is not None]  # Filter out None kernel widths
-                if len(kernel_widths) > 0:
-                    res = get_kw_fp(kernel_widths, kernel_width)
-                else:
-                    res = seed42_files[0]
-                if (type(random_seed) == bool) and random_seed:
-                    res = list(set(files)-set(seed42_files)| {res})
-            else:
-                res = files
+            if explanation_method in ["lime", "lime_captum"]:
+                kernel_widths = get_kernel_widths_to_filepaths(files)
+                kw_float = get_kw_float(kernel_widths, kernel_width)
+                for kw, f in kernel_widths:
+                    if kw != kw_float:
+                        files.remove(f)
+                if len(files) !=5 and random_seed == True: 
+                    print(f"Warning: {model} on {dataset} with distance measure {distance_measure} with {kernel_width} has {len(files)} files, expected 5.")
+            # Filter files with random_seed-42  
+            if len(files) == 0 and explanation_method in ["lime", "lime_captum"] :
+                print(f"Warning: no files found for {model} on {dataset} with distance measure {distance_measure} with {kernel_width}.")
+                continue
+            # seed42_files = [f for f in files if "random_seed-42" in f or ("random_seed" not in f)]
+            # if explanation_method in ["lime", "lime_captum"] and len(seed42_files)>0 and not downsampled and (random_seed!=42):
+            #     kernel_widths = get_kernel_widths_to_filepaths(seed42_files)
+            #     kernel_widths = [kw for kw in kernel_widths if kw[0] is not None]  # Filter out None kernel widths
+            #     if len(kernel_widths) > 0:
+            #         res = get_kw_fp(kernel_widths, kernel_width)
+            #     else:
+            #         res = seed42_files[0]
+            #     if (type(random_seed) == bool) and random_seed:
+            #         res = list(set(files)-set(seed42_files)| {res})
+            # else:
+            res = files
             if isinstance(res, list) and len(res) == 0:
                 continue
             if len(res) > 0:
@@ -508,28 +609,30 @@ def load_complexity_results(model,
                      regression=False, 
                      random_seed=42, 
                     complexity_regression=False,
+                    complexity_model = "", 
                      downsample_analysis=1.0):
     distance_measure = distance_measure.lower()
     suffix = "_regression" if regression else ""
     prefix = "regression_" if regression else ""
     results_folder = f"{BASEDIR}/results"
+    random_seed_ending = ""
     if synthetic:
         # Get dataset name without synthetic_data/ prefix
         dataset_name = dataset.split('/')[-1]
         if complexity_regression:
             file_path = (f"{results_folder}/knn_model_preds/{model}/"
-                    f"{prefix}synthetic_data/{dataset_name}/lr_on_model_preds{model}_random_seed-{random_seed}.npz")
+                    f"{prefix}synthetic_data/{dataset_name}/lr_on_model_preds{model}{random_seed_ending}{f"_{complexity_model}" if complexity_model != "" else complexity_model}.npz")
         else:
             file_path = (f"{results_folder}/knn_model_preds/{model}/"
                     f"{prefix}synthetic_data/{dataset_name}/kNN{suffix}_on_model_preds_{model}_"
-                    f"dist_measure-{distance_measure}_random_seed-{random_seed}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}.npz")
+                    f"dist_measure-{distance_measure}{random_seed_ending}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}{f"_{complexity_model}" if complexity_model != "" else complexity_model}.npz")
     elif complexity_regression:
         file_path = (f"{results_folder}/knn_model_preds/{model}/"
-                    f"{dataset}/lr_on_model_preds{model}_random_seed-{random_seed}.npz")
+                    f"{dataset}/lr_on_model_preds{model}{random_seed_ending}{f"_{complexity_model}" if complexity_model != "" else complexity_model}.npz")
     else:
         file_path = (f"{results_folder}/knn_model_preds/{model}/"
                     f"{dataset}/kNN{suffix}_on_model_preds_{model}_"
-                    f"dist_measure-{distance_measure}_random_seed-{random_seed}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}.npz")
+                    f"dist_measure-{distance_measure}{random_seed_ending}{f"downsample-{np.round(downsample_analysis, 2)}" if downsample_analysis!=1.0 else ""}{f"_{complexity_model}" if complexity_model != "" else complexity_model}.npz")
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
         return None
@@ -540,7 +643,7 @@ def load_complexity_results(model,
         print(f"Error loading {file_path}: {e}")
         return None   
 
-def load_model_performance(model, dataset, synthetic=False, regression=False, random_seed=42):
+def load_model_performance(model, dataset, synthetic=False, regression=False, random_seed=42, complexity_model=""):
     """Loads model performance metrics from a .npz file.
 
     Parameters
@@ -562,9 +665,9 @@ def load_model_performance(model, dataset, synthetic=False, regression=False, ra
     results_folder = f"{BASEDIR}/results"
     if synthetic:
         dataset_name = dataset.split('/')[-1]
-        file_path = f"{results_folder}/knn_model_preds/{model}/{"regression_" if regression else ""}synthetic_data/{dataset_name}/model{regression_str}_performance_{model}_random_seed-{random_seed}.npz"
+        file_path = f"{results_folder}/knn_model_preds/{model}/{"regression_" if regression else ""}synthetic_data/{dataset_name}/model{regression_str}_performance_{model}{f"_{complexity_model}" if complexity_model != "" else complexity_model}.npz"
     else:
-        file_path = f"{results_folder}/knn_model_preds/{model}/{dataset}/model{regression_str}_performance_{model}_random_seed-{random_seed}.npz"
+        file_path = f"{results_folder}/knn_model_preds/{model}/{dataset}/model{regression_str}_performance_{model}{f"_{complexity_model}" if complexity_model != "" else complexity_model}.npz"
     try:
         res = np.load(file_path, allow_pickle=True)
         return res
@@ -572,12 +675,12 @@ def load_model_performance(model, dataset, synthetic=False, regression=False, ra
         print(f"Error loading {file_path}: {e}")
         return None
     
-def get_performance_metrics_models(model, dataset, synthetic=False, regression=False, random_seed=42):
+def get_performance_metrics_models(model, dataset, synthetic=False, regression=False, random_seed=42, complexity_model=""):
     """Loads model performance metrics from a .npz file.
     classification output: auroc, accuracy, precision, recall, f1
     regression output: mse, mae, r2
     """
-    res = load_model_performance(model, dataset, synthetic, regression, random_seed)
+    res = load_model_performance(model, dataset, synthetic, regression, random_seed, complexity_model)
     if res is None:
         return None
     else:
@@ -606,6 +709,7 @@ def get_performance_metrics_smpl_complex_models(model,
                                                 regression=False,
                                                 synthetic=False,
                                                 random_seed=42,
+                                                complexity_model="",
                                                 complexity_regression="best"):
     """Get performance metrics for the model and dataset."""  
     if regression:
@@ -641,6 +745,7 @@ def get_performance_metrics_smpl_complex_models(model,
                                         synthetic=synthetic, 
                                         distance_measure=distance,
                                         complexity_regression=("kNN" not in complexity_metric),
+                                        complexity_model=complexity_model,
                                         random_seed=random_seed)[0]
         max_complexity_performance = max(max_complexity_performance, performance_smple_model_model_preds)
     smple_model_true_labels = [complexity_metric + " true labels" for complexity_metric in complexity_metrics]
@@ -651,6 +756,7 @@ def get_performance_metrics_smpl_complex_models(model,
                                         smple_model_true_label, 
                                         synthetic=synthetic, 
                                         distance_measure=distance,
+                                        complexity_model=complexity_model,
                                         complexity_regression=("kNN" not in smple_model_true_label),
                                         random_seed=random_seed)[0]
         max_performance_true_labels = max(max_performance_true_labels, performance_smpl_model_true_labels)
@@ -659,6 +765,7 @@ def get_performance_metrics_smpl_complex_models(model,
                                 dataset,
                                 synthetic=synthetic,
                                 regression=regression,
+                                complexity_model=complexity_model,
                                 random_seed=random_seed,)
     if res is None: 
         print(f"Warning: no results found for {model} on {dataset}")
@@ -675,10 +782,11 @@ def get_knn_vs_diff_model_performance(model,
                                     regression=False,
                                     synthetic=False,
                                     random_seed=42,
+                                    complexity_model="",
                                     complexity_regression="best"):
     performance_smple_model_model_preds, performance_smpl_model_true_labels, performance_model = get_performance_metrics_smpl_complex_models(
             model, dataset, distance=distance, regression=regression,
-            synthetic=synthetic, random_seed=random_seed, complexity_regression=complexity_regression
+            synthetic=synthetic, random_seed=random_seed, complexity_regression=complexity_regression, complexity_model=complexity_model
         )
     diff = performance_model - performance_smpl_model_true_labels
     return performance_smple_model_model_preds, diff
@@ -689,6 +797,7 @@ def get_best_metrics_of_complexity_of_f_clf(model,
                                 synthetic=False, 
                                 distance_measure="euclidean", 
                                 complexity_regression=False,
+                                complexity_model = "", 
                                 random_seed=42):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
@@ -719,6 +828,7 @@ def get_best_metrics_of_complexity_of_f_clf(model,
                            distance_measure= distance_measure, 
                            random_seed = random_seed, 
                            complexity_regression=complexity_regression,
+                            complexity_model = complexity_model, 
                            regression=False)
     if res is None:
         return None
@@ -742,7 +852,7 @@ def get_best_metrics_of_complexity_of_f_clf(model,
             best_metric = np.min(res[metric_key_pair[0]][:, metric_key_pair[1]])
             best_idx = np.argmin(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
         else:
-            best_metric = np.max(res[metric_key_pair[0]][:, metric_key_pair[1]])
+            best_metric = np.max(res[metric_key_pair[0]][:, metric_key_pair[1]], axis = 0)
             best_idx = np.argmax(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
         metrics_res.append((best_metric, best_idx))
     return metrics_res if len(metrics_res) > 1 else metrics_res[0]
@@ -752,7 +862,8 @@ def get_best_metrics_of_complexity_of_f_regression(model,
                                        metric_sr_ls, 
                                        synthetic=False, 
                                        distance_measure="euclidean", 
-                                    complexity_regression=False,
+                                        complexity_regression=False,
+                                        complexity_model = "", 
                                        random_seed=42):
     distance_measure = distance_measure.lower()
     metric_str_to_key_pair = {
@@ -779,6 +890,7 @@ def get_best_metrics_of_complexity_of_f_regression(model,
                            distance_measure= distance_measure, 
                            random_seed = random_seed,  
                            regression = True,
+                            complexity_model = complexity_model, 
                            complexity_regression=complexity_regression
                         )
     if res is None:
@@ -810,4 +922,149 @@ def get_best_metrics_of_complexity_of_f_regression(model,
             best_idx = np.argmin(res[metric_key_pair[0]][:, metric_key_pair[1]])+1
         metrics_res.append((best_metric, best_idx))
     return metrics_res if len(metrics_res) > 1 else metrics_res[0]
+
+def get_radii_for_dataset(
+                        datasets,
+                        regression, 
+                        random_seed=True,
+                        distance="euclidean",
+                        summarizing_statistics=np.nanmean,
+                        average_over_n_neighbors=200,
+                     ):
+    if regression:
+        from src.utils.process_results import load_results_regression as load_results
+        metrics_map = METRICS_MAP_REG
+    else: 
+        from src.utils.process_results import load_results_clf as load_results
+        metrics_map = METRICS_TO_IDX_CLF
+    res_dict = get_results_files_dict("lime", 
+                                    "LightGBM", 
+                                    datasets,
+                                    distance, 
+                                    random_seed=random_seed)
+    datasets_in_dict = sorted(list(set([dataset for model, res_model in res_dict.items() for dataset in res_model.keys() if res_model is not None and len(res_model) > 0])))
+    min_avg_radii_mean = np.empty((len(datasets_in_dict)), dtype=object)
+    max_avg_radii_mean = np.empty((len(datasets_in_dict)), dtype=object)
+    min_avg_radii_std = np.empty((len(datasets_in_dict)), dtype=object)
+    max_avg_radii_std = np.empty((len(datasets_in_dict)), dtype=object)
+    res_model = res_dict.get("LightGBM", None)
+    for j, dataset in enumerate(datasets_in_dict):
+        files = res_model.get(dataset, None)
+        if files is None or len(files) == 0:
+            print(f"No results found for {model} on {dataset}.")
+            continue
+        rs_files = [rs_fp for rs_fp in get_random_seed_to_filepaths(files)]
+        random_seeds = np.array([int(rs[0])for rs in rs_files])
+        files_sorted_with_rs = [str(rs[1]) for rs in rs_files]
+        if random_seed == True and len(files_sorted_with_rs)!=5:
+            print(files_sorted_with_rs)
+        summary_radii_mins = []
+        summary_radii_max = []
+        for rs in random_seeds:
+            try: 
+                files_random_seed = files_sorted_with_rs[np.where(random_seeds==rs)[0][0]]
+            except IndexError:
+                print(f"{model}: Random seed {random_seed} not found in {dataset}.") 
+            file_path = get_kw_fp(files_random_seed, kernel_width="default")
+            data, kNN = load_results(file_path)
+            radii = summarizing_statistics(data[metrics_map.get("Radius")], axis=1)[:average_over_n_neighbors]
+            summary_radii_mins.append(np.nanmin(radii))
+            summary_radii_max.append(np.nanmax(radii))
+        min_avg_radii_mean[j] = np.nanmean(summary_radii_mins)
+        max_avg_radii_mean[j] = np.nanmean(summary_radii_max)
+        min_avg_radii_std[j] = np.nanstd(summary_radii_mins)
+        max_avg_radii_std[j] = np.nanstd(summary_radii_max)
+
+    return min_avg_radii_mean, max_avg_radii_mean, min_avg_radii_std, max_avg_radii_std, datasets_in_dict
+
+
+
+def get_argmax_k_stats_for_model_dataset(method,
+                                        models,
+                                        datasets,
+                                        regression, 
+                                        random_seed=42,
+                                        distance="euclidean",
+                                        metric="Accuracy $g_x$",
+                                        summarizing_statistics=np.nanmean,
+                                        average_over_n_neighbors=200,
+                                        take_max = True
+                                        ):
+    if regression:
+        from src.utils.process_results import load_results_regression as load_results
+        metrics_map = METRICS_MAP_REG
+        synthetic_dataset_name = get_synthetic_dataset_friendly_name_regression
+    else: 
+        from src.utils.process_results import load_results_clf as load_results
+        metrics_map = METRICS_TO_IDX_CLF
+        synthetic_dataset_name = get_synthetic_dataset_friendly_name
+    res_dict = get_results_files_dict(method, 
+                                    models, 
+                                    datasets,
+                                    distance, 
+                                    random_seed=random_seed)
+    models_in_dict = sorted([model for model, res_model in res_dict.items() if res_model is not None and len(res_model) > 0])
+    datasets_in_dict = sorted(list(set([dataset for model, res_model in res_dict.items() for dataset in res_model.keys() if res_model is not None and len(res_model) > 0])))
+    cutoff=0 if regression else 0.5
+    argmax_k_max_avg_stat_array = np.empty((len(models_in_dict), len(datasets_in_dict)), dtype=object)
+    radius_of_argmax_k_max_avg_stat_array = np.empty((len(models_in_dict), len(datasets_in_dict)), dtype=object)
+    argmax_k_max_per_x_array = np.empty((len(models_in_dict), len(datasets_in_dict)), dtype=object)
+    argmax_k_per_x_array = np.empty((len(models_in_dict), len(datasets_in_dict), average_over_n_neighbors), dtype=object)
+    for i, model in enumerate(models_in_dict):
+        res_model = res_dict.get(model, None)
+        for j, dataset in enumerate(datasets_in_dict):
+            files = res_model.get(dataset, None)
+            if files is None or len(files) == 0:
+                print(f"No results found for {model} on {dataset}.")
+                continue
+            rs_files = [rs_fp for rs_fp in get_random_seed_to_filepaths(files)]
+            random_seeds = np.array([int(rs[0])for rs in rs_files])
+            files_sorted_with_rs = [str(rs[1]) for rs in rs_files]
+            summary_over_rs_per_x = []
+            summary_over_rs = []
+            summary_radii = []
+            for rs in random_seeds:
+                try: 
+                    files_random_seed = files_sorted_with_rs[np.where(random_seeds==rs)[0][0]]
+                except IndexError:
+                    print(f"{model}: Random seed {random_seed} not found in {dataset}.") 
+                file_path = get_kw_fp(files_random_seed, kernel_width="default")
+                data, kNN = load_results(file_path)
+                metric_idx = metrics_map[metric]
+                is_diff = "-" in metric
+                is_ratio = "/" in metric
+                if is_ratio:
+                    vals = get_fraction(data[metric_idx[0]], data[metric_idx[1]])
+                    summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
+                elif is_diff:
+                    vals = data[metric_idx[0]] - data[metric_idx[1]]
+                    summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
+                else:
+                    vals = data[metric_idx]
+                    summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
+                vals = vals[:average_over_n_neighbors]
+                summary_over_rs_per_x.append( vals)
+                summary_over_rs.append(summary_vals)
+                summary_radii.append(summarizing_statistics(data[metrics_map.get("Radius")], axis=1)[:average_over_n_neighbors])
+            summary_over_rs_per_x = np.array(summary_over_rs_per_x)
+            summary_over_rs = np.array(summary_over_rs)
+            summary_radii = np.array(summary_radii)
+            vals = np.mean(summary_over_rs_per_x, axis=0)
+            summary_vals = np.mean(summary_over_rs, axis=0)
+            vals = np.where(vals > cutoff, vals, 0)[:average_over_n_neighbors]
+            summary_vals = np.where(summary_vals > cutoff, summary_vals, 0)
+            avg_radii = np.mean(summary_radii, axis=0)
+            if take_max:
+                max_k_over_all_x = np.nanargmax(vals[:average_over_n_neighbors], axis=0)+1
+                max_k_model_per_dataset = np.nanargmax(summary_vals)+1
+            else:
+                max_k_over_all_x = np.nanargmin(vals[:average_over_n_neighbors], axis=0)+1
+                max_k_model_per_dataset = np.nanargmin(summary_vals)+1
+            
+            radius_of_argmax_k_max_avg_stat_array[i, j] = avg_radii[max_k_model_per_dataset-1]
+            argmax_k_max_avg_stat_array[i, j] = max_k_model_per_dataset
+            most_common_k = np.argmax(np.bincount(max_k_over_all_x))
+            argmax_k_max_per_x_array[i, j] = most_common_k
+            argmax_k_per_x_array[i, j] = max_k_over_all_x
+    return argmax_k_max_avg_stat_array, argmax_k_max_per_x_array, argmax_k_per_x_array, radius_of_argmax_k_max_avg_stat_array, models_in_dict, datasets_in_dict
 
