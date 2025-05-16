@@ -382,6 +382,20 @@ def prepare_data_and_models(args):
                 'gamma': [1., 1.2, 1.5],
                 'num_layers': [4, 6, 8],
             }
+            if args.complexity_model == "simple":
+                model_search_space = {
+                    'split_attn_channels': [64],  # Smallest attention channels
+                    'split_feat_channels': [64],  # Smallest feature channels
+                    'gamma': [1.0],               # Less feature reuse
+                    'num_layers': [2],            # Fewest layers
+                }
+            elif args.complexity_model == "complex":
+                model_search_space ={
+                'split_attn_channels': [256],  # Largest attention channels
+                'split_feat_channels': [256],  # Largest feature channels
+                'gamma': [1.5],               # Encourages more feature reuse
+                'num_layers': [8],            # Deepest architecture
+                }
             train_search_space = {
                 'batch_size': [2048, 4096],
                 'base_lr': [0.001, 0.01],
@@ -418,6 +432,12 @@ def prepare_data_and_models(args):
                 'channels': [64, 128, 256],
                 'num_layers': [4, 6, 8],
             }
+            if args.complexity_model == "simple":
+                model_search_space['num_layers'] = [4]
+                model_search_space['channels'] = [64]
+            elif args.complexity_model == "complex":
+                model_search_space['num_layers'] = [8]
+                model_search_space['channels'] = [256]
             train_search_space = {
                 'batch_size': [256, 512],
                 'base_lr': [0.0001, 0.001],
@@ -430,6 +450,12 @@ def prepare_data_and_models(args):
                 'channels': [64, 128, 256],
                 'num_layers': [1, 2, 4],
             }
+            if args.complexity_model == "simple":
+                model_search_space['num_layers'] = [1]
+                model_search_space['channels'] = [64]
+            elif args.complexity_model == "complex":
+                model_search_space['num_layers'] = [8]
+                model_search_space['channels'] = [256]
             train_search_space = {
                 'batch_size': [256, 512],
                 'base_lr': [0.0001, 0.001],
@@ -459,6 +485,14 @@ def prepare_data_and_models(args):
                 'num_layers': [4, 6, 8],
                 'num_prompts': [64, 128, 192],
             }
+            if args.complexity_model == "simple":
+                model_search_space['num_layers'] = [4]
+                model_search_space['channels'] = [64]
+                model_search_space['num_prompts'] = [64]
+            elif args.complexity_model == "complex":
+                model_search_space['num_layers'] = [8]
+                model_search_space['channels'] = [256]
+                model_search_space['num_prompts'] = [256]
             train_search_space = {
                 'batch_size': [128],
                 'base_lr': [0.01, 0.001],
@@ -692,7 +726,7 @@ def train_and_eval_with_cfg(
                 writer.add_scalar('Metric/test_best', best_test_metric, epoch)
                 # save new best model
                 best_model_state_dict = model.state_dict()
-                norm_path = os.path.join(args.results_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
+                norm_path = os.path.join(args.results_folder, f'{args.model_type}_{dataset_name}_{f"{args.complexity_model}_" if args.complexity_model != "optimize" else ""}best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         else:
             if val_metric < best_val_metric:
@@ -701,7 +735,7 @@ def train_and_eval_with_cfg(
                 # Log best test metric
                 writer.add_scalar('Metric/test_best', best_test_metric, epoch)
                 best_model_state_dict = model.state_dict()
-                norm_path = os.path.join(args.results_folder, f'{args.model_type}_{dataset_name}_best_model.pt')
+                norm_path = os.path.join(args.results_folder, f'{args.model_type}_{dataset_name}_{f"{args.complexity_model}_" if args.complexity_model != "optimize" else ""}best_model.pt')
                 torch.save(model.state_dict(), norm_path)
         lr_scheduler.step()
         print(f'Epoch {epoch}/{epochs} - Train Loss: {train_loss:.4f}, Val: {val_metric:.4f}')
@@ -814,10 +848,10 @@ def main_deep_models(args=None):
     os.makedirs(args.results_folder, exist_ok=True)
     if args.regression:
         torch.save({'model_state_dict': best_model_state_dict, **result_dict},
-                    os.path.join(args.results_folder, f'{args.model_type}_normalized_regression_{dataset_name}_results.pt'))
+                    os.path.join(args.results_folder, f'{args.model_type}_normalized_regression_{dataset_name}_{f"{args.complexity_model}_" if args.complexity_model != "optimize" else ""}results.pt'))
     else:
         torch.save({'model_state_dict': best_model_state_dict, **result_dict},
-                    os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_results.pt'))
+                    os.path.join(args.results_folder, f'{args.model_type}_normalized_binary_{dataset_name}_{f"{args.complexity_model}_" if args.complexity_model != "optimize" else ""}results.pt'))
 
 
 def main_gbdt(args=None):

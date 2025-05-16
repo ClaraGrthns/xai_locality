@@ -328,6 +328,21 @@ def prepare_data_and_models(args):
                 'gamma': [1., 1.2, 1.5],
                 'num_layers': [4, 6, 8],
             }
+            if args.complexity_model == "simple":
+                model_search_space = {
+                    'split_attn_channels': [64],  # Smallest attention channels
+                    'split_feat_channels': [64],  # Smallest feature channels
+                    'gamma': [1.0],               # Less feature reuse
+                    'num_layers': [2],            # Fewest layers
+                }
+            elif args.complexity_model == "complex":
+                model_search_space ={
+                'split_attn_channels': [256],  # Largest attention channels
+                'split_feat_channels': [256],  # Largest feature channels
+                'gamma': [1.5],               # Encourages more feature reuse
+                'num_layers': [8],            # Deepest architecture
+
+                }
             train_search_space = {
                 'batch_size': [2048, 4096],
                 'base_lr': [0.001, 0.01],
@@ -364,6 +379,13 @@ def prepare_data_and_models(args):
                 'channels': [64, 128, 256],
                 'num_layers': [4, 6, 8],
             }
+            if args.complexity_model == "simple":
+                model_search_space['num_layers'] = [4]
+                model_search_space['channels'] = [64]
+            elif args.complexity_model == "complex":
+                model_search_space['num_layers'] = [8]
+                model_search_space['channels'] = [256]
+            
             train_search_space = {
                 'batch_size': [256, 512],
                 'base_lr': [0.0001, 0.001],
@@ -376,6 +398,13 @@ def prepare_data_and_models(args):
                 'channels': [64, 128, 256],
                 'num_layers': [1, 2, 4],
             }
+            if args.complexity_model == "simple":
+                model_search_space['num_layers'] = [1]
+                model_search_space['channels'] = [64]
+            elif args.complexity_model == "complex":
+                model_search_space['num_layers'] = [8]
+                model_search_space['channels'] = [256]
+
             train_search_space = {
                 'batch_size': [256, 512],
                 'base_lr': [0.0001, 0.001],
@@ -405,6 +434,14 @@ def prepare_data_and_models(args):
                 'num_layers': [4, 6, 8],
                 'num_prompts': [64, 128, 192],
             }
+            if args.complexity_model == "simple":
+                model_search_space['num_layers'] = [4]
+                model_search_space['channels'] = [64]
+                model_search_space['num_prompts'] = [64]
+            elif args.complexity_model == "complex":
+                model_search_space['num_layers'] = [8]
+                model_search_space['channels'] = [256]
+                model_search_space['num_prompts'] = [256]
             train_search_space = {
                 'batch_size': [128],
                 'base_lr': [0.01, 0.001],
