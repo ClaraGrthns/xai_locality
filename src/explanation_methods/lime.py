@@ -52,7 +52,7 @@ class LimeHandler(BaseExplanationMethodHandler):
         if not osp.exists(explanations_dir):
             os.makedirs(explanations_dir)
         
-        if osp.exists(explanation_file_path+".npy") and (not self.args.force or self.args.downsample_analysis != 1.0):
+        if osp.exists(explanation_file_path+".npy") and (not self.args.force):
             print(f"Using precomputed explanations from: {explanation_file_path}")
             explanations = np.load(explanation_file_path+".npy", allow_pickle=True)
             print(f"{len(explanations)} explanations loaded")
@@ -75,7 +75,7 @@ class LimeHandler(BaseExplanationMethodHandler):
         experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
         # else:   
         #     experiment_setting = f"{df_setting}_kernel_width-{args.kernel_width}_model_regr-{args.model_regressor}_model_type-{args.model_type}_dist_measure-{args.distance_measure}_accuracy_fraction"
-        if self.args.downsample_analysis != 1.0:
+        if args.create_additional_analysis_data:
             experiment_setting = f"downsample-{np.round(args.downsample_analysis, 2)}_" + experiment_setting
         if self.args.sample_around_instance:
             experiment_setting = f"sampled_at_point_max_R-{np.round(max_radius, 2)}_" + experiment_setting

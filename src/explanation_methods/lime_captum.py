@@ -125,7 +125,7 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
 
         # Check if both files exist and force is not set
         files_exist = osp.exists(bias_feature_attribution_file_path) and osp.exists(coefs_feature_attribution_file_path)
-        should_load = files_exist and (not self.args.force or self.args.downsample_analysis != 1.0)
+        should_load = files_exist and (not self.args.force or self.args.create_additional_analysis_data)
 
         if should_load:
             print(f"Using precomputed LIME explanations from: {feature_attribution_folder}")
@@ -174,7 +174,7 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
             setting = f"{self.args.method}_{df_setting}_kernel_width-{self.args.kernel_width}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
         # else:
         #     setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"
-        if self.args.downsample_analysis != 1.0:
+        if self.args.create_additional_analysis_data:
             setting = f"downsample-{np.round(self.args.downsample_analysis, 2)}_" + setting
         if self.args.sample_around_instance:
             setting = f"sampled_at_point_max_R-{np.round(max_radius, 2)}_" + setting

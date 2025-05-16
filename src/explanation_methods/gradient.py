@@ -16,9 +16,6 @@ from src.utils.metrics import binary_classification_metrics_per_row, regression_
 
 
 class GradientMethodHandler(BaseExplanationMethodHandler):
-    def set_explainer(self, **kwargs):
-        model = kwargs.get("model")
-        self.explainer = IntegratedGradients(model, multiply_by_inputs=False)
 
     def explain_instance(self, **kwargs):
         return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
@@ -34,7 +31,7 @@ class GradientMethodHandler(BaseExplanationMethodHandler):
         else:
             saliency_map_file_path = osp.join(saliency_map_folder, f"saliency_map_{self.args.gradient_method}.h5")
         print("Looking for saliency maps in: ", saliency_map_file_path)
-        if osp.exists(saliency_map_file_path) and (not self.args.force or self.args.downsample_analysis != 1.0): # (not self.args.force or self.args.downsample_analysis != 1.0):
+        if osp.exists(saliency_map_file_path) and (not self.args.force): # (not self.args.force or self.args.downsample_analysis != 1.0):
             print(f"Using precomputed saliency maps from: {saliency_map_file_path}")
             with h5py.File(saliency_map_file_path, "r") as f:
                 saliency_maps = f["saliency_map"][:]
@@ -55,7 +52,7 @@ class GradientMethodHandler(BaseExplanationMethodHandler):
         setting = f"{df_setting}_grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_random_seed-{self.args.random_seed}_accuracy_fraction"
         # else:
         #     setting = f"grad_method-{self.args.gradient_method}_model_type-{self.args.model_type}_dist_measure-{self.args.distance_measure}_accuracy_fraction"
-        if self.args.downsample_analysis != 1.0:
+        if self.args.create_additional_analysis_data:
             setting = f"downsample-{np.round(self.args.downsample_analysis, 2)}_" + setting
         if self.args.sample_around_instance:
             setting = f"sampled_at_point_max_R-{np.round(max_radius, 2)}_" + setting
@@ -111,6 +108,7 @@ class GradientMethodHandler(BaseExplanationMethodHandler):
                 predict_fn = predict_fn, 
                 samples_in_ball = samples_in_ball,
                 sample_around_instance = self.args.sample_around_instance,
+                is_integrated_grad = self.is_integrated_gradients,
             )
             return model_preds, local_preds, dist
         else:
@@ -150,6 +148,7 @@ class SmoothGradHandler(GradientMethodHandler):
     def set_explainer(self, **kwargs):
         model = kwargs.get("model")
         self.explainer = NoiseTunnel(IntegratedGradients(model, multiply_by_inputs=False))
+        self.is_integrated_gradients = True
         
     def explain_instance(self, **kwargs):
         return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
@@ -158,6 +157,7 @@ class IntegratedGradientsHandler(GradientMethodHandler):
     def set_explainer(self, **kwargs):
         model = kwargs.get("model")
         self.explainer = IntegratedGradients(model, multiply_by_inputs=False)
+        self.is_integrated_gradients = True
         
     def explain_instance(self, **kwargs):
         return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
@@ -166,6 +166,7 @@ class GuidedGradCamHandler(GradientMethodHandler):
     def set_explainer(self, **kwargs):
         model = kwargs.get("model")
         self.explainer = GuidedGradCam(model, model.layer4[-1], model.layer4[-1])
+        self.is_integrated_gradients = False        
         
     def explain_instance(self, **kwargs):
         return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
@@ -174,6 +175,7 @@ class DeconvHandler(GradientMethodHandler):
     def set_explainer(self, **kwargs):
         model = kwargs.get("model")
         self.explainer = Deconvolution(model, model.layer4[-1], model.layer4[-1])
+        self.is_integrated_gradients = False        
         
     def explain_instance(self, **kwargs):
         return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
@@ -182,13 +184,16 @@ class SaliencyHandler(GradientMethodHandler):
     def set_explainer(self, **kwargs):
         model = kwargs.get("model")
         self.explainer = Saliency(model)
-        
+        self.is_integrated_gradients = False        
+    
     def explain_instance(self, **kwargs):
         return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
+    
 class GuidedBackpropHandler(GradientMethodHandler):
     def set_explainer(self, **kwargs):
         model = kwargs.get("model")
         self.explainer = GuidedBackprop(model)
+        self.is_integrated_gradients = False        
         
     def explain_instance(self, **kwargs):
         return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
