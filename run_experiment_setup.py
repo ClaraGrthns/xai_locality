@@ -286,32 +286,34 @@ def main():
     
     if args.debug:
         args.model_type = "MLP"
-        args.setting = "n_feat55_n_informative30_n_redundant5_n_repeated5_n_classes2_n_samples100000_n_clusters_per_class5_class_sep0.8_flip_y0.05_random_state42_hypercubeFalse"
+        args.setting = "regression_polynomial_n_feat20_n_informative5_n_samples200000_noise0.1_bias1.0_random_state42_effective_rank60_tail_strength0.5"
         args.method = "lime"
         args.distance_measure = "euclidean"
+        args.regression = True
+        args.force = True
         args.random_seed = 42
-        args.skip_knn = True
-        args.n_features = 55
-        args.n_informative = 30
-        args.n_redundant = 5
-        args.n_repeated = 5
-        args.n_classes = 2
-        args.n_samples = 100000
-        args.n_clusters_per_class = 5
-        args.class_sep = 0.8
-        args.flip_y = 0.05
+        args.regression_mode = "polynomial"
+        args.n_features = 20
+        args.n_informative = 5
+        args.n_samples = 200000
+        args.noise = 0.1
+        args.bias = 1.0
+        args.data_folder = "data"
+        args.test_size = 0.4
+        args.val_size = 0.1
         args.random_seed_synthetic_data = 42
-        args.num_trials = 15
+        args.epochs = 20
+        args.num_trials = 5
         args.num_repeats = 1
-        args.epochs = 40
-        args.optimize = True
+        args.use_custom_generator = True
         args.kernel_width = "default"
         args.num_lime_features = 10
-        args.create_additional_analysis_data = True
+        args.chunk_size = 10
 
     if args.force_training:
         args.force_overwrite = True
         args.force = True
+        args.force_create=True
 
     
     if args.model_folder is None:
@@ -329,14 +331,13 @@ def main():
     args.model_path = model_path
     args.data_path = get_data_path(args)
     args.coef = False
-    args.skip_knn = True  
+    args.skip_knn = True if not args.force_training else False
     args.skip_fraction = False #TODO: Delete
-    # args.force_training = False #TODO: Delete
 
     print(args)
 
     if args.downsample_analysis:
-        downsample_analysis_fractions = np.linspace(0.5, 1.0, 10)
+        downsample_analysis_fractions = np.linspace(0.2, 1.0, 10)
     else:
         downsample_analysis_fractions = [1]
     

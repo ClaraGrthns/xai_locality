@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.datasets import make_classification
 from sklearn.datasets import make_regression, make_friedman1, make_friedman2, make_friedman3
-
+from sklearn.datasets import make_spd_matrix
 
 def apply_nonlinearity(X, y, regression_mode, n_informative):
     """Apply non-linearities to ALL informative features."""
@@ -349,19 +349,37 @@ def create_custom_synthetic_regression_data(regression_mode,
     )
     
     file_path = os.path.join(data_folder, f'{setting_name}.npz')
-    
-    if os.path.exists(file_path) and not force_create:
-        data = np.load(file_path)
-        X_train = data['X_train']
-        X_val = data['X_val']
-        X_test = data['X_test']
-        y_train = data['y_train']
-        y_val = data['y_val']
-        y_test = data['y_test']
-        col_indices = None
+    if "friedman" in regression_mode:
+        if regression_mode == "friedman1":
+            X, y = make_friedman1(
+                n_samples=n_samples,
+                noise=noise,
+                random_state=random_seed
+            )
+            X, X_test, y, y_test = train_test_split(X, y, test_size=test_size, random_state=random_seed)
+        elif regression_mode == "friedman2":
+            X, y = make_friedman2(
+                n_samples=n_samples,
+                noise=noise,
+                random_state=random_seed
+            )
+            X, X_test, y, y_test = train_test_split(X, y, test_size=test_size, random_state=random_seed)
+        elif regression_mode == "friedman3":
+            X, y = make_friedman3(
+                n_samples=n_samples,
+                noise=noise,
+                random_state=random_seed
+            )
+            X, X_test, y, y_test = train_test_split(X, y, test_size=test_size, random_state=random_seed)
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_size, random_state=random_seed)
+        col_indices=None
     else:
         rng = np.random.RandomState(random_seed)
         X = rng.randn(n_samples, n_features)
+        feature_means = rng.normal(loc=0, scale=5, size=n_features) # You can adjust loc and scale
+        feature_std_devs = rng.uniform(low=0.5, high=3.0, size=n_features) # You can adjust low and high
+        X = X * feature_std_devs + feature_means
+
         if effective_rank is not None:
             # Create a low-rank covariance matrix to introduce correlations
             v = rng.uniform(0, 1, size=effective_rank)
@@ -385,11 +403,13 @@ def create_custom_synthetic_regression_data(regression_mode,
         X, X_test, y, y_test = train_test_split(X, y, test_size=test_size, random_state=random_seed)
         X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_size, random_state=random_seed)
         
-        if not os.path.exists(data_folder):
-            os.makedirs(data_folder)
-        np.savez(file_path, 
-                X_train=X_train, X_val=X_val, X_test=X_test, 
-                y_train=y_train, y_val=y_val, y_test=y_test)
+    if not os.path.exists(data_folder):
+        os.makedirs(data_folder)
+
+    print(file_path)
+    np.savez(file_path, 
+            X_train=X_train, X_val=X_val, X_test=X_test, 
+            y_train=y_train, y_val=y_val, y_test=y_test)
     
     return setting_name, X_train, X_val, X_test, y_train, y_val, y_test, col_indices
 

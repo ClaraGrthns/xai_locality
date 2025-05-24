@@ -57,11 +57,22 @@ METRICS_MAP_REG = {
 }
 
 def get_fraction(metr0, metr1):
+    min_dim = min(metr0.shape[0], metr1.shape[0])
     metr1 = np.where(np.isclose(metr1, 0), np.nan, metr1)  # Avoid division by zero
-    return 1 - metr0/metr1
+    return 1 - metr0[:min_dim]/metr1[:min_dim]
 
+def get_filter(filter):
+    filters = {
+        'min': np.nanmin,
+        'max': np.nanmax,
+        'median': np.nanmedian,
+        'mean': np.nanmean,
+        'argmax': np.nanargmax,
+        'argmin': np.nanargmin,
+    }
+    return filters.get(filter)
 
-def get_filter(mean_diffs, filter):
+def get_and_apply_filter(mean_diffs, filter):
     """Apply filter to mean differences."""
     filters = {
         'min': np.nanmin,
@@ -98,7 +109,8 @@ def filter_best_performance_local_model(filepath,
                                         metric, 
                                         summarizing_statistics, 
                                         average_over_n_neighbors,
-                                        filter,  
+                                        filter, 
+                                        order_average_first=True, 
                                         regression=False):
     if regression:
         load_results =  load_results_regression 
@@ -112,15 +124,76 @@ def filter_best_performance_local_model(filepath,
     is_ratio = "/" in metric
     if is_ratio:
         vals = get_fraction(data[metric_idx[0]], data[metric_idx[1]])
-        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
     elif is_diff:
         vals = data[metric_idx[0]] - data[metric_idx[1]]
-        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
     else:
         vals = data[metric_idx]
-        summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
-    filtered_res = get_filter(summary_vals, filter)
-    return filtered_res
+    # filtered_res = get_and_apply_filter(summary_vals, filter)
+    if order_average_first:
+        summary_vals = summarizing_statistics(vals, axis=1)
+        filter_for_vals = get_filter(filter)
+        summary_vals = filter_for_vals(summary_vals[:average_over_n_neighbors])
+
+    else:
+        filter_for_vals = get_filter(filter)
+        filtered_vals = filter_for_vals(vals, axis=0)
+        summary_vals = summarizing_statistics(filtered_vals)
+    
+    # if regression:
+    #     mse_gx = np.nanmin(data[0], axis=0).mean()
+    #     mse_constant = np.nanmin(data[3], axis=0).mean()
+    #     r2_gx = np.nanmax(get_fraction(data[0], data[5]), axis=0).mean()
+    #     r2_constant = np.nanmax(get_fraction(data[3], data[5]), axis=0).mean()
+    #     if mse_constant > mse_gx and r2_constant > r2_gx:
+    #         print(f"contradiction") 
+    #     if mse_constant < mse_gx and r2_constant < r2_gx:
+    #         print(f"contradiction 1")
+    #     filtered_vals_aux = r2_constant if is_ratio else mse_constant
+    #     summary_vals_aux = summarizing_statistics(filtered_vals_aux) 
+    #     if summary_vals_aux != summary_vals and "const." in metric:
+    #         print(f"contradiction 2")
+    if "const." in metric:
+        if order_average_first:
+            if regression:
+                mse_gx_argmin = np.argmax(summarizing_statistics(data[0][:500], axis=1))
+                r2_gx_argmax = np.argmax(summarizing_statistics(get_fraction(data[0], data[5])[:500], axis=1))
+                argmax = r2_gx_argmax if is_ratio else mse_gx_argmin
+                mse_constant = summarizing_statistics(data[3], axis=1)
+                r2_constant = summarizing_statistics(get_fraction(data[3], data[5]), axis=1)
+                summary_vals = r2_constant if is_ratio else mse_constant
+                summary_vals = summary_vals[argmax]
+            else:
+                accuracy_gx_argmax = np.argmax(summarizing_statistics(data[0][:500], axis=1))
+                accuracy_constant = summarizing_statistics(data[11], axis=1)
+                summary_vals = accuracy_constant[accuracy_gx_argmax]
+        else:
+            if regression:
+                mse_gx_argmin = np.argmin(data[0][:500], axis=0)
+                r2_gx_argmax = np.argmax(get_fraction(data[0], data[5])[:500], axis=0)
+                mse_constant = data[3][mse_gx_argmin, np.arange(0, 200)]
+                r2_constant = get_fraction(data[3], data[5])[r2_gx_argmax, np.arange(0, 200)]
+                filtered_vals = r2_constant if is_ratio else mse_constant
+                summary_vals = summarizing_statistics(filtered_vals) 
+            else:
+                accuracy_gx_argmax = np.argmax(data[0], axis=0)
+                accuracy_constant = data[11][accuracy_gx_argmax, np.arange(0, 200)]
+                filtered_vals = accuracy_constant
+                summary_vals = summarizing_statistics(filtered_vals)
+    return summary_vals
+
+
+
+#   if regression and "const." in metric:
+#         mse_gx_argmin = np.argmin(data[0], axis=0)
+#         r2_gx_argmax = np.argmax(get_fraction(data[0], data[5]), axis=0)
+#         mse_constant = data[3][mse_gx_argmin, np.arange(0, 200)]
+#         r2_constant = get_fraction(data[3], data[5])[r2_gx_argmax, np.arange(0, 200)]
+#         filtered_vals = r2_constant if is_ratio else mse_constant
+#     else:
+#         filter_for_vals = get_filter(filter)
+#         filtered_vals = filter_for_vals(vals, axis=0)
+#     summary_vals = summarizing_statistics(filtered_vals)
+
 
 def get_metric_vals(is_ratio, is_diff, metric_idx, data):
     if is_ratio:
@@ -137,6 +210,7 @@ def get_local_vs_constant_metric_data(res_model,
                            regression=False, 
                            random_seed=42,
                            kernel_width="default",
+                           order_average_first=True,
                            downsample_fraction = None, 
                            summarizing_statistics=None,
                            average_over_n_neighbors=200):
@@ -170,6 +244,7 @@ def get_local_vs_constant_metric_data(res_model,
             summarizing_statistics=summarizing_statistics,
             average_over_n_neighbors=average_over_n_neighbors,
             filter = filter, 
+            order_average_first=order_average_first,
             regression=regression
         )
         # process constant xai model results =========
@@ -179,6 +254,7 @@ def get_local_vs_constant_metric_data(res_model,
             metric=metric_constant,
             summarizing_statistics=summarizing_statistics,
             average_over_n_neighbors=average_over_n_neighbors,
+            order_average_first=order_average_first,
             filter = filter, 
             regression=regression
         )
@@ -194,6 +270,7 @@ def get_knn_vs_metric_data(res_model,
                            distance, 
                            regression=False, 
                            random_seed=42, 
+                            order_average_first=True,
                            kernel_width="default",
                            difference_to_constant_model=False,
                            summarizing_statistics=None,
@@ -222,6 +299,7 @@ def get_knn_vs_metric_data(res_model,
         filtered_res_g = filter_best_performance_local_model(
             filepath=file_path,
             metric=metric,
+            order_average_first=order_average_first,
             summarizing_statistics=summarizing_statistics,
             average_over_n_neighbors=average_over_n_neighbors,
             filter = filter, 
@@ -347,6 +425,7 @@ def get_synthetic_dataset_friendly_name_regression(dataset_name, pattern=None):
     """Generate a user-friendly name for synthetic regression datasets using regex to extract parameters"""
     if pattern is None:
         pattern = r'regression_(\w+)_n_feat(\d+)_n_informative(\d+)_n_samples(\d+)_noise([\d\.]+)_bias([\d\.]+)(?:_random_state(\d+))?(?:_effective_rank(\d+)_tail_strength([\d\.]+))?'
+    friedman_pattern = r"friedman(\d+)_n_samples200000_noise([\d\.]+)?" #f"friedman1_n_samples200000_noise0.1_random_state42"
     match = re.search(pattern, dataset_name.split("/")[-1])
     if match:
         mode = match.group(1)    # regression mode (e.g., 'linear', 'polynomial')
@@ -376,8 +455,12 @@ def get_synthetic_dataset_friendly_name_regression(dataset_name, pattern=None):
         if effective_rank_match:
             rank_num = effective_rank_match.group(1)
             additional += f", er:{rank_num}"
-        
         return f"syn {mode_display} \n(d:{d}, inf f.:{i}, noise:{noise}{additional})"
+    elif re.search(friedman_pattern, dataset_name.split("/")[-1]):
+        match = re.search(friedman_pattern, dataset_name.split("/")[-1])
+        d = match.group(1)
+        noise = match.group(2)
+        return f"syn friedman {d} (noise:{noise})"
     return dataset_name
 
 def get_results_files_dict(explanation_method: str,
@@ -1008,8 +1091,6 @@ def get_argmax_k_stats_for_model_dataset(method,
     cutoff=0 if regression else 0.5
     argmax_k_max_avg_stat_array = np.empty((len(models_in_dict), len(datasets_in_dict)), dtype=object)
     radius_of_argmax_k_max_avg_stat_array = np.empty((len(models_in_dict), len(datasets_in_dict)), dtype=object)
-    argmax_k_max_per_x_array = np.empty((len(models_in_dict), len(datasets_in_dict)), dtype=object)
-    argmax_k_per_x_array = np.empty((len(models_in_dict), len(datasets_in_dict), average_over_n_neighbors), dtype=object)
     for i, model in enumerate(models_in_dict):
         res_model = res_dict.get(model, None)
         for j, dataset in enumerate(datasets_in_dict):
@@ -1020,8 +1101,6 @@ def get_argmax_k_stats_for_model_dataset(method,
             rs_files = [rs_fp for rs_fp in get_random_seed_to_filepaths(files)]
             random_seeds = np.array([int(rs[0])for rs in rs_files])
             files_sorted_with_rs = [str(rs[1]) for rs in rs_files]
-            summary_over_rs_per_x = []
-            summary_over_rs = []
             summary_radii = []
             for rs in random_seeds:
                 try: 
@@ -1043,28 +1122,17 @@ def get_argmax_k_stats_for_model_dataset(method,
                     vals = data[metric_idx]
                     summary_vals = summarizing_statistics(vals, axis=1)[:average_over_n_neighbors]
                 vals = vals[:average_over_n_neighbors]
-                summary_over_rs_per_x.append( vals)
-                summary_over_rs.append(summary_vals)
                 summary_radii.append(summarizing_statistics(data[metrics_map.get("Radius")], axis=1)[:average_over_n_neighbors])
-            summary_over_rs_per_x = np.array(summary_over_rs_per_x)
-            summary_over_rs = np.array(summary_over_rs)
             summary_radii = np.array(summary_radii)
-            vals = np.mean(summary_over_rs_per_x, axis=0)
-            summary_vals = np.mean(summary_over_rs, axis=0)
             vals = np.where(vals > cutoff, vals, 0)[:average_over_n_neighbors]
             summary_vals = np.where(summary_vals > cutoff, summary_vals, 0)
             avg_radii = np.mean(summary_radii, axis=0)
             if take_max:
-                max_k_over_all_x = np.nanargmax(vals[:average_over_n_neighbors], axis=0)+1
                 max_k_model_per_dataset = np.nanargmax(summary_vals)+1
             else:
-                max_k_over_all_x = np.nanargmin(vals[:average_over_n_neighbors], axis=0)+1
                 max_k_model_per_dataset = np.nanargmin(summary_vals)+1
             
             radius_of_argmax_k_max_avg_stat_array[i, j] = avg_radii[max_k_model_per_dataset-1]
             argmax_k_max_avg_stat_array[i, j] = max_k_model_per_dataset
-            most_common_k = np.argmax(np.bincount(max_k_over_all_x))
-            argmax_k_max_per_x_array[i, j] = most_common_k
-            argmax_k_per_x_array[i, j] = max_k_over_all_x
-    return argmax_k_max_avg_stat_array, argmax_k_max_per_x_array, argmax_k_per_x_array, radius_of_argmax_k_max_avg_stat_array, models_in_dict, datasets_in_dict
+    return argmax_k_max_avg_stat_array, None, None, radius_of_argmax_k_max_avg_stat_array, models_in_dict, datasets_in_dict
 

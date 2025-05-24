@@ -173,6 +173,21 @@ def get_lime_preds_for_all_kNN(tst_set,
     return (model_binary_preds_top_label, model_prob_of_top_label, \
             local_binary_pred_top_labels, cut_off_probability(local_probs_top_label))
 
+def get_lime_local_rergression_preds_for_all_kNN(tst_set, 
+                               explanations, 
+                               explainer, 
+                               samples_in_ball,
+                ):
+    
+    if tst_set.ndim == 1:
+        tst_set = tst_set.reshape(1, -1)
+    if type(tst_set) == torch.Tensor:
+        tst_set = tst_set.numpy()
+    binary_sample = get_binary_vectorized(samples_in_ball, tst_set, explainer) #binarize for lime prediction
+    local_preds = lime_pred_vectorized(binary_sample, explanations, mode="regression")
+    return local_preds, binary_sample
+
+
 
 def get_lime_rergression_preds_for_all_kNN(tst_set, 
                                explanations, 

@@ -9,7 +9,7 @@ def linear_classifier(samples_in_ball, saliency_map):
     else:
         return torch.einsum('bc, bkc -> bk', saliency_map.float(), samples_in_ball) # (num_test_samples, num_closest_points)
 
-def compute_lime_preds_for_all_kNN(
+def compute_lime_all_preds_for_all_kNN(
                 explanation,
                 predict_fn, 
                 samples_in_ball,
@@ -50,9 +50,16 @@ def compute_lime_preds_for_all_kNN(
 
     return (model_binary_preds_top_label, model_prob_of_top_label, \
             local_binary_pred_top_labels, cut_off_probability(local_probs_top_label))
-    
 
-def compute_lime_regressionpreds_for_all_kNN(
+
+def compute_lime_only_local_preds_for_all_kNN(explanation,
+                                              samples_in_ball):
+    coefficients, intercept = explanation
+    local_preds = linear_classifier(samples_in_ball, coefficients)
+    local_preds += intercept[:, None]
+    return local_preds
+        
+def compute_lime_all_regressionpreds_for_all_kNN(
                                         explanation, 
                                         predict_fn, 
                                         samples_in_ball,

@@ -24,7 +24,7 @@ submit_all_jobs_knn.sh
 notebooks/graphics
 submit_all_jobs_benchmarking.sh
 *DS_Store
-
+notebooks/logs
 configs/lime/**/*.yaml
 configs/gradient_methods/**/*.yaml
 sh_commands

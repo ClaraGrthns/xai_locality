@@ -3,6 +3,7 @@ from captum.attr import IntegratedGradients, NoiseTunnel, GuidedGradCam, Deconvo
 import torch
 from src.explanation_methods.gradient_methods.local_classifier import (compute_gradmethod_preds_for_all_kNN, 
                                                                        compute_gradmethod_regressionpreds_for_all_kNN, 
+                                                                       compute_gradmethod_local_regressionpreds_for_all_kNN, 
                                                                        compute_saliency_maps)
 import os.path as osp
 import os
@@ -61,7 +62,24 @@ class GradientMethodHandler(BaseExplanationMethodHandler):
         if self.args.regression:
             setting = "regression_" + setting
         return setting
-
+    
+    def _compute_local_preds(self, 
+                             batch, 
+                            df_feat_for_expl, 
+                            explanation, 
+                            predict_fn, ):
+        with torch.no_grad():
+            predictions = predict_fn(batch)
+            predictions_baseline = predict_fn(torch.zeros_like(batch))
+        explanation = explanation.reshape(1, -1)
+        return compute_gradmethod_local_regressionpreds_for_all_kNN(
+            tst_feat=batch,
+            predictions_tst_feat=predictions,
+            predictions_baseline=predictions_baseline,
+            saliency_map=explanation,
+            samples_in_ball=df_feat_for_expl,
+            is_integrated_grad = self.is_integrated_gradients
+        )
 
     def process_chunk(self, 
                       batch, 

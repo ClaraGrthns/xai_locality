@@ -307,11 +307,11 @@ def prepare_data_and_models(args):
         train_tensor_frame, val_tensor_frame, test_tensor_frame
     )
 
-    if args.task_type == 'regression':
-        # Normalize target values
-        train_tensor_frame.y, val_tensor_frame.y, test_tensor_frame.y = normalize_target(
-            train_tensor_frame.y, val_tensor_frame.y, test_tensor_frame.y
-        )
+    # if args.task_type == 'regression':
+    #     # Normalize target values
+    #     train_tensor_frame.y, val_tensor_frame.y, test_tensor_frame.y = normalize_target(
+    #         train_tensor_frame.y, val_tensor_frame.y, test_tensor_frame.y
+    #     )
         
     col_names_dict = train_tensor_frame.col_names_dict
     print(f"save data under: {os.path.join(args.data_folder, f'{args.model_type}_{dataset_name}_normalized_data_col_names_dict.pt')}")
@@ -448,7 +448,7 @@ def prepare_data_and_models(args):
         elif args.model_type == 'MLP':
             model_search_space = {
                 'channels': [64, 128, 256],
-                'num_layers': [1, 2, 4],
+                'num_layers': [1, 2, 4, 8],
             }
             if args.complexity_model == "simple":
                 model_search_space['num_layers'] = [1]

@@ -181,18 +181,18 @@ def prepare_data_and_models(args):
     # Prepare datasets
     path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data')
 
-    if args.data_path and os.path.exists(args.data_path):
-        data_path_wo_file_ending = Path(args.data_path).stem
-        data_folder = os.path.dirname(args.data_path)
-        data_path = osp.join(data_folder, args.setting + ".npz")
-        data_path_wo_file_ending = Path(data_path).stem
-        print(data_path)
-        data = np.load(data_path)
-        print(args.data_path)
-        print(data.files)
-        tst_feat, val_feat, trn_feat = data['X_test'], data['X_val'], data['X_train'] 
-        y_test, y_val, y_train = data['y_test'], data['y_val'], data['y_train']
-    elif args.regression:
+    # if args.data_path:
+    #     data_path_wo_file_ending = Path(args.data_path).stem
+    #     data_folder = os.path.dirname(args.data_path)
+    #     data_path = osp.join(data_folder, args.setting + ".npz")
+    #     data_path_wo_file_ending = Path(data_path).stem
+    #     print(data_path)
+    #     data = np.load(data_path)
+    #     print(args.data_path)
+    #     print(data.files)
+    #     tst_feat, val_feat, trn_feat = data['X_test'], data['X_val'], data['X_train'] 
+    #     y_test, y_val, y_train = data['y_test'], data['y_val'], data['y_train']
+    if args.regression:
         data_path_wo_file_ending, trn_feat, val_feat, tst_feat, y_train, y_val, y_test, col_indices = create_custom_synthetic_regression_data(
             regression_mode = args.regression_mode,
             n_features=args.n_features,
@@ -229,8 +229,8 @@ def prepare_data_and_models(args):
         data_folder = args.data_folder
         
     trn_feat_norm, val_feat_norm, tst_feat_norm, scaler = normalize_features(trn_feat, val_feat, tst_feat)
-    if args.regression:
-        y_train, y_val, y_test = normalize_target(y_train, y_val, y_test)
+    # if args.regression:
+    #     y_train, y_val, y_test = normalize_target(y_train, y_val, y_test)
 
     df_trn = pd.DataFrame(trn_feat_norm)
     df_trn['y'] = y_train
@@ -847,8 +847,9 @@ def main_gbdt(args=None):
     val_metric = model.compute_metric(val_dataset.tensor_frame.y, val_pred)
     test_pred = model.predict(tf_test=test_dataset.tensor_frame)
     test_metric = model.compute_metric(test_dataset.tensor_frame.y, test_pred)
-    print(binary_classification_metrics(
-        test_dataset.tensor_frame.y, (test_pred>0.5).int(), test_pred))
+    if not args.regression:
+        print(binary_classification_metrics(
+            test_dataset.tensor_frame.y, (test_pred>0.5).int(), test_pred))
     end_time = time.time()
     result_dict = {
         'args': args.__dict__,

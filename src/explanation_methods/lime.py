@@ -1,6 +1,6 @@
 from src.explanation_methods.base import BaseExplanationMethodHandler
 import lime.lime_tabular
-from src.explanation_methods.lime_analysis.lime_local_classifier import compute_explanations, get_lime_preds_for_all_kNN, get_lime_rergression_preds_for_all_kNN
+from src.explanation_methods.lime_analysis.lime_local_classifier import compute_explanations, get_lime_preds_for_all_kNN, get_lime_rergression_preds_for_all_kNN, get_binary_vectorized, get_lime_local_rergression_preds_for_all_kNN
 from src.utils.misc import get_path
 import os.path as osp
 import os
@@ -39,8 +39,8 @@ class LimeHandler(BaseExplanationMethodHandler):
             explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}_distance_measure-{args.distance_measure}"
         else:
             explanation_file_name = f"normalized_data_explanations_test_set_kernel_width-{args.kernel_width}_model_regressor-{args.model_regressor}_distance_measure-{args.distance_measure}_random_seed-{args.random_seed}"
-        if args.num_lime_features > 10 :
-            explanation_file_name += f"_num_features-{args.num_lime_features}"
+        # if args.num_lime_features > 10 :
+        #     explanation_file_name += f"_num_features-{args.num_lime_features}"
         # if args.num_lime_features > 10:
         #     explanation_file_name += f"_num_features-{args.num_lime_features}"
         # if args.num_test_splits > 1:
@@ -81,23 +81,23 @@ class LimeHandler(BaseExplanationMethodHandler):
             experiment_setting = f"sampled_at_point_max_R-{np.round(max_radius, 2)}_" + experiment_setting
         else:
             experiment_setting = f"fractions-0-{np.round(fractions, 2)}_"+experiment_setting
-        if self.args.num_lime_features > 10:
-            experiment_setting += f"_num_features-{self.args.num_lime_features}"
+        # if self.args.num_lime_features > 10:
+        #     experiment_setting += f"_num_features-{self.args.num_lime_features}"
         if self.args.regression:
             experiment_setting = "regression_" + experiment_setting
         return experiment_setting
     
-    # def prepare_data_for_analysis(self, dataset, df_feat):
-    #     args = self.args
-    #     tst_feat, _, val_feat, _, trn_feat, _  = dataset
-    #     df_feat = tst_feat[args.max_test_points:]
-    #     tst_feat = tst_feat[: args.max_test_points]
-    #     if args.include_trn:
-    #         df_feat = np.concatenate([trn_feat, df_feat], axis=0)
-    #     if args.include_val:
-    #         df_feat = np.concatenate([df_feat, val_feat], axis=0)
-    #     return tst_feat, df_feat, tst_feat, df_feat
-    
+    def _compute_local_preds(self, batch, df_feat_for_expl, explanation, predict_fn):
+        if isinstance(batch, torch.Tensor):
+            batch = batch.cpu().numpy()
+        if isinstance(df_feat_for_expl, torch.Tensor):
+            df_feat_for_expl = df_feat_for_expl.cpu().numpy()
+        if not isinstance(explanation, list):
+            explanation = [explanation]
+        return get_lime_local_rergression_preds_for_all_kNN(batch, 
+                               explanation, 
+                               self.explainer, 
+                               df_feat_for_expl)
     def process_chunk(self, 
                       batch, 
                       tst_chunk_dist, 

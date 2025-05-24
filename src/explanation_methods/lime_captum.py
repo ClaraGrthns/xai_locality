@@ -2,8 +2,9 @@ from src.explanation_methods.base import BaseExplanationMethodHandler
 from captum.attr import LimeBase
 import torch
 from src.explanation_methods.lime_analysis.lime_captum_local_classifier import (compute_feature_attributions, 
-                                                                                compute_lime_preds_for_all_kNN,
-                                                                                compute_lime_regressionpreds_for_all_kNN)
+                                                                                compute_lime_all_preds_for_all_kNN,
+                                                                                compute_lime_only_local_preds_for_all_kNN,
+                                                                                compute_lime_all_regressionpreds_for_all_kNN)
 from torch import Tensor
 
 import os.path as osp
@@ -183,8 +184,43 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
         if self.args.regression:
             setting = "regression_" + setting
         return setting
+    
+    def _compute_local_preds(self, 
+                            batch, 
+                            df_feat_for_expl, 
+                            explanations_chunk, 
+                            predict_fn, ):
+        explanation = explanations_chunk
+        return compute_lime_only_local_preds_for_all_kNN(explanation=explanation,samples_in_ball=df_feat_for_expl)
+    
+    def _get_res_on_whole_kNN_set(self, 
+                      batch, 
+                      df_feat_for_expl, 
+                      explanations_chunk, 
+                      predict_fn, 
+                      ):
 
-
+        df_feat_for_expl = df_feat_for_expl if isinstance(df_feat_for_expl, torch.Tensor) else torch.tensor(df_feat_for_expl)
+        with torch.no_grad():
+            predictions_on_whole_test = predict_fn(df_feat_for_expl)
+        predictions_on_whole_test = predictions_on_whole_test.cpu().numpy().flatten()
+        res_on_whole_kNN_set = np.full((batch.shape[0], 5), np.nan)
+        variance_logit = np.var(predictions_on_whole_test)
+        second_moment = np.mean(predictions_on_whole_test**2)
+        res_on_whole_kNN_set[:, 3] = variance_logit
+        res_on_whole_kNN_set[:, 4] = second_moment
+        for i, explanation in enumerate(explanations_chunk):
+            local_preds = compute_lime_only_local_preds_for_all_kNN(explanation=explanation,
+                                                                    samples_in_ball=df_feat_for_expl)
+            local_preds = local_preds.cpu().numpy().flatten()
+            mse = np.mean((predictions_on_whole_test - local_preds) ** 2)
+            mae = np.mean(np.abs(predictions_on_whole_test - local_preds))
+            r2 = 1 - (mse/(variance_logit + 1e-10))
+            res_on_whole_kNN_set[i, 0] = mse
+            res_on_whole_kNN_set[i, 1] = mae
+            res_on_whole_kNN_set[i, 2] = r2
+        return res_on_whole_kNN_set
+    
     def process_chunk(self, 
                       batch, 
                       tst_chunk_dist, 
@@ -207,7 +243,7 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
         samples_in_ball = torch.tensor(samples_in_ball)
 
         if self.args.regression:
-            model_preds, local_preds = compute_lime_regressionpreds_for_all_kNN(
+            model_preds, local_preds = compute_lime_all_regressionpreds_for_all_kNN(
                explanation = explanations_chunk, 
                 predict_fn = predict_fn, 
                 samples_in_ball = samples_in_ball,
@@ -228,7 +264,8 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
                 else:
                     predictions_sm = predictions
             top_labels = torch.argmax(predictions_sm, dim=1).tolist()
-            model_predicted_top_label, model_prob_of_top_label, local_preds_label, local_preds = compute_lime_preds_for_all_kNN(
+
+            model_predicted_top_label, model_prob_of_top_label, local_preds_label, local_preds = compute_lime_all_preds_for_all_kNN(
                 explanation = explanations_chunk,
                 predict_fn = predict_fn, 
                 samples_in_ball = samples_in_ball,
@@ -236,6 +273,7 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
                 pred_threshold=None,
                 proba_output=proba_output
             )
+
             return (
                 model_prob_of_top_label,  
                 model_predicted_top_label,
