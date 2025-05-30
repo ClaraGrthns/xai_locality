@@ -7,6 +7,7 @@ sbatch
 *.pyc
 __pycache__/*
 .vscode
+notebooks/
 pretrained_models/*
 src/train/runs/*
 run_analysis.py
@@ -33,6 +34,7 @@ experiment_commands_clf_sampling/
 experiment_commands_regression/
 experiment_commands_regression_sampling/
 lime/
+*.npy
 runs/
 tensorboard_logs/
 experiment_commands_reduzed_analysis
