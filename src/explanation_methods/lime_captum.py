@@ -193,34 +193,6 @@ class LimeCaptumHandler(BaseExplanationMethodHandler):
         explanation = explanations_chunk
         return compute_lime_only_local_preds_for_all_kNN(explanation=explanation,samples_in_ball=df_feat_for_expl)
     
-    def _get_res_on_whole_kNN_set(self, 
-                      batch, 
-                      df_feat_for_expl, 
-                      explanations_chunk, 
-                      predict_fn, 
-                      ):
-
-        df_feat_for_expl = df_feat_for_expl if isinstance(df_feat_for_expl, torch.Tensor) else torch.tensor(df_feat_for_expl)
-        with torch.no_grad():
-            predictions_on_whole_test = predict_fn(df_feat_for_expl)
-        predictions_on_whole_test = predictions_on_whole_test.cpu().numpy().flatten()
-        res_on_whole_kNN_set = np.full((batch.shape[0], 5), np.nan)
-        variance_logit = np.var(predictions_on_whole_test)
-        second_moment = np.mean(predictions_on_whole_test**2)
-        res_on_whole_kNN_set[:, 3] = variance_logit
-        res_on_whole_kNN_set[:, 4] = second_moment
-        for i, explanation in enumerate(explanations_chunk):
-            local_preds = compute_lime_only_local_preds_for_all_kNN(explanation=explanation,
-                                                                    samples_in_ball=df_feat_for_expl)
-            local_preds = local_preds.cpu().numpy().flatten()
-            mse = np.mean((predictions_on_whole_test - local_preds) ** 2)
-            mae = np.mean(np.abs(predictions_on_whole_test - local_preds))
-            r2 = 1 - (mse/(variance_logit + 1e-10))
-            res_on_whole_kNN_set[i, 0] = mse
-            res_on_whole_kNN_set[i, 1] = mae
-            res_on_whole_kNN_set[i, 2] = r2
-        return res_on_whole_kNN_set
-    
     def process_chunk(self, 
                       batch, 
                       tst_chunk_dist, 

@@ -229,8 +229,8 @@ def prepare_data_and_models(args):
         data_folder = args.data_folder
         
     trn_feat_norm, val_feat_norm, tst_feat_norm, scaler = normalize_features(trn_feat, val_feat, tst_feat)
-    # if args.regression:
-    #     y_train, y_val, y_test = normalize_target(y_train, y_val, y_test)
+    if args.regression:
+        y_train, y_val, y_test = normalize_target(y_train, y_val, y_test)
 
     df_trn = pd.DataFrame(trn_feat_norm)
     df_trn['y'] = y_train

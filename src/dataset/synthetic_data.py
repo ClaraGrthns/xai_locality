@@ -376,9 +376,9 @@ def create_custom_synthetic_regression_data(regression_mode,
     else:
         rng = np.random.RandomState(random_seed)
         X = rng.randn(n_samples, n_features)
-        feature_means = rng.normal(loc=0, scale=5, size=n_features) # You can adjust loc and scale
-        feature_std_devs = rng.uniform(low=0.5, high=3.0, size=n_features) # You can adjust low and high
-        X = X * feature_std_devs + feature_means
+        # feature_means = rng.normal(loc=0, scale=5, size=n_features) # You can adjust loc and scale
+        # feature_std_devs = rng.uniform(low=0.5, high=3.0, size=n_features) # You can adjust low and high
+        # X = X * feature_std_devs + feature_means
 
         if effective_rank is not None:
             # Create a low-rank covariance matrix to introduce correlations

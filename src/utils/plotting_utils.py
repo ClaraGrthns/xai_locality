@@ -597,12 +597,15 @@ def plot_knn_metrics_vs_metric(models,
                                       random_seed=random_seed, 
                                       downsampled=plot_downsample_fraction,
                                       kernel_width=kernel_width)
-    print(res_dict["MLP"])
+    print(res_dict.get("MLP", {}))
     is_diff = "-" in metric
     is_ratio = "/" in metric    
     if not (cutoff_at and cutoff_value_replaced):
         cutoff_at = -3 if (regression and is_ratio) else 0.5
         cutoff_value_replaced = -3.5 if regression and is_ratio else 0.45
+    if "-" in metric:
+        cutoff_at = -3 
+        cutoff_value_replaced = -3.5 
     cutoff_label = f"$<${cutoff_at}"
     all_results = defaultdict(list)
     all_results_std = defaultdict(list)
@@ -781,29 +784,29 @@ def get_smple_model_name(complexity_regression, regression=False):
 def get_x_label(x_metrics="complexity", complexity_regression="best", filter="max", regression=False):
     smpl_model = get_smple_model_name(complexity_regression, regression)
     if x_metrics =="complexity":
-        x_label = f"{"Lowest " if complexity_regression == "best" else ""}{"$1-R^2$" if regression else "error"} of {smpl_model}\non model predictions"
+        x_label = "Model complexity $m^R$" if regression else "Model complexity $m^C$" #f"{"Lowest " if complexity_regression == "best" else ""}{"$1-R^2$" if regression else "error"} of {smpl_model}\non model predictions"
     elif x_metrics =="constant_model":
         if filter == "min":
             metric_axis_label = "$MSE$"
         else:
-            metric_axis_label = "$R^2$" if regression else "accuracy"
-        x_label = f"Best avg. {metric_axis_label} of\nconst. local model" if isinstance(filter, str) else f"Average {metric_axis_label} const. local model for {filter} closest neighbors"
+            metric_axis_label = "$\\bar{{F}}^{\;R}$" if regression else "$\\bar{{F}}^{\;C}$"
+        x_label = f"Avg. {metric_axis_label} of\nconst. local model" if isinstance(filter, str) else f"Average {metric_axis_label} const. local model for {filter} closest neighbors"
     else:
         x_label = ""
     return x_label
 
 def get_y_label(y_metrics="local_model", filter="max", regression=False):
-    metric_axis_label = "$R^2$" if regression else "accuracy"
+    metric_axis_label = "$\\bar{{F}}^{\;R}$" if regression else "$\\bar{{F}}^{\;C}$"
     if filter == "min":
         metric_axis_label = "$MSE$"
     if filter != "argmax":
-        y_axis_label = f"Best avg. {metric_axis_label} of $g_x$" #get_y_axis_label(filter, metric, is_diff, is_ratio, summary=summarizing_statistics)
+        y_axis_label = f"Avg. best {metric_axis_label} of $g_x$" #get_y_axis_label(filter, metric, is_diff, is_ratio, summary=summarizing_statistics)
     else:
         y_axis_label = f"Argmax k of avg. local {metric_axis_label}"
     return y_axis_label
 
 def get_title(method_title, is_diff, regression =False, x_metrics="complexity", filter="max", create_legend_to_ax=False):
-    metric_axis_label = "$R^2$" if regression else "accuracy"
+    metric_axis_label = "$\\bar{{F}}^{\;R}$" if regression else "$\\bar{{F}}^{\;C}$"
     if x_metrics =="complexity":
         if isinstance(filter, int):
             title = f"{method_title.capitalize()}-\n Complexity of f vs. {metric_axis_label} avg. {'improvement' if is_diff else 'of $g_x$'} within {filter} neighbors"
@@ -1264,7 +1267,7 @@ def plot_local_metrics_vs_constant_metric(models,
                 if yv > cut_off and xv > cut_off:
                     ellipse = plt.matplotlib.patches.Ellipse(
                     (xv, yv), width=2*xv_std, height=2*yv_std,
-                    edgecolor='none', facecolor=colors_list[i], alpha=0.3, zorder=1
+                    edgecolor='none', facecolor=colors_list[i], alpha=0.3, zorder=0
                     )
                     ax.add_patch(ellipse)
                
@@ -1316,7 +1319,6 @@ def plot_local_metrics_vs_constant_metric(models,
     ax.set_xlim((exclude_lower, 1))
     # # === Labels ===
     y_axis_label = get_y_label(y_metrics="local_model", filter=filter, regression=regression)
-    metric_axis_label = "$R^2$" if regression else "accuracy"
     x_axis_label = get_x_label(x_metrics="constant_model", complexity_regression="best", regression=regression, filter=filter)
     ax.set_ylabel(y_axis_label, labelpad=-5)
     ax.set_xlabel(x_axis_label)
@@ -1337,91 +1339,6 @@ def plot_local_metrics_vs_constant_metric(models,
             metadata={'CreationDate': None}
         )
     return ax, unique_datasets, colors, models_plotted, markers_to_models
-
-
-
-def plot_knn_vs_model_performance_scatter(models, 
-                        datasets, 
-                        distance="euclidean", 
-                        regression=False, 
-                        synthetic=False, 
-                        random_seed=42,
-                        complexity_regression="best", 
-                        ax=None, 
-                        width=TEXT_WIDTH,
-                        height=TEXT_WIDTH * 0.6,
-                        save=False):
-    """
-    Scatter plot: x-axis = performance_smple_model_model_preds, y-axis = diff (model - simple model on true labels)
-    Each point: (model, dataset). Color by dataset, marker by model.
-    """
-    
-    create_legend_to_ax = ax is None
-    
-    if regression:
-        from src.utils.process_results import get_synthetic_dataset_friendly_name_regression as get_friendly_name
-    else:
-        from src.utils.process_results import get_synthetic_dataset_friendly_name as get_friendly_name
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(width, height))
-    else:
-        fig = ax.figure
-    from src.utils.plotting_utils import COLOR_TO_CLF_DATASET, COLOR_TO_REG_DATASET, extract_sort_keys
-    markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*']
-    cmap = COLOR_TO_REG_DATASET if regression else COLOR_TO_CLF_DATASET
-    results = []
-    for model in models:
-        for dataset in datasets:
-            try:
-                _, x, y = get_performance_metrics_smpl_complex_models(model, 
-                                                                      dataset, 
-                                                                      distance=distance, 
-                                                                      regression=regression,
-                                                                      synthetic=synthetic, 
-                                                                      random_seed=random_seed, 
-                                                                      complexity_regression=complexity_regression)
-                results.append((model, get_friendly_name(dataset), x, y))
-            except Exception as e:
-                print(f"Skipping {model} on {dataset}: {e}")
-
-    unique_datasets = sorted({d for _, d, _, _ in results}, key=lambda x: extract_sort_keys(x, regression))
-    colors = {d: cmap[d] for d in unique_datasets}
-    models_plotted = sorted({m for m, _, _, _ in results})
-    markers_to_models = {m: MODEL_TO_MARKER[m] for i, m in enumerate(models_plotted)}
-
-    for model, dataset, x, y in results:
-        ax.scatter(x, y, color=colors[dataset], marker=markers_to_models[model], s=50, alpha=0.8, edgecolors="black", linewidths=0.2)
-    ax.plot([0, 1], [0, 1], linestyle='--', color='gray', alpha=0.7)
-    # smpl_model = "Lin. Reg" if regression and complexity_regression else ("kNN-reg." if regression else ("Log. Reg" if complexity_regression else "kNN-clf."))
-    smpl_model = "Lin. Reg" if regression and complexity_regression else ("kNN-reg." if regression else ("Log. Reg" if complexity_regression else "kNN-clf."))
-    if complexity_regression == "best":
-        # smpl_model = "one of: kNN-reg., linear reg. or decision tree\n" if regression else "one of: kNN-clf., logistic reg. or decision tree\n"
-        smpl_model = "baseline models"
-    elif complexity_regression == "kNN":
-        smpl_model = "kNN clf." if not regression else "kNN reg."
-    elif complexity_regression == "linear":
-        smpl_model = "Lin. Reg" if regression else "Log. Reg"
-    elif complexity_regression == "tree":
-        smpl_model = "Decision Tree"
-    else:
-        smpl_model = "smpl model"
-    ax.set_xlabel(f"{"Best " if complexity_regression == "best" else ""}{"$R^2$" if regression else "accuracy"} of {smpl_model} on true labels")
-    ax.set_ylabel(f"{"$R^2$" if regression else "Accuracy"} of f on true labels")
-    ax.set_title(f"{"Regression: " if regression else "Classification: "}Complex models vs.\n baseline models on true labels")
-    ax.set_aspect('equal', adjustable='box')
-    ax.grid(True, alpha=0.3)
-    ax.set_ylim((0, 1)) if regression else ax.set_ylim((0.5, 1))
-    ax.set_xlim((0, 1)) if regression else ax.set_xlim((0.5, 1))
-    
-    if create_legend_to_ax:
-        create_dual_legend(ax, unique_datasets, colors, models_plotted, markers_to_models)
-
-
-    plt.tight_layout()
-    if save:
-        plt.savefig("graphics/knn_vs_diff_scatter.pdf", bbox_inches='tight', dpi=100, metadata={'CreationDate': None})
-    return ax, unique_datasets, colors, models_plotted, markers_to_models
-
 def plot_model_performances_scatter(models, 
                         datasets, 
                         distance="euclidean", 
@@ -1501,7 +1418,9 @@ def plot_model_performances_scatter(models,
     if x_metrics == "baseline_preds":
         ax.set_xlabel(f"{"Best " if complexity_regression == "best" else ""}{"$R^2$" if regression else "accuracy"} of {smpl_model}\n on true labels")
     elif x_metrics == "complexity":
-        ax.set_xlabel(f"{"Lowest " if complexity_regression == "best" else ""}{"$1-R^2$" if regression else "error"} of {smpl_model}\n on model predictions")
+        x_label = "Model complexity $m^R$" if regression else "Model complexity $m^C$" #f"{"Lowest " if complexity_regression == "best" else ""}{"$1-R^2$" if regression else "error"} of {smpl_model}\non model predictions"
+        # ax.set_xlabel(f"{"Lowest " if complexity_regression == "best" else ""}{"$1-R^2$" if regression else "error"} of {smpl_model}\n on model predictions")
+        ax.set_xlabel(x_label)
     if y_metrics == "model_labels":
         ax.set_ylabel(f"{"$R^2$" if regression else "Accuracy"} of complex models")
     elif y_metrics == "difference":
@@ -1535,71 +1454,3 @@ def plot_model_performances_scatter(models,
         plt.savefig("graphics/knn_vs_diff_scatter.pdf", bbox_inches='tight', dpi=100, metadata={'CreationDate': None})
     return ax, unique_datasets, colors, models_plotted, markers_to_models
 
-
-def plot_knn_vs_diff_scatter(models, 
-                        datasets, 
-                        distance="euclidean", 
-                        regression=False, 
-                        synthetic=False, 
-                        random_seed=42,
-                        complexity_regression="best", 
-                        ax=None, 
-                        width=TEXT_WIDTH,
-                        height=TEXT_WIDTH * 0.6,
-                        save=False):
-    """
-    Scatter plot: x-axis = performance_smple_model_model_preds, y-axis = diff (model - simple model on true labels)
-    Each point: (model, dataset). Color by dataset, marker by model.
-    """
-    create_legend_to_ax = ax is None
-    if regression:
-        from src.utils.process_results import get_synthetic_dataset_friendly_name_regression as get_friendly_name
-    else:
-        from src.utils.process_results import get_synthetic_dataset_friendly_name as get_friendly_name
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(width, height))
-    else:
-        fig = ax.figure
-
-    # Prepare colors and markers
-    from src.utils.plotting_utils import COLOR_TO_CLF_DATASET, COLOR_TO_REG_DATASET, extract_sort_keys
-    markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*']
-    cmap = COLOR_TO_REG_DATASET if regression else COLOR_TO_CLF_DATASET
-    cutoff = 0 if regression else 0.5
-    # Gather results
-    results = []
-    for model in models:
-        for dataset in datasets:
-            try:
-                x, y = get_knn_vs_diff_model_performance(
-                    model, dataset, distance=distance, regression=regression,
-                    synthetic=synthetic, random_seed=random_seed, complexity_regression=complexity_regression
-                )
-                results.append((model, get_friendly_name(dataset), x, y))
-            except Exception as e:
-                print(f"Skipping {model} on {dataset}: {e}")
-
-    unique_datasets = sorted({d for _, d, _, _ in results}, key=lambda x: extract_sort_keys(x, regression))
-    colors = {d: cmap[d] for d in unique_datasets}
-    models_plotted = sorted({m for m, _, _, _ in results})
-    markers_to_models = {m: markers[i % len(markers)] for i, m in enumerate(models_plotted)}
-    for model, dataset, x, y in results:
-        if x<cutoff: continue
-        # ax.scatter(x, y, color=MODEL_TO_COLOR[model], marker=markers_to_models[model], s=50, alpha=0.7)
-        ax.scatter(x, y, color=colors[dataset], marker=markers_to_models[model], s=50, alpha=0.8, edgecolors="black", linewidths=0.2)
-    smpl_model = get_smple_model_name(complexity_regression, regression)  
-    ax.axhline(0, color='black', linestyle='--', alpha=0.7)  
-    ax.set_xlabel(f"{"Best " if complexity_regression == "best" else ""}{"$R^2$" if regression else "accuracy"} of {smpl_model} on model predictions")
-    ax.set_ylabel(f"Difference in {"$R^2$" if regression else "accuracy"} on true labels")
-    ax.set_title(f"Complexity of $f$ vs.\n Difference of complex and baseline models on true labels")
-    ax.grid(True, alpha=0.3)
-    ax.set_xlim((cutoff, 1))
-    ax.set_aspect('equal', adjustable='box')
-
-    if create_legend_to_ax:
-        create_dual_legend(ax, unique_datasets, colors, models_plotted, markers_to_models)
-
-    plt.tight_layout()
-    if save:
-        plt.savefig("graphics/knn_vs_diff_scatter.pdf", bbox_inches='tight', dpi=100, metadata={'CreationDate': None})
-    return ax, unique_datasets, colors, models_plotted, markers_to_models

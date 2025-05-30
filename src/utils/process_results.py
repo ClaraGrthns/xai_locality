@@ -59,7 +59,7 @@ METRICS_MAP_REG = {
 def get_fraction(metr0, metr1):
     min_dim = min(metr0.shape[0], metr1.shape[0])
     metr1 = np.where(np.isclose(metr1, 0), np.nan, metr1)  # Avoid division by zero
-    return 1 - metr0[:min_dim]/metr1[:min_dim]
+    return 1 - metr0[:min_dim]/metr1[499:500]
 
 def get_filter(filter):
     filters = {
@@ -125,7 +125,11 @@ def filter_best_performance_local_model(filepath,
     if is_ratio:
         vals = get_fraction(data[metric_idx[0]], data[metric_idx[1]])
     elif is_diff:
-        vals = data[metric_idx[0]] - data[metric_idx[1]]
+        min_dim = min(data[metric_idx[0]].shape[0],data[metric_idx[1]].shape[0])
+        vals = data[metric_idx[0]][:min_dim] - data[metric_idx[1]][:min_dim]
+        if regression:
+            var = np.where(np.isclose(data[5], 0), np.nan, data[5])  # Avoid division by zero
+            vals /= var[:min_dim]
     else:
         vals = data[metric_idx]
     # filtered_res = get_and_apply_filter(summary_vals, filter)
@@ -152,7 +156,7 @@ def filter_best_performance_local_model(filepath,
     #     summary_vals_aux = summarizing_statistics(filtered_vals_aux) 
     #     if summary_vals_aux != summary_vals and "const." in metric:
     #         print(f"contradiction 2")
-    if "const." in metric:
+    if "$g_x$" not in metric:
         if order_average_first:
             if regression:
                 mse_gx_argmin = np.argmax(summarizing_statistics(data[0][:500], axis=1))

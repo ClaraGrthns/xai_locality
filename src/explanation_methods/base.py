@@ -8,6 +8,7 @@ class BaseExplanationMethodHandler:
     def __init__(self,args):
         # self.explainer = self.set_explainer(**kwargs)
         self.args = args
+        self.is_smooth_grad = False
     
     def set_explainer(self, **kwargs):
         raise NotImplementedError
@@ -120,10 +121,13 @@ class BaseExplanationMethodHandler:
             model_preds, local_preds, dist = chunk_result
         else:
             model_preds, model_binary_preds, model_probs, local_preds, local_binary_preds, local_probs, dist = chunk_result
+            np.save("/home/grotehans/xai_locality/model_preds_higgs.npy", model_preds)
+            np.save("/home/grotehans/xai_locality/local_preds_higgs.npy", local_preds)
+
         max_distances = np.zeros((dist.shape[0], n_points_in_ball))
         for idx in range(n_points_in_ball):
             max_distances[:, idx] = np.max(dist[:, :idx+1], axis=1)
-
+       
         # append y_test as the first column of model and local preds to obtain stable variance 
         kNNs = (np.arange(1, n_points_in_ball + 1))
         if type(y_preds) == torch.Tensor:
@@ -329,15 +333,24 @@ class BaseExplanationMethodHandler:
             predictions_on_whole_test = predict_fn(df_feat_for_expl)
             model_preds_for_batch = predict_fn(batch)
 
+
         df_feat_for_expl = df_feat_for_expl[None, :, :]
         if isinstance(predictions_on_whole_test, torch.Tensor):
             predictions_on_whole_test = predictions_on_whole_test.cpu().numpy()
+        if isinstance(model_preds_for_batch, torch.Tensor):
+            model_preds_for_batch = model_preds_for_batch.cpu().numpy()
         predictions_on_whole_test = predictions_on_whole_test.flatten()
         res_on_whole_kNN_set = np.full((batch.shape[0], 6), np.nan)
         variance_logit = np.var(predictions_on_whole_test)
         second_moment = np.mean(predictions_on_whole_test**2)
         res_on_whole_kNN_set[:, 3] = variance_logit
         res_on_whole_kNN_set[:, 4] = second_moment
+        if len(explanations_chunk) == 2:
+            explanations_ls = []
+            expl_1, expl_2 = explanations_chunk
+            for e1, e2 in zip(expl_1, expl_2):
+                explanations_ls.append([e1, e2])
+            explanations_chunk = explanations_ls
         for i, (explanation, test_smpl) in enumerate(zip(explanations_chunk, batch )):
             # explanation = explanation.reshape(1, -1)
             test_smpl = test_smpl.reshape(1, -1)

@@ -98,7 +98,7 @@ def parse_args():
     parser.add_argument("--distance_measures", nargs='+', default=["euclidean", "manhattan", "cosine"], 
                         help="List of distance measures to use")
     parser.add_argument("--min_k", type=int, default=2, help="Minimum k for KNN")
-    parser.add_argument("--max_k", type=int, default=20, help="Maximum k for KNN")
+    parser.add_argument("--max_k", type=int, default=30, help="Maximum k for KNN")
     parser.add_argument("--k_step", type=int, default=2, help="Step size for k in KNN")
     parser.add_argument("--chunk_size", type=int, default=200, help="Chunk size for processing")
     parser.add_argument("--max_test_points", type=int, default=200, help="Maximum number of test points")
@@ -285,35 +285,26 @@ def main():
     args.include_trn = False
     
     if args.debug:
-        args.model_type = "MLP"
-        args.setting = "regression_polynomial_n_feat20_n_informative5_n_samples200000_noise0.1_bias1.0_random_state42_effective_rank60_tail_strength0.5"
+        args.model_type = "LightGBM"
+        args.setting = "higgs"
+        args.use_benchmark = True
         args.method = "lime"
         args.distance_measure = "euclidean"
-        args.regression = True
+        args.regression = False
         args.force = True
         args.random_seed = 42
-        args.regression_mode = "polynomial"
-        args.n_features = 20
-        args.n_informative = 5
-        args.n_samples = 200000
-        args.noise = 0.1
-        args.bias = 1.0
-        args.data_folder = "data"
-        args.test_size = 0.4
-        args.val_size = 0.1
-        args.random_seed_synthetic_data = 42
-        args.epochs = 20
+        args.epochs = 30
         args.num_trials = 5
         args.num_repeats = 1
-        args.use_custom_generator = True
         args.kernel_width = "default"
         args.num_lime_features = 10
-        args.chunk_size = 10
 
     if args.force_training:
         args.force_overwrite = True
         args.force = True
         args.force_create=True
+        args.epochs = 30 if args.model_type != "TabTransformer" else 40
+        args.num_trials =5
 
     
     if args.model_folder is None:
@@ -331,7 +322,7 @@ def main():
     args.model_path = model_path
     args.data_path = get_data_path(args)
     args.coef = False
-    args.skip_knn = True if not args.force_training else False
+    args.skip_knn = True if not args.force_training or not model_exists else False
     args.skip_fraction = False #TODO: Delete
 
     print(args)

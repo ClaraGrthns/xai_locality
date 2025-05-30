@@ -55,8 +55,9 @@ def compute_lime_all_preds_for_all_kNN(
 def compute_lime_only_local_preds_for_all_kNN(explanation,
                                               samples_in_ball):
     coefficients, intercept = explanation
+    coefficients = coefficients.reshape(1, -1)
     local_preds = linear_classifier(samples_in_ball, coefficients)
-    local_preds += intercept[:, None]
+    local_preds += intercept
     return local_preds
         
 def compute_lime_all_regressionpreds_for_all_kNN(
