@@ -17,7 +17,6 @@ from src.utils.metrics import binary_classification_metrics_per_row, regression_
 
 
 class GradientMethodHandler(BaseExplanationMethodHandler):
-
     def explain_instance(self, **kwargs):
         return self.explainer.attribute(kwargs["input"], target=kwargs["target"])
     
@@ -41,7 +40,7 @@ class GradientMethodHandler(BaseExplanationMethodHandler):
             print("Precomputed saliency maps not found. Computing saliency maps for the test set...")
             if not osp.exists(saliency_map_folder):
                 os.makedirs(saliency_map_folder)
-            saliency_maps = compute_saliency_maps(self.explainer, predict_fn, tst_feat_for_expl_loader)
+            saliency_maps = compute_saliency_maps(self.explainer, predict_fn, tst_feat_for_expl_loader, self.is_smooth_grad)
             with h5py.File(saliency_map_file_path, "w") as f:
                 f.create_dataset("saliency_map", data=saliency_maps.cpu().numpy())
         return saliency_maps
@@ -150,6 +149,7 @@ class GradientMethodHandler(BaseExplanationMethodHandler):
                 predict_fn = predict_fn, 
                 samples_in_ball = samples_in_ball,
                 top_labels = top_labels,
+                is_integrated_grad = self.is_integrated_gradients,
                 proba_output=proba_output,
                 n_samples_around_instance = self.args.n_samples_around_instance,
             )
@@ -167,6 +167,7 @@ class SmoothGradHandler(GradientMethodHandler):
         model = kwargs.get("model")
         self.explainer = NoiseTunnel(IntegratedGradients(model, multiply_by_inputs=False))
         self.is_integrated_gradients = True
+        self.is_smooth_grad = True
         
     def explain_instance(self, **kwargs):
         return self.explainer.attribute(kwargs["input"], target=kwargs["target"])

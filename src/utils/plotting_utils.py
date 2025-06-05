@@ -816,9 +816,9 @@ def get_title(method_title, is_diff, regression =False, x_metrics="complexity", 
             title = f"{method_title.capitalize()}\n Complexity of f vs. max avg. local fidelity"
     else:
         if isinstance(filter, int):
-            title = f"{method_title.capitalize()+": " if create_legend_to_ax else ""}Average {metric_axis_label} of const. local model vs.\n {metric_axis_label} avg. of $g_x$ within {filter} neighbors"
+            title = f"{method_title.capitalize()+": " if create_legend_to_ax else ""}Average {metric_axis_label} of const. local expl. vs.\n {metric_axis_label} avg. of $g_x$ within {filter} neighbors"
         else:
-            title = f"{method_title.capitalize()+": " if create_legend_to_ax else ""}Max. avg. {metric_axis_label} of const. local model vs.\n  max. avg. {metric_axis_label} of $g_x$"
+            title = f"{method_title.capitalize()+": " if create_legend_to_ax else ""}Max. avg. {metric_axis_label} of const. local expl. vs.\n  max. avg. {metric_axis_label} of $g_x$"
     return title
 
 def extract_random_seed(file_path):

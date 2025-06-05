@@ -303,9 +303,6 @@ def main():
         args.force_overwrite = True
         args.force = True
         args.force_create=True
-        args.epochs = 30 if args.model_type != "TabTransformer" else 40
-        args.num_trials =5
-
     
     if args.model_folder is None:
         args.model_folder = os.path.join(BASEDIR, "pretrained_models")
